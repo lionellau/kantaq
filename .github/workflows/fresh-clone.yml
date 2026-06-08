@@ -1,0 +1,52 @@
+name: fresh-clone
+
+# Times a cold clone-to-green (setup -> migrate -> test) and fails if it exceeds
+# 10 minutes (NFR-E01-1). Caches are intentionally disabled here so the measure
+# reflects a genuinely fresh machine. The fast gating lives in py.yml / web.yml.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  timed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Time setup -> migrate -> test
+        run: |
+          start=$(date +%s)
+          make setup
+          make migrate
+          make test
+          end=$(date +%s)
+          elapsed=$((end - start))
+          echo "clone-to-green: ${elapsed}s"
+          if [ "$elapsed" -gt 600 ]; then
+            echo "::error::clone-to-green ${elapsed}s exceeds the 600s budget (NFR-E01-1)"
+            exit 1
+          fi
