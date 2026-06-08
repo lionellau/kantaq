@@ -1,0 +1,39 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# ---- uv ----
+# uv.lock IS committed (reproducible installs); the env is not.
+
+# ---- Node / web ----
+node_modules/
+web/dist/
+web/coverage/
+*.tsbuildinfo
+
+# ---- Local data / secrets ----
+data/*.sqlite
+data/*.sqlite-*
+.env
+.env.*
+!.env.example
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
