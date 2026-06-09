@@ -45,6 +45,8 @@ the maintenance/credibility bar.
 | Web build | **Vite** + **React** | MIT | Fast dev server + static build. |
 | Web tests | **Vitest** | MIT | Vite-native test runner. |
 | Web lint + format | **Biome** | MIT / Apache-2.0 | Single fast binary for lint + format. |
+| Web routing (E18) | **react-router-dom** | MIT | SPA routing for the 5-page shell; React Router team, ~54k stars. |
+| Runtime config (E22) | **pydantic-settings** | MIT | `.env` loading + validation; pydantic org; pairs with FastAPI/pydantic already in the stack. |
 | CLI | **argparse** (stdlib) | PSF | Zero new dependency for the small bootstrap CLI; revisit (Typer/Click) when the CLI grows. |
 | Conventional-commit lint | **conventional-pre-commit** | MIT | commit-msg hook. |
 

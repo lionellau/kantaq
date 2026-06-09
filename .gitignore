@@ -30,6 +30,7 @@ data/*.sqlite-*
 .env
 .env.*
 !.env.example
+!.env.supabase.example
 
 # ---- OS / editor ----
 .DS_Store
