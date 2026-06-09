@@ -11,8 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, HTMLResponse, Response
 
 from kantaq_runtime import __version__
 
@@ -45,15 +44,21 @@ def create_app() -> FastAPI:
         return {"status": "ok", "version": __version__}
 
     dist = _web_dist()
-    if dist is not None:
-        # html=True serves index.html at "/". Defined after /healthz so the
-        # health route keeps priority.
-        app.mount("/", StaticFiles(directory=str(dist), html=True), name="web")
-    else:
 
-        @app.get("/", response_class=HTMLResponse)
-        def index() -> str:
-            return _PLACEHOLDER_HTML
+    @app.get("/{full_path:path}")
+    def spa(full_path: str) -> Response:
+        # Serve a built asset if it exists; otherwise fall back to index.html so
+        # client-side routes (/memory, /agents, ...) deep-link instead of 404ing.
+        # /healthz is registered first and keeps priority over this catch-all.
+        if dist is not None:
+            if full_path:
+                candidate = (dist / full_path).resolve()
+                if candidate.is_file() and dist.resolve() in candidate.parents:
+                    return FileResponse(candidate)
+            index = dist / "index.html"
+            if index.is_file():
+                return FileResponse(index)
+        return HTMLResponse(_PLACEHOLDER_HTML)
 
     return app
 

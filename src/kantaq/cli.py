@@ -55,27 +55,43 @@ def _have_web(root: Path) -> bool:
 
 
 def cmd_dev(args: argparse.Namespace) -> int:
-    """Boot the FastAPI runtime. ``--check`` boots, hits /healthz, then exits."""
+    """Boot the FastAPI runtime. ``--check`` boots, hits /healthz, then exits.
+
+    Resolves host/port from config (``--host``/``--port`` override) and verifies
+    the backend connection before serving (MOD-14 / E22-T2).
+    """
     import uvicorn
 
     from kantaq_runtime.app import app
+    from kantaq_runtime.config import get_settings
+    from kantaq_runtime.verify import verify_connection
+
+    settings = get_settings()
+    host = args.host or settings.host
+    port = args.port or settings.port
+
+    result = verify_connection(settings)
+    if not result.ok:
+        print(f"connection verify failed: {result.message}", file=sys.stderr)
+        return 1
+    print(f"verify: {result.message}", file=sys.stderr)
 
     if not args.check:
-        uvicorn.run(app, host=args.host, port=args.port)
+        uvicorn.run(app, host=host, port=port)
         return 0
 
     import threading
 
     import httpx
 
-    config = uvicorn.Config(app, host=args.host, port=args.port, log_level="warning")
+    config = uvicorn.Config(app, host=host, port=port, log_level="warning")
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
 
     ok = False
     deadline = time.time() + 30
-    url = f"http://{args.host}:{args.port}/healthz"
+    url = f"http://{host}:{port}/healthz"
     while time.time() < deadline:
         if getattr(server, "started", False):
             try:
@@ -146,16 +162,42 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Print the resolved config and verify the backend connection (MOD-14)."""
+    from kantaq_runtime.config import HubMode, get_settings
+    from kantaq_runtime.verify import verify_connection
+
+    settings = get_settings()
+    result = verify_connection(settings)
+    print(f"hub_mode = {settings.hub_mode.value}")
+    print(f"bind     = {settings.host}:{settings.port}")
+    print(f"db_path  = {settings.local_db_path}")
+    if settings.hub_mode is HubMode.supabase:
+        print(f"supabase = {settings.supabase_url or '(unset)'}")
+    print(f"verify   = {'OK' if result.ok else 'FAIL'}: {result.message}")
+    return 0 if result.ok else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="kantaq", description="kantaq dev CLI")
     parser.add_argument("--version", action="version", version=f"kantaq {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     dev = sub.add_parser("dev", help="boot the FastAPI runtime")
-    dev.add_argument("--host", default=DEFAULT_HOST)
-    dev.add_argument("--port", type=int, default=DEFAULT_PORT)
+    dev.add_argument(
+        "--host", default=None, help=f"override bind host (default: HOST or {DEFAULT_HOST})"
+    )
+    dev.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help=f"override bind port (default: PORT or {DEFAULT_PORT})",
+    )
     dev.add_argument("--check", action="store_true", help="boot, hit /healthz, exit")
     dev.set_defaults(func=cmd_dev)
+
+    doctor = sub.add_parser("doctor", help="print config + verify backend connection")
+    doctor.set_defaults(func=cmd_doctor)
 
     test = sub.add_parser("test", help="run pytest + Vitest")
     test.set_defaults(func=cmd_test)
