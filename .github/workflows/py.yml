@@ -1,0 +1,46 @@
+name: py
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: py-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync workspace
+        run: uv sync --frozen
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Format check (ruff)
+        run: uv run ruff format --check .
+
+      - name: Typecheck (mypy, strict)
+        run: >
+          uv run mypy
+          -p kantaq -p kantaq_protocol -p kantaq_sync_engine
+          -p kantaq_core -p kantaq_mcp -p kantaq_db -p kantaq_runtime
+
+      - name: Test (pytest)
+        run: uv run pytest
