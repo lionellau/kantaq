@@ -13,9 +13,9 @@ def test_different_seed_differs() -> None:
     assert SeededRandom(1).token() != SeededRandom(2).token()
 
 
-def test_ulid_is_sortable_and_unique() -> None:
+def test_sortable_id_is_sortable_and_unique() -> None:
     rng = SeededRandom(0)
-    ids = [rng.ulid() for _ in range(100)]
+    ids = [rng.sortable_id() for _ in range(100)]
     assert ids == sorted(ids)
     assert len(set(ids)) == 100
 
