@@ -31,7 +31,12 @@ class SeededRandom:
     def ident(self, prefix: str) -> str:
         return f"{prefix}_{self.token(10)}"
 
-    def ulid(self) -> str:
-        """A sortable, deterministic id: monotonic counter + seeded suffix."""
+    def sortable_id(self) -> str:
+        """A lexicographically sortable, deterministic id for tests.
+
+        Not a ULID: no 48-bit millisecond timestamp and no Crockford base32. It is
+        a zero-padded monotonic counter plus a seeded suffix, which is all the
+        harness needs (sortable + reproducible). Do not present it as a ULID.
+        """
         self._counter += 1
         return f"{self._counter:012d}{self.token(8)}"
