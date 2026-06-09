@@ -1,4 +1,4 @@
-.PHONY: help setup dev migrate test lint typecheck eval mcp-dev clean
+.PHONY: help setup dev migrate test coverage lint typecheck eval mcp-dev clean
 
 help: ## show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -17,6 +17,9 @@ migrate: ## run database migrations (stub until Epic E02)
 
 test: ## run pytest + Vitest
 	uv run kantaq test
+
+coverage: ## run the coverage gate on protocol/mcp/core (>= 90%)
+	uv run pytest --cov --cov-fail-under=90
 
 lint: ## run ruff + Biome
 	uv run kantaq lint
