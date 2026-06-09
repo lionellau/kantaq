@@ -47,6 +47,8 @@ the maintenance/credibility bar.
 | Web lint + format | **Biome** | MIT / Apache-2.0 | Single fast binary for lint + format. |
 | Web routing (E18) | **react-router-dom** | MIT | SPA routing for the 5-page shell; React Router team, ~54k stars. |
 | Runtime config (E22) | **pydantic-settings** | MIT | `.env` loading + validation; pydantic org; pairs with FastAPI/pydantic already in the stack. |
+| Property tests (E27) | **hypothesis** | MPL-2.0 | Property-based tests for the harness + sync profiles; HypothesisWorks, ~7.5k stars. MPL-2.0 is reuse-compatible. |
+| Test fakes (E27) | **built from scratch** (stdlib) | Apache-2.0 (ours) | `FakeClock`/`SeededRandom`/`FakeBackend` are tiny + injectable. freezegun (<5k stars) globally monkeypatches time — heavier and less explicit than an injected clock. |
 | CLI | **argparse** (stdlib) | PSF | Zero new dependency for the small bootstrap CLI; revisit (Typer/Click) when the CLI grows. |
 | Conventional-commit lint | **conventional-pre-commit** | MIT | commit-msg hook. |
 
