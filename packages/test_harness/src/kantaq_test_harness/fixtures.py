@@ -15,12 +15,18 @@ from sqlalchemy.engine import Engine
 from kantaq_test_harness.backend import FakeBackend
 from kantaq_test_harness.clock import FakeClock
 from kantaq_test_harness.db import temp_sqlite_engine
+from kantaq_test_harness.keychain import FakeKeychain
 from kantaq_test_harness.random import SeededRandom
 
 
 @pytest.fixture
 def fake_clock() -> FakeClock:
     return FakeClock()
+
+
+@pytest.fixture
+def fake_keychain() -> FakeKeychain:
+    return FakeKeychain()
 
 
 @pytest.fixture

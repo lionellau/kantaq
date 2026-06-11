@@ -1,9 +1,13 @@
 """The FastAPI application for the local runtime.
 
-Bootstrap scope (Epic E01): bind nothing here (the CLI binds to 127.0.0.1), expose
-``/healthz``, and serve the built web UI from ``web/dist`` when present. If the UI
-has not been built yet, ``/`` returns a minimal placeholder so ``kantaq dev`` still
-boots a working server (FR-E01-3). Real REST endpoints arrive with their epics.
+Bind nothing here (the CLI binds to 127.0.0.1); expose ``/healthz``, the
+token-gated ``/v1/*`` API (E06), and serve the built web UI from ``web/dist``
+when present. If the UI has not been built yet, ``/`` returns a minimal
+placeholder so ``kantaq dev`` still boots a working server (FR-E01-3).
+
+``create_app`` accepts an ``engine`` / ``verifier`` so tests run against a temp
+database and a FakeClock-driven verifier; production resolves both lazily from
+config on first API use.
 """
 
 from __future__ import annotations
@@ -12,8 +16,12 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse, Response
+from sqlalchemy.engine import Engine
 
+from kantaq_core.identity import TokenVerifier
 from kantaq_runtime import __version__
+from kantaq_runtime.config import Settings, get_settings
+from kantaq_runtime.members_api import router as members_router
 
 _PLACEHOLDER_HTML = """<!doctype html>
 <html lang="en">
@@ -36,12 +44,24 @@ def _web_dist() -> Path | None:
     return None
 
 
-def create_app() -> FastAPI:
+def create_app(
+    *,
+    settings: Settings | None = None,
+    engine: Engine | None = None,
+    verifier: TokenVerifier | None = None,
+) -> FastAPI:
     app = FastAPI(title="kantaq local runtime", version=__version__)
+    app.state.settings = settings or get_settings()
+    app.state.engine = engine
+    app.state.verifier = verifier
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
+
+    # API routes register before the SPA catch-all so /v1/* never falls
+    # through to index.html. Auth lives on the routes (kantaq_runtime.auth).
+    app.include_router(members_router)
 
     dist = _web_dist()
 

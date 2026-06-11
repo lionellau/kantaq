@@ -26,6 +26,7 @@ from kantaq_test_harness.hero_flow import (
     HeroFlowTimer,
     HeroFlowTooSlow,
 )
+from kantaq_test_harness.keychain import FakeKeychain
 from kantaq_test_harness.models import (
     AgentProposal,
     AuditEvent,
@@ -51,6 +52,7 @@ __all__ = [
     "Event",
     "FakeBackend",
     "FakeClock",
+    "FakeKeychain",
     "HeroFlowTimer",
     "HeroFlowTooSlow",
     "Member",

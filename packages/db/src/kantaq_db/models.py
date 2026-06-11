@@ -96,14 +96,20 @@ class Member(CollectionBase, table=True):
     email: str = Field(index=True)
     # role ∈ Owner | Maintainer | Member | Viewer | Agent (PRD §11 base roles).
     role: str = Field(default="Member", max_length=16)
+    # status ∈ active | invited | revoked (E06). Invited members flip to active
+    # on their first authenticated request; revoked members never authenticate.
+    status: str = Field(default="active", max_length=16)
 
 
 class Token(CollectionBase, table=True):
     __tablename__ = "tokens"
 
     member_id: str = Field(foreign_key="members.id", index=True)
-    hashed: str  # never the plaintext token (argon2/bcrypt, E06)
+    hashed: str  # never the plaintext token (argon2id PHC string, E06)
     scopes: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    # Set on revoke/rotate. A row with revoked_at never authenticates again;
+    # rows are kept (not deleted) so the audit trail can reference them.
+    revoked_at: datetime | None = Field(default=None)
 
 
 class AuditEvent(CollectionBase, table=True):

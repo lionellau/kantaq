@@ -1,10 +1,17 @@
 [project]
 name = "kantaq-core"
 version = "0.0.5"
-description = "kantaq core: tracker domain, resolver, recommendations, permissions (MOD-03, MOD-21, MOD-22)"
+description = "kantaq core: tracker domain, resolver, recommendations, permissions (MOD-03, MOD-06, MOD-21, MOD-22)"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
-dependencies = []
+dependencies = [
+    # Argon2id token hashing (MOD-06 / E06). >=45 for the PHC-encoded helpers;
+    # the official wheels bundle OpenSSL >= 3.2, which Argon2 needs.
+    "cryptography>=45.0",
+    # Identity domain logic reads/writes the members/tokens collections (MOD-02).
+    "sqlmodel>=0.0.22",
+    "kantaq-db",
+]
 
 [build-system]
 requires = ["hatchling"]

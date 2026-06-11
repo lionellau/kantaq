@@ -9,6 +9,10 @@ dependencies = [
     "uvicorn[standard]>=0.30.0",
     "pydantic-settings>=2.4.0",
     "httpx>=0.27.0",
+    # Identity: token-gated loopback auth + the members API (MOD-06 / E06).
+    "kantaq-core",
+    "kantaq-db",
+    "sqlmodel>=0.0.22",
 ]
 
 [build-system]
