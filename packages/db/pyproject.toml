@@ -4,7 +4,10 @@ version = "0.0.5"
 description = "kantaq db: SQLModel models + Alembic migrations (MOD-02)"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
-dependencies = []
+dependencies = [
+    "sqlmodel>=0.0.22",
+    "alembic>=1.13",
+]
 
 [build-system]
 requires = ["hatchling"]
