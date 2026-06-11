@@ -1,7 +1,7 @@
 [project]
 name = "kantaq-core"
 version = "0.0.5"
-description = "kantaq core: tracker domain, resolver, recommendations, permissions (MOD-03, MOD-06, MOD-21, MOD-22)"
+description = "kantaq core: tracker domain, identity, audit, resolver, recommendations (MOD-03, MOD-06, MOD-07, MOD-21, MOD-22)"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 dependencies = [

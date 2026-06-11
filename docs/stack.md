@@ -98,6 +98,12 @@ enum-like fields (no native Postgres `ENUM`) and generic `JSON` for list/dict
 fields. The fallback in the sprint risk note (two hand-kept schemas + a CI diff)
 was not needed.
 
+### E07 / MOD-07 audit
+
+| Need | Chosen | License | Notes |
+|---|---|---|---|
+| Append-only audit trail | **built from scratch** (`kantaq_core.audit`, on SQLModel + SQLAlchemy events) | Apache-2.0 (ours) | Candidates fail the bar: **SQLAlchemy-Continuum** (~1.7k stars) and **sqlalchemy-history** are versioning add-ons below 5k; **django-auditlog** (~3.5k stars) is Django-only; **pgaudit / postgresql-audit** are Postgres-trigger-based, but kantaq needs SQLite parity and NFR-E07-1 demands *app-layer* enforcement. The build is small: one `write()` path into the existing `audit_events` collection (MOD-02) plus SQLAlchemy's built-in event hooks to refuse mutation at three depths: mapper `before_update`/`before_delete` (unit of work), session `do_orm_execute` (bulk ORM statements), and an engine-level `before_execute` backstop (legacy bulk APIs, table-targeted and bare-connection statements). Hardened per the SEC second review. Zero new dependencies. |
+
 ## Consequences
 
 - Two toolchains in CI (Python + web). Keep total CI **under 10 minutes**

@@ -8,6 +8,7 @@ Builders, fakes, and fixtures that make the Test Harness Engineering Standard
 
 from __future__ import annotations
 
+from kantaq_test_harness.audit import AuditCapture
 from kantaq_test_harness.backend import CommittedEvent, FakeBackend
 from kantaq_test_harness.builders import (
     build_agent_proposal,
@@ -46,6 +47,7 @@ __version__ = "0.0.5"
 __all__ = [
     "DEFAULT_BUDGET_SECONDS",
     "AgentProposal",
+    "AuditCapture",
     "AuditEvent",
     "Comment",
     "CommittedEvent",
