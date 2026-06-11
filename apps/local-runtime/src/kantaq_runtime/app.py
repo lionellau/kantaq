@@ -15,7 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from sqlalchemy.engine import Engine
 
 from kantaq_core.identity import TokenVerifier
@@ -70,6 +70,11 @@ def create_app(
         # Serve a built asset if it exists; otherwise fall back to index.html so
         # client-side routes (/memory, /agents, ...) deep-link instead of 404ing.
         # /healthz is registered first and keeps priority over this catch-all.
+        # The API namespace never falls through: an unknown /v1/* path is a
+        # client error and must say so as JSON — agents and curl would otherwise
+        # read index.html with a 200 as success.
+        if full_path == "v1" or full_path.startswith("v1/"):
+            return JSONResponse({"detail": f"unknown API path: /{full_path}"}, status_code=404)
         if dist is not None:
             if full_path:
                 candidate = (dist / full_path).resolve()
