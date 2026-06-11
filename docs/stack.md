@@ -1,8 +1,8 @@
 # ADR-0001 — Tech stack and repository tooling
 
 **Status:** Accepted (v0.0.5) · **Epic:** E01 · **Module:** MOD-01
-**Context source:** the architecture reference and the dev plan in
-[`kantaq-project-docs`](https://github.com/lionellau/kantaq-project-docs).
+**Context source:** the project's architecture reference and dev plan
+(maintained by the core team separately).
 
 ## Decision
 

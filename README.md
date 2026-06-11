@@ -6,7 +6,7 @@ Each person clones the repo and runs the app on their own machine. A solo user r
 
 > There is no shared application instance and no server the project operates. The only shared thing is the sync backend — it just validates and stores committed events.
 
-This repository holds the **code**. The product/architecture/planning docs live in [`kantaq-project-docs`](https://github.com/lionellau/kantaq-project-docs).
+This repository holds the **code**. Product, architecture, and planning docs are maintained by the core team separately.
 
 ## Status
 

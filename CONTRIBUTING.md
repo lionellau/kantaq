@@ -1,9 +1,8 @@
 # Contributing to kantaq
 
 Thanks for helping build kantaq. This guide is short on purpose; the
-authoritative planning lives in the
-[`kantaq-project-docs`](https://github.com/lionellau/kantaq-project-docs) repo
-(dev plan, sprints, and the per-module specs under `docs/modules/`).
+authoritative planning (dev plan, sprints, and the per-module specs) is
+maintained by the core team in a separate planning workspace.
 
 ## Ground rules
 
@@ -11,11 +10,11 @@ authoritative planning lives in the
    [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`,
    `docs:`, `chore:`, `refactor:`, `test:`, `ci:`, … The commit-msg hook and CI
    enforce this.
-2. **Tests ship with the code.** A task is not done without tests. Follow the
-   [Test Harness Engineering Standard](https://github.com/lionellau/kantaq-project-docs/blob/main/docs/test/test-harness-standard.md)
-   and your module's harness profile.
+2. **Tests ship with the code.** A task is not done without tests. Use the
+   shared harness in `packages/test_harness` (builders, fakes, fixtures) and
+   keep tests hermetic and deterministic — no real network, clock, or RNG.
 3. **Keep the module spec in sync.** A behavior change with no spec update is not
-   done. Update the relevant `MOD-xx` spec in the docs repo in the same change.
+   done. Update the relevant module spec alongside the change.
 4. **Security gate.** Any change touching `packages/protocol`, the MCP gateway,
    or grants needs an adversarial + security review before merge.
 
