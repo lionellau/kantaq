@@ -16,6 +16,23 @@ jobs:
   python:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Disposable Postgres so the SQLite/Postgres dialect-parity test (E02-T3,
+    # NFR-E02-1) runs against a real server. EphemeralPostgres creates and drops
+    # a throwaway database per test; locally (no service) those tests skip.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -44,4 +61,6 @@ jobs:
           -p kantaq_test_harness
 
       - name: Test + coverage gate (pytest; protocol/mcp/core >= 90%)
+        env:
+          KANTAQ_TEST_POSTGRES_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
         run: uv run pytest --cov --cov-fail-under=90
