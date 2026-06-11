@@ -1,0 +1,67 @@
+"""Base roles and the permission matrix (PRD §11, FR-E06-7).
+
+Five roles, checked wherever a surface exists. v0.0.5 has two live surfaces
+(web/API via the runtime); the other seven (MCP tool calls, memory reads,
+memory writes, ticket writes, agent proposals, sync commits, conflict
+resolution — NFR-E06-3) wire in as their modules land, each calling ``can``.
+
+``Agent`` is deliberately absent from ``ROLE_PERMISSIONS``: an agent's access
+is defined by its token's ``scopes`` (PRD §11 "scoped access defined by
+token"), so ``can`` consults the scope list instead of a role row.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class Role(StrEnum):
+    """The 5 base roles (PRD §11). Stored on ``members.role``."""
+
+    owner = "Owner"
+    maintainer = "Maintainer"
+    member = "Member"
+    viewer = "Viewer"
+    agent = "Agent"
+
+
+class Action(StrEnum):
+    """Permission-checked actions. Grows one surface at a time (NFR-E06-3)."""
+
+    members_read = "members.read"
+    members_invite = "members.invite"
+    members_revoke = "members.revoke"
+    tokens_rotate = "tokens.rotate"
+
+
+# Human roles → allowed actions. Owner is full admin; Maintainer manages
+# members and agent tokens; Member and Viewer can see the member list.
+ROLE_PERMISSIONS: dict[Role, frozenset[Action]] = {
+    Role.owner: frozenset(Action),
+    Role.maintainer: frozenset(
+        {
+            Action.members_read,
+            Action.members_invite,
+            Action.members_revoke,
+            Action.tokens_rotate,
+        }
+    ),
+    Role.member: frozenset({Action.members_read}),
+    Role.viewer: frozenset({Action.members_read}),
+}
+
+
+def can(role: Role | str, action: Action, *, scopes: list[str] | None = None) -> bool:
+    """May this role perform this action?
+
+    Humans are checked against ``ROLE_PERMISSIONS``. Agents are checked against
+    their token's ``scopes`` (the action value must be listed). An unknown role
+    string fails closed.
+    """
+    try:
+        resolved = Role(role)
+    except ValueError:
+        return False
+    if resolved is Role.agent:
+        return action.value in (scopes or [])
+    return action in ROLE_PERMISSIONS[resolved]
