@@ -27,3 +27,19 @@ def test_spa_fallback_serves_index_for_client_routes() -> None:
     response = client.get("/agents")
     assert response.status_code == 200
     assert "kantaq" in response.text.lower()
+
+
+def test_unknown_api_path_is_json_404_not_spa() -> None:
+    # The SPA fallback must never swallow the API namespace: an agent calling a
+    # typo'd /v1 path needs a machine-readable 404, not index.html with a 200.
+    for path in ("/v1/nope", "/v1", "/v1/members/x/unknown-action"):
+        response = client.get(path)
+        assert response.status_code == 404, path
+        assert response.headers["content-type"].startswith("application/json"), path
+
+
+def test_v1_prefixed_spa_route_still_deep_links() -> None:
+    # Only the exact /v1 namespace is reserved; a client route that merely
+    # starts with "v1" (e.g. /v1ctory) still falls back to the SPA.
+    response = client.get("/v1ctory")
+    assert response.status_code == 200
