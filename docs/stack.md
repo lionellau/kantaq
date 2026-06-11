@@ -65,6 +65,21 @@ etc.) and record the choice here.
 | ULID ids | **built from scratch** (`kantaq_db.ids`, stdlib) | Apache-2.0 (ours) | Architecture §6 requires ULID ids. No ULID library clears the 5k-star bar (`python-ulid` ~0.6k, `ulid-py` ~0.5k), so we implement the spec directly: 48-bit ms timestamp + 80-bit randomness, Crockford Base32, monotonic factory. ~90 lines + tests. We implement the real spec (sortable, timestamp-recoverable) rather than claim a standard we don't honor — the test harness made the same call when it renamed its look-alike to `sortable_id`. |
 | Postgres driver (tests) | **psycopg** (v3) | LGPL-2.1 (driver, dynamically linked) | Dev/test-only, for the live SQLite/Postgres parity check; not shipped in the runtime path. Standard Postgres driver, psycopg org. |
 
+### E06 / MOD-06 identity & grants
+
+| Need | Chosen | License | Notes |
+|---|---|---|---|
+| Token hashing (Argon2id) | **cryptography** (pyca) | Apache-2.0 / BSD | ~7k stars, PyCA org, very active, no unpatched advisory. Exposes **Argon2id** (RFC 9106) with PHC-encoded hashes since v45; official wheels bundle OpenSSL ≥ 3.2 so it works everywhere uv installs it. Beat **argon2-cffi** (~0.7k stars — the canonical binding but below the 5k bar), **pyca/bcrypt** (~1.3k stars, below bar; bcrypt also caps input at 72 bytes), and **passlib** (unmaintained since 2020). Params: m=64 MiB, t=3, p=4 (RFC 9106 §4, second recommended profile). |
+| Token entropy + lookup | **secrets** (stdlib) + keyed format | PSF / ours | `kq_<token_ulid>.<secret>` — the row id travels in the token (GitHub/Stripe pattern) so verification is one lookup + one Argon2id check, not O(active tokens). |
+| OS keychain | **built from scratch** (`FileKeychain`, 0600 file) | Apache-2.0 (ours) | No Python keychain library clears the bar: **keyring** (~1.3k stars), **secretstorage** (Linux-only, <1k), **pyobjc keychain** (macOS-only). v0.0.5 parks the runtime token in a 0600 file beside the SQLite replica; the real OS-keychain backend is re-evaluated with the v0.1 device keys (D-01), which actually need it. The `Keychain` protocol keeps callers indifferent; MOD-30 ships `FakeKeychain` against the same contract test. |
+
+**Verification cost vs the 5 s revocation budget (NFR-E06-2).** Argon2id is
+deliberately slow (~50 ms), too slow for every request, so the runtime caches
+verified tokens in memory for **3 s** (< 5 s): a revoked token keeps working at
+most TTL seconds across processes, and same-process revocation purges the cache
+immediately. The cache stores a SHA-256 digest of the presented token, never the
+token itself.
+
 **D-07 (single-source dialect generation) — resolved as "shared SQLModel."** The
 8 collections are defined once as SQLModel models; both SQLite and Postgres DDL
 are generated from that one `MetaData` via SQLAlchemy's dialect compilers (no
