@@ -76,6 +76,10 @@ def cmd_dev(args: argparse.Namespace) -> int:
         return 1
     print(f"verify: {result.message}", file=sys.stderr)
 
+    schema_rc = _guard_schema()
+    if schema_rc != 0:
+        return schema_rc
+
     if not args.check:
         uvicorn.run(app, host=host, port=port)
         return 0
@@ -149,11 +153,73 @@ def cmd_typecheck(args: argparse.Namespace) -> int:
     return rc
 
 
+def _db_url() -> str:
+    """The local replica URL: ``KANTAQ_DB_URL`` override, else the configured SQLite."""
+    import os
+
+    from kantaq_db.session import sqlite_url
+    from kantaq_runtime.config import get_settings
+
+    override = os.environ.get("KANTAQ_DB_URL")
+    if override:
+        return override
+    return sqlite_url(get_settings().local_db_path)
+
+
 def cmd_db(args: argparse.Namespace) -> int:
-    # Real migrations land in Epic E02 / MOD-02 (Alembic + SQLModel). The command
-    # exists now so the bootstrap acceptance loop (setup -> dev -> migrate -> test)
-    # is green from day one.
-    print(f"kantaq db {args.db_command}: no migrations yet (implemented in Epic E02 / MOD-02)")
+    """Alembic migrations, seed, schema guard, and dialect parity (MOD-02)."""
+    from kantaq_db import migrations, parity, schema_version
+    from kantaq_db.seed import seed_demo
+    from kantaq_db.session import get_engine
+
+    url = _db_url()
+    command = args.db_command
+
+    if command == "migrate":
+        migrations.upgrade(url)
+        print(
+            f"kantaq db migrate: schema at revision {schema_version.HEAD_REVISION} "
+            f"(version {schema_version.EXPECTED_SCHEMA_VERSION})"
+        )
+        return 0
+    if command == "downgrade":
+        migrations.downgrade(url, "-1")
+        print("kantaq db downgrade: rolled back one revision")
+        return 0
+    if command == "seed":
+        summary = seed_demo(get_engine(url))
+        verb = "seeded" if summary.created else "already present"
+        print(
+            f"kantaq db seed: demo workspace {verb} — "
+            f"{summary.projects} project(s), {summary.tickets} ticket(s), "
+            f"{summary.comments} comment(s)"
+        )
+        return 0
+    if command == "check":
+        check = schema_version.verify(get_engine(url))
+        print(f"kantaq db check: {check.message}")
+        return 0 if check.ok else 1
+    if command == "check-parity":
+        ok, message = parity.check_parity()
+        print(f"kantaq db check-parity: {message}")
+        return 0 if ok else 1
+    return 0
+
+
+def _guard_schema() -> int:
+    """Verify the local schema before serving; return non-zero to refuse boot.
+
+    FR-E02-4: the runtime refuses to start on a schema it does not understand.
+    An uninitialized database is a clear "run `kantaq db migrate`" instruction.
+    """
+    from kantaq_db import schema_version
+    from kantaq_db.session import get_engine
+
+    check = schema_version.verify(get_engine(_db_url()))
+    if not check.ok:
+        print(f"refusing to start: {check.message}", file=sys.stderr)
+        return 1
+    print(f"schema: {check.message}", file=sys.stderr)
     return 0
 
 
@@ -165,16 +231,20 @@ def cmd_mcp(args: argparse.Namespace) -> int:
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     """Print the resolved config and verify the backend connection (MOD-14)."""
+    from kantaq_db import schema_version
+    from kantaq_db.session import get_engine
     from kantaq_runtime.config import HubMode, get_settings
     from kantaq_runtime.verify import verify_connection
 
     settings = get_settings()
     result = verify_connection(settings)
+    schema = schema_version.verify(get_engine(_db_url()))
     print(f"hub_mode = {settings.hub_mode.value}")
     print(f"bind     = {settings.host}:{settings.port}")
     print(f"db_path  = {settings.local_db_path}")
     if settings.hub_mode is HubMode.supabase:
         print(f"supabase = {settings.supabase_url or '(unset)'}")
+    print(f"schema   = {schema.status}: {schema.message}")
     print(f"verify   = {'OK' if result.ok else 'FAIL'}: {result.message}")
     return 0 if result.ok else 1
 
@@ -210,7 +280,10 @@ def build_parser() -> argparse.ArgumentParser:
     typecheck.set_defaults(func=cmd_typecheck)
 
     db = sub.add_parser("db", help="database migrations (E02)")
-    db.add_argument("db_command", choices=["migrate", "downgrade"])
+    db.add_argument(
+        "db_command",
+        choices=["migrate", "downgrade", "seed", "check", "check-parity"],
+    )
     db.set_defaults(func=cmd_db)
 
     mcp = sub.add_parser("mcp", help="MCP gateway (E09)")
