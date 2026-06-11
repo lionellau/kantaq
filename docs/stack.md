@@ -73,6 +73,13 @@ etc.) and record the choice here.
 | Token entropy + lookup | **secrets** (stdlib) + keyed format | PSF / ours | `kq_<token_ulid>.<secret>` — the row id travels in the token (GitHub/Stripe pattern) so verification is one lookup + one Argon2id check, not O(active tokens). |
 | OS keychain | **built from scratch** (`FileKeychain`, 0600 file) | Apache-2.0 (ours) | No Python keychain library clears the bar: **keyring** (~1.3k stars), **secretstorage** (Linux-only, <1k), **pyobjc keychain** (macOS-only). v0.0.5 parks the runtime token in a 0600 file beside the SQLite replica; the real OS-keychain backend is re-evaluated with the v0.1 device keys (D-01), which actually need it. The `Keychain` protocol keeps callers indifferent; MOD-30 ships `FakeKeychain` against the same contract test. |
 
+### E29 / MOD-16 docs & distribution
+
+| Need | Chosen | License | Notes |
+|---|---|---|---|
+| Doc link checking | **built from scratch** (~50-line pytest gate, stdlib `re`/`pathlib`) | Apache-2.0 (ours) | The Docs profile needs *internal* links checked hermetically in CI. **lychee** (~12k stars, MIT/Apache) clears the bar but is a Rust CLI aimed at live-URL checking — adds a toolchain + network flakiness for the part we don't want. **linkchecker** is GPL-3.0 (license bar). **markdown-link-check** (~?<5k stars, npm) is below the bar and network-first. A repo-relative resolver inside pytest is deterministic, offline, and rides the existing gate. Revisit lychee at v0.1 launch for external-URL spot checks. |
+| Quickstart drift | **built from scratch** (pytest introspects the Makefile + `argparse` parser) | Apache-2.0 (ours) | The fresh-clone CI job *executes* the core path; this gate keeps every documented `make`/`kantaq` command real. No third-party category exists for this. |
+
 **Verification cost vs the 5 s revocation budget (NFR-E06-2).** Argon2id is
 deliberately slow (~50 ms), too slow for every request, so the runtime caches
 verified tokens in memory for **3 s** (< 5 s): a revoked token keeps working at

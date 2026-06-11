@@ -10,22 +10,22 @@ This repository holds the **code**. The product/architecture/planning docs live 
 
 ## Status
 
-`v0.0.5` — bootstrap. Sprint 1 / Epic **E01** (repo & environment) is the scaffolding you see here. Features arrive in later epics.
+`v0.0.5` — Sprint 1 foundation: repo/env (E01), data layer + migrations (E02), local runtime + run modes (E22), web shell (E18), quality gates + shared test harness (E27), identity + token-gated loopback auth (E06). Next on the spine: Supabase backend (E24) and audit (E07).
 
-## Quickstart (dev)
+## Quickstart
 
-Prerequisites: Python 3.12, [`uv`](https://docs.astral.sh/uv/), Node ≥ 20, [`pnpm`](https://pnpm.io/), `make`.
+**→ [QUICKSTART.md](QUICKSTART.md)** — solo mode (zero backend) and team mode (shared Supabase, see [docs/setup-supabase.md](docs/setup-supabase.md)).
 
 ```bash
 git clone https://github.com/lionellau/kantaq.git
 cd kantaq
 make setup      # uv sync + pnpm install + build the web UI
-make migrate    # database migrations (stub until Epic E02)
+make migrate    # database migrations
 make test       # pytest + Vitest
 make dev        # FastAPI on http://127.0.0.1:3939 serving the built UI
 ```
 
-Goal: a fresh clone reaches green (`setup → migrate → test`) in **under 10 minutes** (NFR-E01-1).
+A fresh clone reaches green (`setup → migrate → test`) in **under 10 minutes** (NFR-E01-1) — enforced by the fresh-clone CI gate.
 
 ## Repository layout
 
