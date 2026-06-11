@@ -56,6 +56,26 @@ When a feature module starts, run its own Golden-rule pass for the libraries tha
 module needs (PyNaCl, SQLModel, Alembic, the MCP SDK, the OpenAPI→TS generator,
 etc.) and record the choice here.
 
+### E02 / MOD-02 data layer
+
+| Need | Chosen | License | Notes |
+|---|---|---|---|
+| ORM + schema-as-code | **SQLModel** | MIT | Pydantic + SQLAlchemy in one model; FastAPI author; ~16k stars; shares Pydantic with the rest of the stack. Beat **raw SQLAlchemy** (more boilerplate, no Pydantic bridge) and **Tortoise/Peewee** (own migration story, weaker typing). Architecturally mandated by ADR-0001. |
+| Migrations | **Alembic** | MIT | The canonical migration tool for SQLAlchemy/SQLModel, by the SQLAlchemy maintainers — the only option that diffs against `SQLModel.metadata` (`compare_metadata`). Below the 5k-star bar in isolation, but it ships as part of the SQLAlchemy ecosystem (credible org, no advisory) and has no real alternative for this stack; **yoyo-migrations** and **migra** don't read SQLAlchemy metadata. Mandated by ADR-0001. |
+| ULID ids | **built from scratch** (`kantaq_db.ids`, stdlib) | Apache-2.0 (ours) | Architecture §6 requires ULID ids. No ULID library clears the 5k-star bar (`python-ulid` ~0.6k, `ulid-py` ~0.5k), so we implement the spec directly: 48-bit ms timestamp + 80-bit randomness, Crockford Base32, monotonic factory. ~90 lines + tests. We implement the real spec (sortable, timestamp-recoverable) rather than claim a standard we don't honor — the test harness made the same call when it renamed its look-alike to `sortable_id`. |
+| Postgres driver (tests) | **psycopg** (v3) | LGPL-2.1 (driver, dynamically linked) | Dev/test-only, for the live SQLite/Postgres parity check; not shipped in the runtime path. Standard Postgres driver, psycopg org. |
+
+**D-07 (single-source dialect generation) — resolved as "shared SQLModel."** The
+8 collections are defined once as SQLModel models; both SQLite and Postgres DDL
+are generated from that one `MetaData` via SQLAlchemy's dialect compilers (no
+hand-kept second schema). Parity is proven two ways: an offline structural
+fingerprint that asserts both dialects describe the same schema (hermetic, runs
+everywhere) and a live `EphemeralPostgres` reflection diff in CI. To keep the
+dialects in lock-step we use only portable column types — `str`/VARCHAR for
+enum-like fields (no native Postgres `ENUM`) and generic `JSON` for list/dict
+fields. The fallback in the sprint risk note (two hand-kept schemas + a CI diff)
+was not needed.
+
 ## Consequences
 
 - Two toolchains in CI (Python + web). Keep total CI **under 10 minutes**

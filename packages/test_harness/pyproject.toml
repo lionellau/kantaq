@@ -7,6 +7,7 @@ license = { text = "Apache-2.0" }
 dependencies = [
     "pytest>=8.3.0",
     "hypothesis>=6.100.0",
+    "sqlalchemy>=2.0.0",
 ]
 
 # Auto-load the harness fixtures (fake_clock, seeded_random, fake_backend) as a

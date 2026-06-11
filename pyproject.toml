@@ -48,6 +48,7 @@ dev = [
     "pytest-cov>=5.0.0",
     "httpx>=0.27.0",       # FastAPI TestClient transport
     "pre-commit>=3.8.0",
+    "psycopg[binary]>=3.2.0",  # live Postgres parity test (E02-T3); skipped when no server
     "kantaq-test-harness",  # MOD-30 shared test harness (builders, fakes, fixtures)
 ]
 
@@ -78,7 +79,9 @@ known-first-party = [
 python_version = "3.12"
 strict = true
 warn_unused_configs = true
-exclude = ["web/", "build/", "dist/"]
+# Alembic migration scripts are generated code (op.create_table calls referencing
+# sqlmodel.sql.sqltypes); they are exercised by the migration tests, not typed.
+exclude = ["web/", "build/", "dist/", "migrations/versions/"]
 # Workspace packages use a src/ layout; mypy resolves them from the installed venv.
 
 [tool.pytest.ini_options]
