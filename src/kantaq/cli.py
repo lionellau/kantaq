@@ -23,8 +23,12 @@ import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from kantaq import __version__
+
+if TYPE_CHECKING:
+    from kantaq_runtime.config import Settings
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 3939
@@ -79,6 +83,8 @@ def cmd_dev(args: argparse.Namespace) -> int:
     schema_rc = _guard_schema()
     if schema_rc != 0:
         return schema_rc
+
+    _bootstrap_identity(settings)
 
     if not args.check:
         uvicorn.run(app, host=host, port=port)
@@ -223,6 +229,71 @@ def _guard_schema() -> int:
     return 0
 
 
+def _bootstrap_identity(settings: Settings) -> None:
+    """First boot: mint the Owner token and park it in the keychain (E06, D-06).
+
+    Solo mode has no human login, but the API is still token-gated, so the
+    first boot creates the local Owner. Idempotent on every later boot.
+    """
+    from kantaq_db.session import get_engine
+    from kantaq_runtime.auth import ensure_local_identity, keychain_for
+
+    minted = ensure_local_identity(get_engine(_db_url()), keychain_for(settings))
+    if minted is not None:
+        print(
+            "first boot: minted the local Owner token (run `kantaq token show`)",
+            file=sys.stderr,
+        )
+
+
+def cmd_token(args: argparse.Namespace) -> int:
+    """Local token management against the keychain + database (MOD-06).
+
+    `show` prints the runtime token the keychain holds; `rotate` revokes the
+    keychain holder's tokens, mints a fresh one, and re-parks it. Anyone with
+    shell access to this machine already owns the local profile (D-06), so
+    these commands do not themselves require the token.
+    """
+    from sqlmodel import Session
+
+    from kantaq_core.identity import IdentityService, TokenVerifier
+    from kantaq_db.session import get_engine
+    from kantaq_runtime.auth import RUNTIME_TOKEN_KEY, ensure_local_identity, keychain_for
+    from kantaq_runtime.config import get_settings
+
+    settings = get_settings()
+    keychain = keychain_for(settings)
+    engine = get_engine(_db_url())
+
+    if args.token_command == "show":
+        token = keychain.get(RUNTIME_TOKEN_KEY)
+        if token is None:
+            print("no runtime token in the keychain; run `kantaq dev` once", file=sys.stderr)
+            return 1
+        print(token)
+        return 0
+
+    # rotate: revoke whatever the keychain token belongs to and mint fresh.
+    minted = ensure_local_identity(engine, keychain)
+    if minted is not None:
+        print("no identity existed yet; minted the first Owner token instead", file=sys.stderr)
+        return 0
+    current = keychain.get(RUNTIME_TOKEN_KEY)
+    actor = TokenVerifier(engine).verify(current) if current else None
+    if actor is None:
+        print(
+            "keychain token is missing or already revoked; cannot identify the member. "
+            "Rotate via the API instead (POST /v1/members/{id}/rotate).",
+            file=sys.stderr,
+        )
+        return 1
+    with Session(engine) as session:
+        fresh = IdentityService(session).rotate_token(actor.member_id)
+    keychain.set(RUNTIME_TOKEN_KEY, fresh.plaintext)
+    print("token rotated; the old token is revoked (run `kantaq token show`)", file=sys.stderr)
+    return 0
+
+
 def cmd_mcp(args: argparse.Namespace) -> int:
     # The loopback MCP gateway lands in Epic E09 / MOD-08.
     print(f"kantaq mcp {args.mcp_command}: not implemented yet (Epic E09 / MOD-08)")
@@ -285,6 +356,10 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["migrate", "downgrade", "seed", "check", "check-parity"],
     )
     db.set_defaults(func=cmd_db)
+
+    token = sub.add_parser("token", help="local runtime token (E06)")
+    token.add_argument("token_command", choices=["show", "rotate"])
+    token.set_defaults(func=cmd_token)
 
     mcp = sub.add_parser("mcp", help="MCP gateway (E09)")
     mcp.add_argument("mcp_command", choices=["dev"])
