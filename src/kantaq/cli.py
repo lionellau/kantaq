@@ -148,6 +148,7 @@ def cmd_typecheck(args: argparse.Namespace) -> int:
         "kantaq_mcp",
         "kantaq_db",
         "kantaq_runtime",
+        "kantaq_backend_supabase",
         "kantaq_test_harness",
     ]
     mypy_cmd = [sys.executable, "-m", "mypy"]

@@ -1,0 +1,23 @@
+[project]
+name = "kantaq-backend-supabase"
+version = "0.0.5"
+description = "kantaq Supabase backend adapter: schema generation, Auth client, RLS artifacts (MOD-05)"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "httpx>=0.27.0",
+    "pyjwt>=2.9.0",
+    # Schema generation reads the one SQLModel metadata (D-07).
+    "kantaq-db",
+    "sqlmodel>=0.0.22",
+]
+
+[tool.uv.sources]
+kantaq-db = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kantaq_backend_supabase"]

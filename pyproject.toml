@@ -13,6 +13,7 @@ dependencies = [
     "kantaq-mcp",
     "kantaq-db",
     "kantaq-local-runtime",
+    "kantaq-backend-supabase",
 ]
 
 [project.scripts]
@@ -29,7 +30,9 @@ packages = ["src/kantaq"]
 # uv workspace: one `uv sync` installs the umbrella + every member + dev tools.
 # ---------------------------------------------------------------------------
 [tool.uv.workspace]
-members = ["packages/*", "apps/*"]
+# backend-postgres stays an empty scaffold until v0.3 (MOD-28), so adapters are
+# listed explicitly rather than globbed.
+members = ["packages/*", "apps/*", "adapters/backend-supabase"]
 
 [tool.uv.sources]
 kantaq-protocol = { workspace = true }
@@ -38,6 +41,7 @@ kantaq-core = { workspace = true }
 kantaq-mcp = { workspace = true }
 kantaq-db = { workspace = true }
 kantaq-local-runtime = { workspace = true }
+kantaq-backend-supabase = { workspace = true }
 kantaq-test-harness = { workspace = true }
 
 [dependency-groups]
@@ -72,6 +76,7 @@ known-first-party = [
     "kantaq_mcp",
     "kantaq_db",
     "kantaq_runtime",
+    "kantaq_backend_supabase",
     "kantaq_test_harness",
 ]
 
@@ -85,7 +90,7 @@ exclude = ["web/", "build/", "dist/", "migrations/versions/"]
 # Workspace packages use a src/ layout; mypy resolves them from the installed venv.
 
 [tool.pytest.ini_options]
-testpaths = ["packages", "apps", "tests"]
+testpaths = ["packages", "apps", "adapters", "tests"]
 addopts = "-q --import-mode=importlib"
 
 [tool.coverage.run]

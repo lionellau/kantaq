@@ -18,7 +18,24 @@ it directly — agents stay on each member's loopback gateway.
    password. Store that password in your password manager — kantaq members
    never need it, but you will for database administration.
 
-## 2. Capture the two values members need
+## 2. Apply the schema and the security policies
+
+In the project dashboard open the **SQL Editor** and run, in order:
+
+1. [`supabase/migrations/0001_collections.sql`](../supabase/migrations/0001_collections.sql)
+   — the 8 kantaq collections (generated from the same model definition the
+   local replica uses, so the two stores cannot drift).
+2. [`supabase/policies/0001_rls.sql`](../supabase/policies/0001_rls.sql) —
+   Row Level Security. **Do not skip this**: without it any signed-in member
+   could read every workspace. With it, Postgres itself scopes every read and
+   write by workspace and member — even against a tampered client.
+
+(Equivalent: link the repo with the Supabase CLI and `supabase db push`.)
+
+Magic-link sign-in needs no extra setup — **Email** auth is enabled by default,
+and kantaq requests links invite-only (no self-signup accounts).
+
+## 3. Capture the two values members need
 
 In the project dashboard under **Settings → API**:
 
@@ -28,7 +45,7 @@ In the project dashboard under **Settings → API**:
 Share exactly these two values with your team through a password manager or
 another channel you trust.
 
-## 3. What stays secret
+## 4. What stays secret
 
 The same settings page also shows a **service_role key**. It bypasses Row
 Level Security.
@@ -38,11 +55,12 @@ Level Security.
   `*.example` files are tracked.
 - If it ever leaks, rotate it from that same dashboard page.
 
-This is a load-bearing security rule (NFR-E06-1): the service-role key never
-leaves the backend side, and CI tests assert no secret material appears in any
-client-facing response.
+This is a load-bearing security rule (NFR-E06-1, NFR-E24-1): the service-role
+key never leaves the backend side. CI tests assert no secret material appears
+in any client-facing response, and the kantaq Supabase client refuses outright
+to be constructed with a service-role key.
 
-## 4. Point members at it
+## 5. Point members at it
 
 Each member copies the example env and fills in the two shared values:
 
@@ -57,7 +75,7 @@ kantaq doctor
 `kantaq doctor` (and every `kantaq dev`) checks the backend is reachable and
 fails fast with a clear message if not.
 
-## 5. Operational notes
+## 6. Operational notes
 
 - **Free-tier pause.** Supabase pauses free projects after about 7 days of
   inactivity. Restoring takes one click in the dashboard; members see a
@@ -70,7 +88,8 @@ fails fast with a clear message if not.
 ## v0.0.5 scope — what exists today
 
 The runtime verifies connectivity against this project (auth health endpoint)
-before serving. The Postgres schema, magic-link member sign-in, and Row Level
-Security policies land with epic **E24**; event sync follows in Sprint 2
-(E04/E24-T4). Until then nothing is written to the project — creating it now
-simply means the team is one `.env` edit away when sync arrives.
+before serving. The Postgres schema, the magic-link auth client, and the Row
+Level Security policies shipped with epic **E24** — the SQL you applied above
+is tested in CI against a real Postgres with a tampered client that must fail
+to read another workspace. Event sync follows in Sprint 2 (E04/E24-T4); until
+then the runtime writes nothing to the project.
