@@ -8,6 +8,21 @@ keeps revocation under 5 seconds (NFR-E06-2), and the member lifecycle
 (bootstrap / invite / list / revoke / rotate).
 """
 
+from kantaq_core.identity.devices import (
+    DEVICE_KEY_NAME,
+    device_private_key,
+    ensure_device,
+    local_device,
+    verification_roots,
+)
+from kantaq_core.identity.grants import (
+    DEFAULT_GRANT_TTL_SECONDS,
+    MAX_GRANT_TTL_SECONDS,
+    GrantDeniedError,
+    GrantNotFoundError,
+    GrantService,
+    revoke_grants_for_member,
+)
 from kantaq_core.identity.keychain import FileKeychain, Keychain
 from kantaq_core.identity.roles import ROLE_PERMISSIONS, Action, Role, can
 from kantaq_core.identity.service import (
@@ -27,9 +42,15 @@ from kantaq_core.identity.tokens import (
 )
 
 __all__ = [
+    "DEFAULT_GRANT_TTL_SECONDS",
+    "DEVICE_KEY_NAME",
+    "MAX_GRANT_TTL_SECONDS",
     "ROLE_PERMISSIONS",
     "Action",
     "FileKeychain",
+    "GrantDeniedError",
+    "GrantNotFoundError",
+    "GrantService",
     "IdentityError",
     "IdentityService",
     "Keychain",
@@ -38,6 +59,11 @@ __all__ = [
     "MintedToken",
     "Role",
     "TokenVerifier",
+    "device_private_key",
+    "ensure_device",
+    "local_device",
+    "revoke_grants_for_member",
+    "verification_roots",
     "VerifiedActor",
     "can",
     "hash_secret",

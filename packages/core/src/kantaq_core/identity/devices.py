@@ -10,15 +10,17 @@ it is not on the row, not in any API response, not in any log line, and not
 in any sync payload (sprint exit criterion 3, test-pinned).
 
 The set of active device rows is the root-of-trust map (`roots`) grant
-verification resolves issuers against. Device rows sync like any collection
-(teammates need each other's roots), emitted through the standard event-log
-seam; backend-side verification of what they sign is Sprint 4 (E24-T5).
+verification resolves issuers against. Device rows carry an event-log seam
+(``sink=``) so Sprint 4 can sync them to the backend through the verified
+ingestion path (E24-T5); v0.1 registration is local — the backend's sync
+allowlist does not accept ``devices`` until that path exists.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
 from kantaq_core import audit
@@ -43,8 +45,8 @@ def ensure_device(
     """Boot-time idempotent device identity (FR-E06-3).
 
     First boot generates a keypair, parks the seed in the keychain, registers
-    the verify key as a ``devices`` row (audited, and emitted to the event
-    log so the registration reaches the backend through normal sync). Every
+    the verify key as a ``devices`` row (audited; emitted to the event log
+    only when a ``sink`` is supplied — the Sprint-4 sync seam). Every
     later boot finds the seed and returns the existing row. If the keychain
     holds a seed but the row is missing (a wiped replica), the row is
     re-registered from the seed's public key — the keychain is the identity,
@@ -71,7 +73,16 @@ def ensure_device(
         updated_at=ts,
     )
     session.add(device)
-    session.flush()
+    try:
+        session.flush()
+    except IntegrityError:
+        # Two boots raced on the unique public_key (E27 review): the loser
+        # rolls back and adopts the winner's row — same key, same identity.
+        session.rollback()
+        raced = session.exec(select(Device).where(Device.public_key == public_key)).first()
+        if raced is None:  # pragma: no cover - rollback removed it; retry path
+            raise
+        return raced
     audit.write(
         session,
         actor_id=member_id or device.id,

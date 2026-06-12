@@ -403,3 +403,74 @@ def test_issue_refuses_a_revoked_subject(
                 verbs=["tickets.read"],
                 actor_id=owner_id,
             )
+
+
+# ------------------------------------------ adversarial-review backstops
+
+
+def test_revoking_the_member_also_revokes_their_device_root(
+    engine: Engine, keychain: FakeKeychain, clock: FakeClock, owner_id: str
+) -> None:
+    with Session(engine) as session:
+        identity = IdentityService(session)
+        member = identity.invite(email="m@example.com", role=Role.member)
+        member_keychain = FakeKeychain()
+        device = ensure_device(
+            session, member_keychain, member_id=member.member_id, now=_now(clock)()
+        )
+        session.commit()
+        assert device.id in verification_roots(session)
+        identity.revoke_member(member.member_id)
+        assert device.id not in verification_roots(session)
+
+
+def test_a_validly_signed_overlong_grant_still_fails_verify(
+    engine: Engine, keychain: FakeKeychain, clock: FakeClock, owner_id: str
+) -> None:
+    """A synced/imported row cannot out-privilege issuance (E27 backstop)."""
+    from kantaq_core.identity import device_private_key
+    from kantaq_core.identity.grants import _to_protocol
+    from kantaq_db.models import CapabilityGrantRow
+    from kantaq_protocol import sign_grant
+
+    with Session(engine) as session:
+        device = ensure_device(session, keychain, member_id=owner_id, now=_now(clock)())
+        seed = device_private_key(keychain)
+        assert seed is not None
+        ts = _now(clock)()
+        issued = int(ts.replace(tzinfo=__import__("datetime").UTC).timestamp())
+        row = CapabilityGrantRow(
+            subject=owner_id,
+            issuer=device.id,
+            resource="workspace/main",
+            verbs=["tickets.read"],
+            issued_at=issued,
+            expires_at=issued + MAX_GRANT_TTL_SECONDS + 3600,  # signed, but over ceiling
+            created_at=ts,
+            updated_at=ts,
+        )
+        row.sig = sign_grant(_to_protocol(row), seed).sig
+        session.add(row)
+        session.flush()
+        service = _grant_service(session, keychain, clock)
+        assert service.verify(row).reason == "invalid_validity"
+
+
+def test_a_grant_for_a_revoked_subject_fails_verify(
+    engine: Engine, keychain: FakeKeychain, clock: FakeClock, owner_id: str
+) -> None:
+    with Session(engine) as session:
+        ensure_device(session, keychain, member_id=owner_id, now=_now(clock)())
+        member = IdentityService(session).invite(email="m@example.com", role=Role.member)
+        service = _grant_service(session, keychain, clock)
+        row = service.issue(
+            subject_member_id=member.member_id,
+            resource="workspace/main",
+            verbs=["tickets.read"],
+            actor_id=owner_id,
+        )
+        session.commit()
+        IdentityService(session).revoke_member(member.member_id)
+        # Doubly dead (rotation hook + subject backstop) — and provably dead
+        # even if the revocation hook were somehow skipped.
+        assert service.verify(row).reason == "revoked"

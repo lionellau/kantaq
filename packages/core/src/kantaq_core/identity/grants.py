@@ -34,7 +34,14 @@ from kantaq_core.identity.keychain import Keychain
 from kantaq_core.identity.roles import Action, Role, can
 from kantaq_core.identity.service import IdentityError, MemberNotFoundError
 from kantaq_db.models import CapabilityGrantRow, Member, Token
-from kantaq_protocol import CapabilityGrant, GrantVerification, sign_grant, verify_grant
+from kantaq_protocol import (
+    GRANT_INVALID_VALIDITY,
+    GRANT_REVOKED,
+    CapabilityGrant,
+    GrantVerification,
+    sign_grant,
+    verify_grant,
+)
 
 DEFAULT_GRANT_TTL_SECONDS = 3600  # 1 hour (FR-E06-5 default)
 MAX_GRANT_TTL_SECONDS = 86_400  # 24 hours (FR-E06-5 ceiling, applied to all)
@@ -169,18 +176,31 @@ class GrantService:
     # ----------------------------------------------------------------- verify
 
     def verify(self, row: CapabilityGrantRow) -> GrantVerification:
-        """The MOD-17 offline check plus this store's roots and revocations."""
+        """The MOD-17 offline check plus this store's roots and revocations.
+
+        Store-level backstops (E27 review): even a *validly signed* row fails
+        if its lifetime exceeds the 24 h ceiling or its subject is revoked —
+        a synced or imported row must not out-privilege what issuance allows.
+        """
         revoked = set(
             self._session.exec(
                 select(CapabilityGrantRow.id).where(col(CapabilityGrantRow.revoked_at).is_not(None))
             ).all()
         )
-        return verify_grant(
+        result = verify_grant(
             _to_protocol(row),
             verification_roots(self._session),
             now=_unix(self._now()),
             revoked_ids=revoked,
         )
+        if not result.ok:
+            return result
+        if row.expires_at - row.issued_at > MAX_GRANT_TTL_SECONDS:
+            return GrantVerification(False, GRANT_INVALID_VALIDITY)
+        subject = self._session.get(Member, row.subject)
+        if subject is None or subject.status == "revoked":
+            return GrantVerification(False, GRANT_REVOKED)
+        return result
 
     # ------------------------------------------------------------ list/revoke
 
