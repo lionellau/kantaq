@@ -58,7 +58,7 @@ jobs:
           uv run mypy
           -p kantaq -p kantaq_protocol -p kantaq_sync_engine
           -p kantaq_core -p kantaq_mcp -p kantaq_db -p kantaq_runtime
-          -p kantaq_test_harness
+          -p kantaq_backend_supabase -p kantaq_test_harness
 
       - name: Test + coverage gate (pytest; protocol/mcp/core >= 90%)
         env:
