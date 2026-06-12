@@ -107,6 +107,14 @@ enum-like fields (no native Postgres `ENUM`) and generic `JSON` for list/dict
 fields. The fallback in the sprint risk note (two hand-kept schemas + a CI diff)
 was not needed.
 
+### E12 / MOD-03 tracker domain
+
+| Need | Chosen | License | Notes |
+|---|---|---|---|
+| CRUD + validation layer | **FastAPI + Pydantic v2 + SQLModel** (already in the stack) | MIT | The domain service is a thin layer over the ADR-0001 stack (FastAPI ~80k★, Pydantic ~22k★, SQLModel ~16k★ — all active, MIT). CRUD *generators* on top were evaluated and all fail the 5k bar: **fastapi-crudrouter** (~1.4k★, dormant since 2023), **fastcrud** (~1.5k★), **SQLAdmin** (~2.1k★, an admin UI not an API). The tracker rules (every mutation → audit row + DomainEvent, propose-first fields later) are bespoke anyway, so generated CRUD would be rewritten immediately. |
+| Multipart upload parsing | **python-multipart** | MIT | The parser FastAPI itself requires for `UploadFile` (Starlette ecosystem, maintained by the FastAPI/Starlette org). Adopted as the standard companion dependency rather than hand-parsing multipart. |
+| Attachment blob store | **built from scratch** (`kantaq_core.tracker.blobs`, stdlib `hashlib`/`pathlib`, ~100 lines) | Apache-2.0 (ours) | D-13 solo mode is "local filesystem next to the database"; the team path (Supabase Storage) lands with the sync blob endpoint. Generic object-storage libraries (**boto3/MinIO SDK** — server-targeted; **fsspec** ~1.1k★ below bar) solve a different problem. Content addressing is SHA-256 (FIPS 180-4 via stdlib), which also gives the FR-E04-5 hash-verify for free. |
+
 ### E07 / MOD-07 audit
 
 | Need | Chosen | License | Notes |
