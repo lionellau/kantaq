@@ -8,6 +8,12 @@ dependencies = [
     "pytest>=8.3.0",
     "hypothesis>=6.100.0",
     "sqlalchemy>=2.0.0",
+    # The two-replica simulator (MOD-04's harness profile) composes the real
+    # tracker + event log on purpose; the leaf fakes stay ORM-free.
+    "kantaq-db",
+    "kantaq-core",
+    "kantaq-sync-engine",
+    "sqlmodel>=0.0.22",
 ]
 
 # Auto-load the harness fixtures (fake_clock, seeded_random, fake_backend) as a

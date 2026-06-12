@@ -12,6 +12,8 @@ dependencies = [
     # Identity: token-gated loopback auth + the members API (MOD-06 / E06).
     "kantaq-core",
     "kantaq-db",
+    # Tracker writes append to the local event log via EventLogSink (E04).
+    "kantaq-sync-engine",
     "sqlmodel>=0.0.22",
     # Multipart parsing for attachment uploads (MOD-03 / E12-T2); the library
     # FastAPI requires for UploadFile (Starlette ecosystem, MIT).

@@ -107,6 +107,14 @@ enum-like fields (no native Postgres `ENUM`) and generic `JSON` for list/dict
 fields. The fallback in the sprint risk note (two hand-kept schemas + a CI diff)
 was not needed.
 
+### E04 / MOD-04 sync engine
+
+| Need | Chosen | License | Notes |
+|---|---|---|---|
+| Event-log sync / replication | **built from scratch** (`kantaq_sync_engine`, on SQLModel + SQLAlchemy already in the stack) | Apache-2.0 (ours) | The append-only event log with per-actor `actor_seq`, LWW by server commit order, and propose-first semantics *is* kantaq's protocol (PRD §13) — adopting a sync product would replace the product. Candidates evaluated: **ElectricSQL** (~9k★, Apache-2.0 — clears the bar but is Postgres-to-client partial replication with its own write model, not an application event protocol); **Yjs** (~20k★, MIT) and **cr-sqlite** (~3.5k★) are CRDTs — explicitly out of scope for MVP (architecture §10 "No CRDT in MVP"); **Litestream** (~12k★, Apache-2.0) replicates the SQLite *file*, not per-actor events. Storage/ORM reuse stays SQLModel/Alembic (ADR-0001). |
+| Snapshot encoding | **NDJSON (JSON Lines convention)** via stdlib `json` | n/a (convention) | One JSON object per line, entities sorted by id, keys sorted, compact separators — deterministic byte-for-byte, so replica equality is string equality and the v0.2 export bundle diffs cleanly. No library needed beyond the stdlib. |
+| Convergence property testing | **hypothesis** (already adopted, E27) | MPL-2.0 | Drives random two-replica interleavings against the MOD-30 FakeBackend + two-replica simulator. |
+
 ### E18 / MOD-10 web foundation (typed client)
 
 | Need | Chosen | License | Notes |

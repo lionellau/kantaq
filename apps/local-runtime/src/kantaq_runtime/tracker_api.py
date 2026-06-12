@@ -34,6 +34,7 @@ from kantaq_core.tracker import (
 from kantaq_db.models import AuditEvent, Comment, Project, Ticket, Workspace
 from kantaq_runtime.auth import get_engine_dep, require_action
 from kantaq_runtime.config import Settings
+from kantaq_sync_engine import EventLogSink
 
 router = APIRouter(prefix="/v1", tags=["tracker"])
 
@@ -48,7 +49,11 @@ def blob_store_for(settings: Settings) -> LocalBlobStore:
 
 
 def _service(session: Session, actor: VerifiedActor) -> TrackerService:
-    return TrackerService(session, actor_id=actor.member_id, source="app")
+    # The sink closes the MOD-03 rule "all writes go through the sync engine
+    # as Events": entity row, audit row, and event-log row share one
+    # transaction, attributed to the authenticated member (E04).
+    sink = EventLogSink(session, actor.member_id)
+    return TrackerService(session, actor_id=actor.member_id, source="app", sink=sink)
 
 
 def _store(request: Request) -> LocalBlobStore:

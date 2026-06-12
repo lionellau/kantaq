@@ -9,16 +9,14 @@ is the contract the real sync engine (E04) and backend (E24) tests target.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
 from typing import Any
 
+# The canonical protocol types (MOD-04): FakeBackend satisfies the engine's
+# BackendPort nominally, not just structurally.
+from kantaq_sync_engine.events import CommittedEvent
 from kantaq_test_harness.models import Event
 
-
-@dataclass(frozen=True)
-class CommittedEvent:
-    revision: int
-    event: Event
+__all__ = ["CommittedEvent", "Event", "FakeBackend"]
 
 
 class FakeBackend:

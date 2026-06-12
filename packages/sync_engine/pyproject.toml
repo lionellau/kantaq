@@ -4,7 +4,13 @@ version = "0.0.5"
 description = "kantaq sync engine: event log, snapshots, cursors, push/pull (MOD-04, MOD-26)"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
-dependencies = []
+dependencies = [
+    # The event log + cursors live in the local replica schema (MOD-02), and
+    # the fold/audit semantics are shared with the tracker domain (MOD-03).
+    "kantaq-db",
+    "kantaq-core",
+    "sqlmodel>=0.0.22",
+]
 
 [build-system]
 requires = ["hatchling"]

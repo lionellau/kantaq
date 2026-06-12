@@ -23,6 +23,8 @@ _ALL_TABLES = {
     "audit_events",
     "agent_proposals",
     "schema_version",
+    "event_log",
+    "sync_cursors",
 }
 
 

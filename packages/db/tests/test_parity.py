@@ -26,8 +26,9 @@ def test_both_dialects_render_every_table() -> None:
     sqlite_ddl = compile_create("sqlite")
     postgres_ddl = compile_create("postgresql")
     assert set(sqlite_ddl) == set(postgres_ddl)
-    # 8 collections + schema_version.
-    assert len(sqlite_ddl) == 9
+    # 8 collections + the local infrastructure: schema_version (E02),
+    # event_log + sync_cursors (E04).
+    assert len(sqlite_ddl) == 11
     assert all(ddl.strip().upper().startswith("CREATE TABLE") for ddl in postgres_ddl.values())
 
 
