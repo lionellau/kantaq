@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -154,6 +154,50 @@ class SchemaVersion(SQLModel, table=True):
     version: int = Field(primary_key=True)
     revision: str
     applied_at: datetime = Field(default_factory=_utcnow)
+
+
+class EventLog(SQLModel, table=True):
+    """The local append-only event log (MOD-04 / FR-E04-1).
+
+    Local infrastructure like ``schema_version`` (no privacy envelope): the
+    rows *inside* it are the protocol events. ``committed_rev`` is NULL until
+    the backend assigns a commit order (push ack or pull); the table state of
+    a collection is the fold of its events ordered by commit order, local
+    pending last. Dedup is by ``(actor_id, actor_seq)`` (NFR-E04-2) — the
+    unique constraint makes a duplicate insert impossible, not just unlikely.
+    """
+
+    __tablename__ = "event_log"
+    __table_args__ = (UniqueConstraint("actor_id", "actor_seq", name="uq_event_actor_seq"),)
+
+    event_id: str = Field(primary_key=True, max_length=26)
+    collection: str = Field(index=True, max_length=32)
+    entity_id: str = Field(index=True, max_length=26)
+    actor_id: str = Field(max_length=26)
+    actor_seq: int
+    op: str = Field(max_length=16)  # patch | append | tombstone
+    payload: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    base_rev: int | None = Field(default=None)
+    policy_ref: str | None = Field(default=None)
+    sig: str | None = Field(default=None)  # Ed25519 arrives in v0.1 (MOD-17)
+    committed_rev: int | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class SyncCursor(SQLModel, table=True):
+    """Per-collection pull cursors (MOD-04 / FR-E04-2).
+
+    One row per (collection, actor): the highest backend revision this replica
+    has ingested and acked for that collection ("*" = the all-collections
+    stream). Local infrastructure, never synced.
+    """
+
+    __tablename__ = "sync_cursors"
+
+    collection: str = Field(primary_key=True, max_length=32)
+    actor_id: str = Field(primary_key=True, max_length=26)
+    acked_rev: int = Field(default=0)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
 
 def new_id() -> str:
