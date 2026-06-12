@@ -38,6 +38,11 @@ class Action(StrEnum):
     # module needs them.
     tickets_read = "tickets.read"
     tickets_write = "tickets.write"
+    # The MCP propose surface (E09/E10, MOD-08/09): storing an agent_proposal
+    # for human review. Weaker than tickets.write — a proposal changes nothing
+    # until approved — so agent tokens carry it in scopes without ever holding
+    # a direct-write action (FR-E09-4 propose-first default).
+    proposals_write = "proposals.write"
 
 
 # Human roles → allowed actions. Owner is full admin; Maintainer manages
