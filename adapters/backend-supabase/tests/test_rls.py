@@ -70,8 +70,10 @@ insert into projects (id, created_at, updated_at, actor_seq, visibility, hosting
 insert into tickets (id, created_at, updated_at, actor_seq, visibility, hosting_mode,
   retention_policy, project_id, title, description, status, priority, labels,
   acceptance_criteria, lifecycle_stage, attachments) values
-  ('tkt_a', {ENVELOPE}, 'prj_a', 'A ticket', '', 'todo', 'medium', '[]'::json, '', 'intake', '[]'::json),
-  ('tkt_b', {ENVELOPE}, 'prj_b', 'B ticket', '', 'todo', 'medium', '[]'::json, '', 'intake', '[]'::json);
+  ('tkt_a', {ENVELOPE}, 'prj_a', 'A ticket', '', 'todo', 'medium', '[]'::json, '',
+   'intake', '[]'::json),
+  ('tkt_b', {ENVELOPE}, 'prj_b', 'B ticket', '', 'todo', 'medium', '[]'::json, '',
+   'intake', '[]'::json);
 
 insert into comments (id, created_at, updated_at, actor_seq, visibility, hosting_mode,
   retention_policy, ticket_id, author_actor_id, body) values
