@@ -151,6 +151,24 @@ def test_on_conflict_do_nothing_skips_duplicates_quietly(sync_pg: Engine) -> Non
     assert retry.ok and retry.rowcount == 0  # skipped, not duplicated, no error
 
 
+def test_on_conflict_do_update_cannot_rewrite_history(sync_pg: Engine) -> None:
+    """Append-only at the grant layer: an upsert that tries to MUTATE on
+    conflict is refused even though the bare INSERT is allowed — the member
+    holds INSERT but never UPDATE, so DO UPDATE can never rewrite a committed
+    event."""
+    alice = member(sync_pg, "alice@acme.dev")
+    upsert = alice.attempt(
+        INSERT
+        + _event_values("evt_dup_0000000000000099", "mbr_alice", 1, "ws_a")
+        + " on conflict (actor_id, actor_seq) do update set payload = '{\"x\": 1}'::json"
+    )
+    assert not upsert.ok and "permission denied" in upsert.error
+    untouched = service(sync_pg).fetch_all(
+        "select payload from sync_events where event_id = 'evt_seed_a0000000000000000'"
+    )
+    assert untouched[0].payload == {"title": "A ticket"}
+
+
 # --- grants + hygiene ---------------------------------------------------------
 
 
