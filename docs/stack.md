@@ -107,6 +107,14 @@ enum-like fields (no native Postgres `ENUM`) and generic `JSON` for list/dict
 fields. The fallback in the sprint risk note (two hand-kept schemas + a CI diff)
 was not needed.
 
+### E18 / MOD-10 web foundation (typed client)
+
+| Need | Chosen | License | Notes |
+|---|---|---|---|
+| OpenAPI → TS types | **openapi-typescript** | MIT | openapi-ts org, ~10k★, active. Generates *types only* from the checked-in `web/src/api/openapi.json` — no runtime codegen to drift. Beat **openapi-generator** (~24k★, Apache-2.0, but drags a Java toolchain into web CI) and **orval** (~4.5k★) / **swagger-typescript-api** (~3.6k★), both below the 5k bar. |
+| Typed fetch client | **openapi-fetch** | MIT | Same org/repo as openapi-typescript; ~6 kB wrapper that types paths, params, and payloads from the generated `paths`. Middleware hook carries the session bearer token and the 401→disconnect rule. |
+| Contract drift gate (D-08) | **built from scratch** (one pytest + one CI step) | Apache-2.0 (ours) | py CI: `test_openapi_drift` regenerates the document byte-for-byte (same pattern as the Supabase DDL gate). web CI: `pnpm gen:api && git diff --exit-code`. Each toolchain gates its own half; no cross-toolchain CI dependency. |
+
 ### E12 / MOD-03 tracker domain
 
 | Need | Chosen | License | Notes |
