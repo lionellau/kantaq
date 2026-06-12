@@ -22,12 +22,18 @@ DOCS_WITH_COMMANDS = [
     REPO_ROOT / "docs" / "setup-supabase.md",
 ]
 
-_FENCE = re.compile(r"```(?:bash|sh|console)?\n(.*?)```", re.DOTALL)
+# Match EVERY fence (any language tag) so blocks pair correctly — a ```sql
+# block must not shift the pairing and leak prose into the scan — then keep
+# only the shell-flavored ones for command checking.
+_FENCE = re.compile(r"```(\w*)\n(.*?)```", re.DOTALL)
+_COMMAND_LANGS = {"", "bash", "sh", "console"}
 
 
 def _fenced_commands(path: Path) -> list[str]:
     commands: list[str] = []
-    for block in _FENCE.findall(path.read_text(encoding="utf-8")):
+    for lang, block in _FENCE.findall(path.read_text(encoding="utf-8")):
+        if lang not in _COMMAND_LANGS:
+            continue
         for raw in block.splitlines():
             line = raw.strip()
             if not line or line.startswith("#"):
