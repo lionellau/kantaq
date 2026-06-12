@@ -4,6 +4,10 @@ These mirror the protocol collections (architecture §6) just enough for tests t
 build setup data and for ``FakeBackend`` to store events. They are intentionally
 *not* the real SQLModel models (MOD-02) so the harness is parallel-safe with E02;
 when E02 lands, model-aware builders can produce real rows.
+
+``Event`` stopped being a look-alike when MOD-04 landed: the sync engine owns
+the canonical protocol event, and the harness re-exports it so ``FakeBackend``
+and the real engine speak the same nominal type (one Event, one truth).
 """
 
 from __future__ import annotations
@@ -12,7 +16,21 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
 
-Op = Literal["patch", "append", "tombstone"]
+from kantaq_sync_engine.events import Event, Op
+
+__all__ = [
+    "AgentProposal",
+    "AuditEvent",
+    "Comment",
+    "Event",
+    "Member",
+    "Op",
+    "PrivacyClass",
+    "Project",
+    "Ticket",
+    "Token",
+    "Workspace",
+]
 
 
 @dataclass
@@ -20,20 +38,6 @@ class PrivacyClass:
     visibility: Literal["local", "team"] = "team"
     hosting_mode: Literal["plain"] = "plain"
     retention_policy: Literal["standard"] = "standard"
-
-
-@dataclass
-class Event:
-    event_id: str
-    collection: str
-    entity_id: str
-    actor_id: str
-    actor_seq: int
-    op: Op = "patch"
-    base_rev: int | None = None
-    policy_ref: str | None = None
-    payload: dict[str, Any] = field(default_factory=dict)
-    sig: str | None = None  # Ed25519 signature arrives in v0.1 (E03)
 
 
 @dataclass
