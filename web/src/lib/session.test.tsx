@@ -1,6 +1,7 @@
 /** E18-T3 — session wiring: storage, the hook, and the Settings connect flow. */
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import Settings from "../routes/Settings";
 import { clearToken, getToken, setToken, useSession } from "./session";
@@ -47,7 +48,12 @@ describe("the session store", () => {
 
 describe("the Settings session panel", () => {
   it("connects from the token form and disconnects again", () => {
-    render(<Settings />);
+    // Settings links to its subpages (E21), so it renders under a router.
+    render(
+      <MemoryRouter>
+        <Settings />
+      </MemoryRouter>,
+    );
     expect(screen.getByRole("status").textContent).toContain("Not connected");
 
     fireEvent.change(screen.getByLabelText(/runtime token/i), {

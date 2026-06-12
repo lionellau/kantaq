@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { routes } from "../router";
@@ -24,8 +24,9 @@ describe("app shell routes", () => {
     renderAt("/");
     const nav = screen.getByRole("navigation", { name: "Primary" });
     expect(nav).toBeDefined();
+    // Scoped to the nav: pages may carry their own "Settings" links in prose.
     for (const label of ["Backlog", "Memory", "Inbox", "Agents", "Settings"]) {
-      expect(screen.getByRole("link", { name: label })).toBeDefined();
+      expect(within(nav).getByRole("link", { name: label })).toBeDefined();
     }
   });
 });
