@@ -25,6 +25,8 @@ _ALL_TABLES = {
     "schema_version",
     "event_log",
     "sync_cursors",
+    "memory_entries",
+    "memory_links",
 }
 
 

@@ -140,6 +140,56 @@ class AgentProposal(CollectionBase, table=True):
     status: str = Field(default="pending", max_length=16)
 
 
+class MemoryEntry(CollectionBase, table=True):
+    """Scoped context separate from work state (MOD-19 / FR-E13-1).
+
+    The first real user of the privacy class: rows with ``visibility="local"``
+    are ``private_local`` — they never produce a sync event (NFR-E13-1, enforced
+    in ``kantaq_core.memory``). Field vocabularies (type/source/space/confidence/
+    review_status) are validated in the service, stored as portable VARCHARs.
+    """
+
+    __tablename__ = "memory_entries"
+
+    title: str
+    body: str = ""
+    # type ∈ note | decision | constraint | learning | reference
+    type: str = Field(default="note", max_length=16)
+    # source ∈ manual | agent | import — how the entry entered the system.
+    source: str = Field(default="manual", max_length=16)
+    # space ∈ workspace | project | ticket | codebase | decision | release |
+    # agent_run (FR-E13-4): a grouping field, not a table.
+    space: str = Field(default="workspace", max_length=16)
+    # Loose "collection/id" refs; the typed ticket links live in memory_links.
+    linked_entities: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    # {origin, actor_id, captured_at, detail?} — who/when/how (PRD §15).
+    provenance: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    # confidence ∈ low | medium | high (categorical, PRD §8.10 reasoning).
+    confidence: str = Field(default="medium", max_length=8)
+    # review_status ∈ draft | proposed | approved | stale | rejected; v0.1
+    # writes allow draft/stale only (promotion is the v0.2 human-gated flow).
+    review_status: str = Field(default="draft", max_length=16)
+    expires_at: datetime | None = Field(default=None)
+    created_by: str | None = Field(default=None)
+
+
+class MemoryLink(CollectionBase, table=True):
+    """A manual ticket↔memory link with a reason (MOD-19 / FR-E13-2).
+
+    A link inherits the stricter visibility of its endpoints: a link to a
+    ``local`` entry is itself ``local`` (the service sets it and never emits an
+    event for it), so the existence of a private note cannot leak via its link.
+    """
+
+    __tablename__ = "memory_links"
+    __table_args__ = (UniqueConstraint("ticket_id", "memory_id", name="uq_memory_link_pair"),)
+
+    ticket_id: str = Field(foreign_key="tickets.id", index=True)
+    memory_id: str = Field(foreign_key="memory_entries.id", index=True)
+    reason: str
+    created_by: str | None = Field(default=None)
+
+
 class SchemaVersion(SQLModel, table=True):
     """Single-row table guarding boot (FR-E02-4).
 
@@ -207,7 +257,7 @@ def new_id() -> str:
     return new_ulid()
 
 
-# The 8 collection table classes, in the canonical order (matches meta.py).
+# The 10 collection table classes, in the canonical order (matches meta.py).
 COLLECTION_MODELS: tuple[type[CollectionBase], ...] = (
     Workspace,
     Project,
@@ -217,4 +267,6 @@ COLLECTION_MODELS: tuple[type[CollectionBase], ...] = (
     Token,
     AuditEvent,
     AgentProposal,
+    MemoryEntry,
+    MemoryLink,
 )
