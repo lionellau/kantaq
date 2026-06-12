@@ -165,6 +165,12 @@ was not needed.
 |---|---|---|---|
 | Note/graph data model (memory entries + ticket↔memory links) | **built on the in-stack components** (SQLModel + Alembic, two protocol collections) | Apache-2.0 (ours) | Golden-rule run 2026-06. Evaluated **NetworkX** (~17k★, BSD-3, active — clears the bar, but it is an in-memory graph *analysis* library; kantaq's memory graph must be persistent protocol collections that fold from sync events, and v0.1 needs zero graph algorithms over a bipartite ticket↔memory link table), **Kùzu** (MIT embedded property-graph DB — **archived 2025-10** after the Apple acquisition, fails the maintenance bar; a second storage engine beside SQLite would also break D-07 one-model-two-dialects and cannot participate in event-fold sync), and **RDFLib** (~4.7k★, BSD-3 — below the 5k bar; RDF triples don't map to SQLModel collections). At v0.1 scale the "graph" is a relational join table (`memory_links`) on the already-mandated SQLModel/Alembic/SQLite stack — the only shape the sync protocol can carry. Provenance: considered W3C PROV-DM as a vocabulary; deliberately **not** claimed — we do not implement its entity/activity/agent model. Memory provenance is a small structured dict (`origin`, `actor_id`, `captured_at`, `detail`), spec'd in MOD-19. |
 
+### E28 / MOD-25 telemetry
+
+| Need | Chosen | License | Notes |
+|---|---|---|---|
+| Opt-in usage telemetry (local-only, D-10) | **built from scratch** (`kantaq_core.telemetry`, ~200 lines on the existing SQLModel stack) | Apache-2.0 (ours) | Golden-rule run 2026-06: **opentelemetry-python** (~2k★ SDK — below the 5k bar, and its exporter/collector architecture is the exact thing D-10 forbids at MVP), **posthog-python** (SaaS-first SDK; "no third-party analytics" is in MOD-25's scope line), **structlog** (~4.2k★ — below bar, and it ships logs, not queryable outcome metrics). Nothing fits a *local-only, content-forbidden, SQLite-resident* event table better than one table + a typed registry: every event name declares its allowed prop keys/types (numeric/categorical only), so recording ticket/memory content is a `TelemetryError`, not a code-review hope. Revisit a collector post-v0.2 (D-10). |
+
 ## Consequences
 
 - Two toolchains in CI (Python + web). Keep total CI **under 10 minutes**
