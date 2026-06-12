@@ -27,6 +27,8 @@ _ALL_TABLES = {
     "sync_cursors",
     "memory_entries",
     "memory_links",
+    "telemetry_events",
+    "local_settings",
 }
 
 

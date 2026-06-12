@@ -66,6 +66,10 @@ export default function Settings() {
             <Link to="/settings/my-agent">My Agent</Link>
             <span style={ui.muted}> — connect your coding agent to this runtime</span>
           </li>
+          <li>
+            <Link to="/settings/telemetry">Telemetry</Link>
+            <span style={ui.muted}> — opt-in usage metrics, inspect what is collected</span>
+          </li>
         </ul>
       </nav>
       <p style={ui.muted}>

@@ -13,6 +13,7 @@ export type AgentSnippet = components["schemas"]["AgentSnippetOut"];
 export type MemoryEntry = components["schemas"]["MemoryOut"];
 export type MemoryLink = components["schemas"]["MemoryLinkOut"];
 export type LinkedMemory = components["schemas"]["LinkedMemoryOut"];
+export type TelemetryView = components["schemas"]["TelemetryOut"];
 
 // The domain vocabularies (mirrors kantaq_core.tracker.service; values are
 // validated server-side — these drive the filter/create selects only).

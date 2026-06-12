@@ -1007,6 +1007,143 @@
         "title": "RotateOut",
         "type": "object"
       },
+      "TelemetryEventOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "props": {
+            "additionalProperties": true,
+            "title": "Props",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "props",
+          "created_at"
+        ],
+        "title": "TelemetryEventOut",
+        "type": "object"
+      },
+      "TelemetryMetricsOut": {
+        "properties": {
+          "activity_views_total": {
+            "title": "Activity Views Total",
+            "type": "integer"
+          },
+          "events_total": {
+            "title": "Events Total",
+            "type": "integer"
+          },
+          "install_to_first_proposal_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Install To First Proposal Seconds"
+          },
+          "mcp_sessions_total": {
+            "title": "Mcp Sessions Total",
+            "type": "integer"
+          },
+          "median_seconds_to_approve": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Seconds To Approve"
+          },
+          "proposal_acceptance_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Acceptance Rate"
+          },
+          "repeat_session_members": {
+            "title": "Repeat Session Members",
+            "type": "integer"
+          },
+          "weekly_active": {
+            "title": "Weekly Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "events_total",
+          "proposal_acceptance_rate",
+          "median_seconds_to_approve",
+          "mcp_sessions_total",
+          "repeat_session_members",
+          "activity_views_total",
+          "install_to_first_proposal_seconds",
+          "weekly_active"
+        ],
+        "title": "TelemetryMetricsOut",
+        "type": "object"
+      },
+      "TelemetryOut": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/TelemetryEventOut"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/TelemetryMetricsOut"
+          }
+        },
+        "required": [
+          "enabled",
+          "metrics",
+          "events"
+        ],
+        "title": "TelemetryOut",
+        "type": "object"
+      },
+      "TelemetryToggleIn": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "TelemetryToggleIn",
+        "type": "object"
+      },
       "TicketIn": {
         "properties": {
           "acceptance_criteria": {
@@ -2297,6 +2434,66 @@
         "summary": "Reject Proposal",
         "tags": [
           "proposals"
+        ]
+      }
+    },
+    "/v1/telemetry": {
+      "get": {
+        "operationId": "inspect_telemetry_v1_telemetry_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Inspect Telemetry",
+        "tags": [
+          "telemetry"
+        ]
+      },
+      "put": {
+        "operationId": "toggle_telemetry_v1_telemetry_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelemetryToggleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Toggle Telemetry",
+        "tags": [
+          "telemetry"
         ]
       }
     },

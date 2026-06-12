@@ -24,6 +24,7 @@ from sqlalchemy.engine import Engine
 from sqlmodel import Session, col, select
 
 from kantaq_core.identity import Action, VerifiedActor
+from kantaq_core.telemetry import TelemetryService
 from kantaq_core.tracker import (
     MAX_ATTACHMENT_BYTES,
     BlobNotFoundError,
@@ -436,6 +437,9 @@ def ticket_activity(ticket_id: str, actor: ReaderActor, engine: EngineDep) -> li
             rows = _service(session, actor).activity(ticket_id)
         except TrackerNotFoundError as exc:
             raise _domain(exc) from exc
+        # Telemetry (E28, opt-in no-op): audit-query frequency — a count only.
+        if TelemetryService(session).record("activity_viewed", {"count": len(rows)}):
+            session.commit()
         return [ActivityOut.from_row(row) for row in rows]
 
 
