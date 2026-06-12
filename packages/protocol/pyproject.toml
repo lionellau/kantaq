@@ -4,7 +4,11 @@ version = "0.0.5"
 description = "kantaq protocol core: entities, canonical codec, Ed25519, grant verify (MOD-17)"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
-dependencies = []
+dependencies = [
+    # Ed25519 (RFC 8032) — the E03 golden-rule pick; PyNaCl is the test-only
+    # second implementation the golden vectors are cross-verified against.
+    "cryptography>=45",
+]
 
 [build-system]
 requires = ["hatchling"]
