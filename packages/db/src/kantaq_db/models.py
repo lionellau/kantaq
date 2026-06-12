@@ -250,6 +250,39 @@ class SyncCursor(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=_utcnow)
 
 
+class TelemetryEvent(SQLModel, table=True):
+    """Opt-in local telemetry (MOD-25 / FR-E28-1..2, D-10).
+
+    Local infrastructure like ``schema_version``: deliberately **not** a
+    syncable collection (absent from ``COLLECTION_META``/``COLLECTION_MODELS``),
+    so no sync path can ever pick a row up — telemetry never leaves the machine.
+    ``props`` holds only numeric/categorical values vetted by the
+    ``kantaq_core.telemetry`` registry; ticket/memory content is rejected at
+    record time, not just by convention.
+    """
+
+    __tablename__ = "telemetry_events"
+
+    id: str = Field(default_factory=lambda: new_id(), primary_key=True, max_length=26)
+    name: str = Field(index=True, max_length=64)
+    props: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class LocalSetting(SQLModel, table=True):
+    """Per-machine key/value settings (first user: the telemetry opt-in flag).
+
+    Local infrastructure, never synced — a machine-scoped preference must not
+    follow a workspace to other replicas (D-10: telemetry is per-install).
+    """
+
+    __tablename__ = "local_settings"
+
+    key: str = Field(primary_key=True, max_length=64)
+    value: str = Field(max_length=256)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
 def new_id() -> str:
     """ULID factory indirection so tests can read the id scheme in one place."""
     from kantaq_db.ids import new_ulid

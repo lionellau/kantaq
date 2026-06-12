@@ -19,12 +19,12 @@ from typing import Literal
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
-# Bump this whenever a migration changes the version row. Version 5 adds the
-# E13 memory tables (memory_entries, memory_links).
-EXPECTED_SCHEMA_VERSION = 5
+# Bump this whenever a migration changes the version row. Version 6 adds the
+# E28 telemetry tables (telemetry_events, local_settings).
+EXPECTED_SCHEMA_VERSION = 6
 # The Alembic head revision that defines the expected schema. Kept in sync with
 # the migration filename in ``migrations/versions``.
-HEAD_REVISION = "0005"
+HEAD_REVISION = "0006"
 
 Status = Literal["ok", "uninitialized", "mismatch"]
 
