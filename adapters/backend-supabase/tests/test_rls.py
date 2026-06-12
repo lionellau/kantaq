@@ -457,6 +457,45 @@ def test_checked_in_migration_builds_the_models_schema() -> None:
     assert file_structure == model_structure
 
 
+def test_grants_match_the_documented_ceiling(backend: Engine) -> None:
+    """Supabase auto-grants ALL on new tables; the policies must strip it.
+
+    The stub models Supabase's default privileges, so this pins the belt
+    (grants), not just the suspenders (policies): anon holds nothing anywhere,
+    and audit_events is append-only at the grant layer too.
+    """
+    with backend.connect() as conn:
+        rows = conn.execute(
+            text(
+                "select grantee, table_name, privilege_type"
+                " from information_schema.role_table_grants"
+                " where table_schema = 'public' and grantee in ('anon', 'authenticated')"
+                "   and table_name = any(:tables)"
+            ),
+            {"tables": COLLECTION_TABLES},
+        ).all()
+    anon_grants = [r for r in rows if r.grantee == "anon"]
+    assert anon_grants == [], f"anon still holds grants: {anon_grants}"
+    audit_grants = {
+        r.privilege_type
+        for r in rows
+        if r.grantee == "authenticated" and r.table_name == "audit_events"
+    }
+    assert audit_grants == {"SELECT", "INSERT"}, (
+        f"audit_events must be append-only at the grant layer too, got {audit_grants}"
+    )
+
+
+def test_policies_file_reapplies_cleanly(backend: Engine) -> None:
+    """The maintainer re-applies the file after updates; it must be idempotent."""
+    apply_sql(backend, read_repo_sql(POLICIES_FILE))
+    alice = member(backend, "alice@acme.dev")
+    assert [row.id for row in alice.fetch_all("select id from workspaces")] == ["ws_a"]
+    assert (
+        member(backend, "bob@acme.dev").fetch_all("select id from tickets where id = 'tkt_b'") == []
+    )
+
+
 def test_rls_is_enabled_on_every_collection(backend: Engine) -> None:
     with backend.connect() as conn:
         rows = conn.execute(

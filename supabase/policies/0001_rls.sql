@@ -157,6 +157,18 @@ $$;
 
 grant usage on schema public to authenticated, service_role;
 
+-- Supabase auto-grants ALL on every new public table to anon, authenticated
+-- and service_role (ALTER DEFAULT PRIVILEGES it pre-configures), so the
+-- migration's CREATE TABLEs arrive over-granted. Strip that back to the
+-- documented ceiling first — anon ends with nothing (not even schema usage),
+-- authenticated with exactly the grants below — and trim the default so
+-- future migrations don't re-grant anon either. Verified against a live
+-- project: without this block, anon reads return 200 [] (RLS-filtered)
+-- instead of permission denied.
+revoke all on all tables in schema public from anon, authenticated;
+revoke usage on schema public from anon;
+alter default privileges in schema public revoke all on tables from anon;
+
 alter table workspaces      enable row level security;
 alter table projects        enable row level security;
 alter table tickets         enable row level security;
@@ -182,14 +194,17 @@ grant all on all tables in schema public to service_role;
 -- create one (they become its Owner via the members bootstrap below).
 -- ---------------------------------------------------------------------------
 
+drop policy if exists workspaces_select on workspaces;
 create policy workspaces_select on workspaces
   for select to authenticated
   using (kantaq.is_member(id));
 
+drop policy if exists workspaces_insert on workspaces;
 create policy workspaces_insert on workspaces
   for insert to authenticated
   with check (true);
 
+drop policy if exists workspaces_update on workspaces;
 create policy workspaces_update on workspaces
   for update to authenticated
   using (kantaq.is_admin(id))
@@ -206,10 +221,12 @@ create policy workspaces_update on workspaces
 -- app-layer (E06); RLS guards the tier boundary.
 -- ---------------------------------------------------------------------------
 
+drop policy if exists members_select on members;
 create policy members_select on members
   for select to authenticated
   using (kantaq.is_member(workspace_id));
 
+drop policy if exists members_insert on members;
 create policy members_insert on members
   for insert to authenticated
   with check (
@@ -225,6 +242,7 @@ create policy members_insert on members
     )
   );
 
+drop policy if exists members_update on members;
 create policy members_update on members
   for update to authenticated
   using (
@@ -240,19 +258,23 @@ create policy members_update on members
 -- projects — workspace-coarse (D-03): any active member of the workspace.
 -- ---------------------------------------------------------------------------
 
+drop policy if exists projects_select on projects;
 create policy projects_select on projects
   for select to authenticated
   using (kantaq.is_member(workspace_id));
 
+drop policy if exists projects_insert on projects;
 create policy projects_insert on projects
   for insert to authenticated
   with check (kantaq.is_member(workspace_id));
 
+drop policy if exists projects_update on projects;
 create policy projects_update on projects
   for update to authenticated
   using (kantaq.is_member(workspace_id))
   with check (kantaq.is_member(workspace_id));
 
+drop policy if exists projects_delete on projects;
 create policy projects_delete on projects
   for delete to authenticated
   using (kantaq.is_member(workspace_id));
@@ -263,10 +285,12 @@ create policy projects_delete on projects
 -- ticket cannot be moved into another workspace's project.
 -- ---------------------------------------------------------------------------
 
+drop policy if exists tickets_select on tickets;
 create policy tickets_select on tickets
   for select to authenticated
   using (kantaq.ticket_in_my_workspaces(id));
 
+drop policy if exists tickets_insert on tickets;
 create policy tickets_insert on tickets
   for insert to authenticated
   with check (
@@ -276,6 +300,7 @@ create policy tickets_insert on tickets
     )
   );
 
+drop policy if exists tickets_update on tickets;
 create policy tickets_update on tickets
   for update to authenticated
   using (kantaq.ticket_in_my_workspaces(id))
@@ -286,6 +311,7 @@ create policy tickets_update on tickets
     )
   );
 
+drop policy if exists tickets_delete on tickets;
 create policy tickets_delete on tickets
   for delete to authenticated
   using (kantaq.ticket_in_my_workspaces(id));
@@ -295,10 +321,12 @@ create policy tickets_delete on tickets
 -- is attribution, like audit), and edited/deleted only by their author.
 -- ---------------------------------------------------------------------------
 
+drop policy if exists comments_select on comments;
 create policy comments_select on comments
   for select to authenticated
   using (kantaq.ticket_in_my_workspaces(ticket_id));
 
+drop policy if exists comments_insert on comments;
 create policy comments_insert on comments
   for insert to authenticated
   with check (
@@ -306,6 +334,7 @@ create policy comments_insert on comments
     and author_actor_id in (select kantaq.member_ids())
   );
 
+drop policy if exists comments_update on comments;
 create policy comments_update on comments
   for update to authenticated
   using (author_actor_id in (select kantaq.member_ids()))
@@ -314,6 +343,7 @@ create policy comments_update on comments
     and author_actor_id in (select kantaq.member_ids())
   );
 
+drop policy if exists comments_delete on comments;
 create policy comments_delete on comments
   for delete to authenticated
   using (author_actor_id in (select kantaq.member_ids()));
@@ -326,10 +356,12 @@ create policy comments_delete on comments
 -- with v0.1 event signing (DEBT-01). Never client-deleted.
 -- ---------------------------------------------------------------------------
 
+drop policy if exists agent_proposals_select on agent_proposals;
 create policy agent_proposals_select on agent_proposals
   for select to authenticated
   using (kantaq.ticket_in_my_workspaces(ticket_id));
 
+drop policy if exists agent_proposals_insert on agent_proposals;
 create policy agent_proposals_insert on agent_proposals
   for insert to authenticated
   with check (
@@ -337,6 +369,7 @@ create policy agent_proposals_insert on agent_proposals
     and proposer_id in (select kantaq.member_ids())
   );
 
+drop policy if exists agent_proposals_update on agent_proposals;
 create policy agent_proposals_update on agent_proposals
   for update to authenticated
   using (kantaq.ticket_in_my_workspaces(ticket_id))
@@ -348,6 +381,7 @@ create policy agent_proposals_update on agent_proposals
 -- here (argon2id PHC); no delete policy — revoked rows are kept for audit.
 -- ---------------------------------------------------------------------------
 
+drop policy if exists tokens_select on tokens;
 create policy tokens_select on tokens
   for select to authenticated
   using (
@@ -355,6 +389,7 @@ create policy tokens_select on tokens
     or kantaq.is_admin_of_member(member_id)
   );
 
+drop policy if exists tokens_insert on tokens;
 create policy tokens_insert on tokens
   for insert to authenticated
   with check (
@@ -362,6 +397,7 @@ create policy tokens_insert on tokens
     or kantaq.is_admin_of_member(member_id)
   );
 
+drop policy if exists tokens_update on tokens;
 create policy tokens_update on tokens
   for update to authenticated
   using (
@@ -379,10 +415,12 @@ create policy tokens_update on tokens
 -- UPDATE/DELETE policy for any client role — not even workspace Owners.
 -- ---------------------------------------------------------------------------
 
+drop policy if exists audit_events_select on audit_events;
 create policy audit_events_select on audit_events
   for select to authenticated
   using (kantaq.actor_in_my_workspaces(actor_id));
 
+drop policy if exists audit_events_insert on audit_events;
 create policy audit_events_insert on audit_events
   for insert to authenticated
   with check (actor_id in (select kantaq.member_ids()));
