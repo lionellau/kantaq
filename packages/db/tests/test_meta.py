@@ -16,14 +16,16 @@ _EXPECTED = {
     "agent_proposals",
     "memory_entries",
     "memory_links",
+    "devices",
+    "capability_grants",
 }
 _VALID_MERGE = {"lww", "append_only", "authoritative_tx", "crdt"}
 _VALID_AUTHORITY = {"local", "backend"}
 
 
-def test_ten_collections_declared() -> None:
+def test_twelve_collections_declared() -> None:
     assert set(collection_names()) == _EXPECTED
-    assert len(collection_names()) == 10
+    assert len(collection_names()) == 12
 
 
 def test_meta_matches_table_models() -> None:
@@ -53,3 +55,10 @@ def test_logs_are_append_only() -> None:
 
 def test_tokens_never_optimistic() -> None:
     assert COLLECTION_META["tokens"].merge_policy == "authoritative_tx"
+
+
+def test_grants_never_optimistic_devices_lww() -> None:
+    # MOD-06: grants are authoritative_tx (never optimistically written);
+    # device verify keys converge like ordinary collection rows.
+    assert COLLECTION_META["capability_grants"].merge_policy == "authoritative_tx"
+    assert COLLECTION_META["devices"].merge_policy == "lww"

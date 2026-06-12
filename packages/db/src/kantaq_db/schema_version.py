@@ -19,12 +19,12 @@ from typing import Literal
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
-# Bump this whenever a migration changes the version row. Version 6 adds the
-# E28 telemetry tables (telemetry_events, local_settings).
-EXPECTED_SCHEMA_VERSION = 6
+# Bump this whenever a migration changes the version row. Version 7 adds the
+# E06 identity tables (devices, capability_grants).
+EXPECTED_SCHEMA_VERSION = 7
 # The Alembic head revision that defines the expected schema. Kept in sync with
 # the migration filename in ``migrations/versions``.
-HEAD_REVISION = "0006"
+HEAD_REVISION = "0007"
 
 Status = Literal["ok", "uninitialized", "mismatch"]
 

@@ -190,6 +190,51 @@ class MemoryLink(CollectionBase, table=True):
     created_by: str | None = Field(default=None)
 
 
+class Device(CollectionBase, table=True):
+    """A runtime's registered signing identity (MOD-06 v0.1, D-01).
+
+    One row per local runtime: the Ed25519 *verify* key only — the private
+    seed lives in that machine's keychain and never enters any table. The
+    set of active device rows is the root-of-trust map grant verification
+    resolves issuers against (MOD-17 ``verify_grant`` roots).
+    """
+
+    __tablename__ = "devices"
+
+    # 64 lowercase hex chars (32-byte Ed25519 verify key); one row per key.
+    public_key: str = Field(unique=True, max_length=64)
+    member_id: str | None = Field(default=None, foreign_key="members.id", index=True)
+    label: str = ""
+    # Set when the device is decommissioned; a revoked device is no longer a
+    # verification root and can issue nothing.
+    revoked_at: datetime | None = Field(default=None)
+
+
+class CapabilityGrantRow(CollectionBase, table=True):
+    """A stored capability grant (MOD-06 v0.1, PRD §6.9).
+
+    The signed fields mirror ``kantaq_protocol.CapabilityGrant`` exactly —
+    ``issued_at``/``expires_at`` are unix seconds (ints), not datetimes, so
+    the row reconstructs byte-identical signing bytes. ``token_id`` links the
+    grant to the member token that authorized issuance: rotating or revoking
+    that token revokes its derived grants (FR-E06-6's v0.1 slice).
+    Merge policy is ``authoritative_tx`` — never optimistically synced.
+    """
+
+    __tablename__ = "capability_grants"
+
+    subject: str = Field(foreign_key="members.id", index=True)
+    issuer: str = Field(foreign_key="devices.id", index=True)
+    resource: str
+    verbs: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    issued_at: int
+    expires_at: int
+    revokes: str | None = Field(default=None)
+    sig: str | None = Field(default=None, max_length=128)
+    token_id: str | None = Field(default=None, foreign_key="tokens.id", index=True)
+    revoked_at: datetime | None = Field(default=None)
+
+
 class SchemaVersion(SQLModel, table=True):
     """Single-row table guarding boot (FR-E02-4).
 
@@ -290,7 +335,7 @@ def new_id() -> str:
     return new_ulid()
 
 
-# The 10 collection table classes, in the canonical order (matches meta.py).
+# The 12 collection table classes, in the canonical order (matches meta.py).
 COLLECTION_MODELS: tuple[type[CollectionBase], ...] = (
     Workspace,
     Project,
@@ -302,4 +347,6 @@ COLLECTION_MODELS: tuple[type[CollectionBase], ...] = (
     AgentProposal,
     MemoryEntry,
     MemoryLink,
+    Device,
+    CapabilityGrantRow,
 )

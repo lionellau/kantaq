@@ -68,9 +68,15 @@ COLLECTION_META: dict[str, CollectionMeta] = {
     "agent_proposals": CollectionMeta("agent_proposals", "backend", "lww", _DEFAULT_PRIVACY),
     "memory_entries": CollectionMeta("memory_entries", "backend", "lww", _DEFAULT_PRIVACY),
     "memory_links": CollectionMeta("memory_links", "backend", "lww", _DEFAULT_PRIVACY),
+    # E06 v0.1: device verify keys sync like any collection (teammates need
+    # each other's roots); grants are authoritative_tx — never optimistic.
+    "devices": CollectionMeta("devices", "backend", "lww", _DEFAULT_PRIVACY),
+    "capability_grants": CollectionMeta(
+        "capability_grants", "backend", "authoritative_tx", _DEFAULT_PRIVACY
+    ),
 }
 
 
 def collection_names() -> tuple[str, ...]:
-    """The 10 syncable collection names, in declaration order."""
+    """The declared collection names, in declaration order (12 in v0.1)."""
     return tuple(COLLECTION_META)
