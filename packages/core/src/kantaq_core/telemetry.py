@@ -39,6 +39,13 @@ OPTIN_KEY = "telemetry.enabled"
 # sneak in. ULIDs are 26 chars; enum-ish values are shorter still.
 _MAX_STR_LENGTH = 64
 
+# Ring-buffer retention (SEC second review): an authenticated-but-chatty
+# local producer (e.g. an agent re-initializing MCP sessions in a loop) must
+# bound disk growth, not fill it. Oldest rows beyond the cap are pruned at
+# record time; telemetry rows are measurements, not records of fact, so
+# pruning them is safe (unlike audit_events, which is append-only).
+RETENTION_MAX_ROWS = 10_000
+
 PropType = Literal["int", "float", "bool", "str"]
 
 # The FR-E28-2 capture registry: event name -> {prop key: type}. Keys not
@@ -161,15 +168,28 @@ class TelemetryService:
         if spec is None:
             raise TelemetryError(f"unregistered telemetry event: {name!r}")
         supplied = dict(props or {})
+        if set(supplied) != set(spec):
+            raise TelemetryError(
+                f"telemetry event {name!r} requires exactly the props {sorted(spec)}, "
+                f"got {sorted(supplied)}"
+            )
         for key, value in supplied.items():
-            expected = spec.get(key)
-            if expected is None:
-                raise TelemetryError(f"telemetry event {name!r} does not allow prop {key!r}")
-            _check_prop(name, key, value, expected)
+            _check_prop(name, key, value, spec[key])
         if not self.enabled():
             return False
         self._session.add(TelemetryEvent(name=name, props=supplied, created_at=self._now()))
+        self._prune()
         return True
+
+    def _prune(self) -> None:
+        # exec() autoflushes, so the scan already includes the row just added.
+        rows = self._session.exec(
+            select(TelemetryEvent.id).order_by(col(TelemetryEvent.id).desc())
+        ).all()
+        for stale_id in rows[RETENTION_MAX_ROWS:]:
+            stale = self._session.get(TelemetryEvent, stale_id)
+            if stale is not None:
+                self._session.delete(stale)
 
     # -------------------------------------------------------------- inspection
 

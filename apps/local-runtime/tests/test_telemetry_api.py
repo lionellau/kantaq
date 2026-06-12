@@ -131,6 +131,24 @@ def test_agent_scope_does_not_include_telemetry(client: TestClient, agent: tuple
     assert client.get("/v1/telemetry", headers=_bearer(token)).status_code == 403
 
 
+def test_even_a_telemetry_scoped_agent_cannot_flip_the_toggle(
+    client: TestClient, engine: Engine, owner_token: str
+) -> None:
+    # SEC second review: the opt-in is a human privacy decision — an Agent
+    # token minted with telemetry scopes must still be refused on PUT.
+    with Session(engine) as session:
+        minted = IdentityService(session).invite(
+            email="scoped-bot@example.com",
+            role=Role.agent,
+            scopes=["telemetry.read", "telemetry.write"],
+        )
+    response = client.put(
+        "/v1/telemetry", json={"enabled": True}, headers=_bearer(minted.plaintext)
+    )
+    assert response.status_code == 403
+    assert client.get("/v1/telemetry", headers=_bearer(owner_token)).json()["enabled"] is False
+
+
 # ------------------------------------------------------------------- toggle
 
 

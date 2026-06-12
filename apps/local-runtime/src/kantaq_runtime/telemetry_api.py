@@ -13,12 +13,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
-from kantaq_core.identity import Action, VerifiedActor
+from kantaq_core.identity import Action, Role, VerifiedActor
 from kantaq_core.telemetry import TelemetryService
 from kantaq_db.models import TelemetryEvent
 from kantaq_runtime.auth import get_engine_dep, require_action
@@ -91,6 +91,10 @@ def inspect_telemetry(actor: ReaderActor, engine: EngineDep) -> TelemetryOut:
 def toggle_telemetry(
     body: TelemetryToggleIn, actor: WriterActor, engine: EngineDep
 ) -> TelemetryOut:
+    # SEC second review: the opt-in is a *human* privacy decision. An Agent
+    # token minted with a telemetry.write scope must still not flip it.
+    if actor.role == Role.agent:
+        raise HTTPException(status_code=403, detail="agents may not change telemetry settings")
     with Session(engine) as session:
         TelemetryService(session).set_enabled(body.enabled, actor_id=actor.member_id)
         session.commit()

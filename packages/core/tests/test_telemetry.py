@@ -94,7 +94,7 @@ def test_unregistered_event_raises_even_when_enabled(engine: Engine) -> None:
 def test_unregistered_prop_key_raises_even_when_opted_out(engine: Engine) -> None:
     # Registry enforcement runs before the opt-in check so a capture-site bug
     # fails the suite even though tests rarely opt in.
-    with Session(engine) as session, pytest.raises(TelemetryError, match="does not allow prop"):
+    with Session(engine) as session, pytest.raises(TelemetryError, match="requires exactly"):
         _service(session).record("proposals_listed", {"title": "secret roadmap"})
 
 
@@ -112,6 +112,29 @@ def test_free_text_cannot_pass_a_str_prop(engine: Engine) -> None:
 def test_bool_is_not_an_int(engine: Engine) -> None:
     with Session(engine) as session, pytest.raises(TelemetryError, match="must be int"):
         _service(session).record("proposals_listed", {"count": True})
+
+
+def test_missing_props_raise_the_exact_set_is_required(engine: Engine) -> None:
+    with Session(engine) as session, pytest.raises(TelemetryError, match="requires exactly"):
+        _service(session).record("proposal_approved", {})
+
+
+def test_retention_cap_prunes_the_oldest_rows(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # SEC second review: a chatty producer bounds disk growth at the cap.
+    import kantaq_core.telemetry as telemetry_module
+
+    monkeypatch.setattr(telemetry_module, "RETENTION_MAX_ROWS", 3)
+    with Session(engine) as session:
+        service = _service(session)
+        service.set_enabled(True, actor_id="m1")
+        for n in range(6):
+            service.record("proposals_listed", {"count": n})
+            session.commit()
+        rows = session.exec(select(TelemetryEvent)).all()
+        assert len(rows) == 3
+        assert sorted(r.props["count"] for r in rows) == [3, 4, 5]  # oldest pruned
 
 
 # -------------------------------------------------------------- privacy pins
