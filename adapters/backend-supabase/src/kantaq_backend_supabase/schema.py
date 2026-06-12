@@ -33,6 +33,10 @@ from kantaq_db.models import COLLECTION_MODELS
 # Repo-relative SQL artifact paths (MOD-05 interfaces).
 COLLECTIONS_MIGRATION = Path("supabase") / "migrations" / "0001_collections.sql"
 POLICIES_FILE = Path("supabase") / "policies" / "0001_rls.sql"
+# The sync event log (E24-T4) — hand-written, not generated: it is backend
+# infrastructure, not a D-07 collection mirror (MOD-04 "Data").
+SYNC_MIGRATION = Path("supabase") / "migrations" / "0002_sync_events.sql"
+SYNC_POLICIES_FILE = Path("supabase") / "policies" / "0002_sync_rls.sql"
 
 _HEADER = """\
 -- supabase/migrations/0001_collections.sql
