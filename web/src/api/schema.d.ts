@@ -106,6 +106,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Memory */
+        get: operations["list_memory_v1_memory_get"];
+        put?: never;
+        /** Create Memory */
+        post: operations["create_memory_v1_memory_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/memory/{memory_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Memory */
+        get: operations["get_memory_v1_memory__memory_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Memory */
+        delete: operations["delete_memory_v1_memory__memory_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Memory */
+        patch: operations["update_memory_v1_memory__memory_id__patch"];
+        trace?: never;
+    };
+    "/v1/memory/{memory_id}/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Link Memory */
+        post: operations["link_memory_v1_memory__memory_id__link_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/memory/{memory_id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Memory Links */
+        get: operations["memory_links_v1_memory__memory_id__links_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects": {
         parameters: {
             query?: never;
@@ -301,6 +372,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tickets/{ticket_id}/memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ticket Memory
+         * @description The ticket's linked memory with provenance, for the ticket page.
+         */
+        get: operations["ticket_memory_v1_tickets__ticket_id__memory_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -410,6 +501,15 @@ export interface components {
             token: string;
         };
         /**
+         * LinkedMemoryOut
+         * @description One linked entry on a ticket: the link (reason) plus the entry
+         *     (with provenance) — what the ticket page renders (E13-T3).
+         */
+        LinkedMemoryOut: {
+            entry: components["schemas"]["MemoryOut"];
+            link: components["schemas"]["MemoryLinkOut"];
+        };
+        /**
          * MemberOut
          * @description A member row, minus anything secret.
          */
@@ -429,6 +529,144 @@ export interface components {
             status: string;
             /** Workspace Id */
             workspace_id: string;
+        };
+        /** MemoryIn */
+        MemoryIn: {
+            /**
+             * Body
+             * @default
+             */
+            body: string;
+            /**
+             * Confidence
+             * @default medium
+             */
+            confidence: string;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Linked Entities */
+            linked_entities?: string[];
+            /** Provenance */
+            provenance?: {
+                [key: string]: string;
+            };
+            /**
+             * Source
+             * @default manual
+             */
+            source: string;
+            /**
+             * Space
+             * @default workspace
+             */
+            space: string;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @default note
+             */
+            type: string;
+            /**
+             * Visibility
+             * @default team
+             */
+            visibility: string;
+        };
+        /** MemoryLinkIn */
+        MemoryLinkIn: {
+            /** Reason */
+            reason: string;
+            /** Ticket Id */
+            ticket_id: string;
+        };
+        /** MemoryLinkOut */
+        MemoryLinkOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string | null;
+            /** Id */
+            id: string;
+            /** Memory Id */
+            memory_id: string;
+            /** Reason */
+            reason: string;
+            /** Ticket Id */
+            ticket_id: string;
+            /** Visibility */
+            visibility: string;
+        };
+        /** MemoryOut */
+        MemoryOut: {
+            /** Body */
+            body: string;
+            /** Confidence */
+            confidence: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string | null;
+            /** Domain Visibility */
+            domain_visibility: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Id */
+            id: string;
+            /** Linked Entities */
+            linked_entities: string[];
+            /** Provenance */
+            provenance: {
+                [key: string]: string;
+            };
+            /** Review Status */
+            review_status: string;
+            /** Source */
+            source: string;
+            /** Space */
+            space: string;
+            /** Title */
+            title: string;
+            /** Type */
+            type: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Visibility */
+            visibility: string;
+        };
+        /** MemoryPatch */
+        MemoryPatch: {
+            /** Body */
+            body?: string | null;
+            /** Confidence */
+            confidence?: string | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Linked Entities */
+            linked_entities?: string[] | null;
+            /** Provenance */
+            provenance?: {
+                [key: string]: string;
+            } | null;
+            /** Review Status */
+            review_status?: string | null;
+            /** Source */
+            source?: string | null;
+            /** Space */
+            space?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Type */
+            type?: string | null;
         };
         /** ProjectIn */
         ProjectIn: {
@@ -814,6 +1052,235 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RotateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_memory_v1_memory_get: {
+        parameters: {
+            query?: {
+                space?: string | null;
+                type?: string | null;
+                review_status?: string | null;
+                q?: string | null;
+                include_expired?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_memory_v1_memory_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_memory_v1_memory__memory_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_memory_v1_memory__memory_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_memory_v1_memory__memory_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_memory_v1_memory__memory_id__link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryLinkIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryLinkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    memory_links_v1_memory__memory_id__links_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryLinkOut"][];
                 };
             };
             /** @description Validation Error */
@@ -1336,6 +1803,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CommentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ticket_memory_v1_tickets__ticket_id__memory_get: {
+        parameters: {
+            query?: {
+                include_expired?: boolean;
+            };
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkedMemoryOut"][];
                 };
             };
             /** @description Validation Error */
