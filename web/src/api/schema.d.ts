@@ -264,6 +264,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inspect Telemetry */
+        get: operations["inspect_telemetry_v1_telemetry_get"];
+        /** Toggle Telemetry */
+        put: operations["toggle_telemetry_v1_telemetry_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tickets": {
         parameters: {
             query?: never;
@@ -777,6 +795,54 @@ export interface components {
             member_id: string;
             /** Token */
             token: string;
+        };
+        /** TelemetryEventOut */
+        TelemetryEventOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Props */
+            props: {
+                [key: string]: unknown;
+            };
+        };
+        /** TelemetryMetricsOut */
+        TelemetryMetricsOut: {
+            /** Activity Views Total */
+            activity_views_total: number;
+            /** Events Total */
+            events_total: number;
+            /** Install To First Proposal Seconds */
+            install_to_first_proposal_seconds: number | null;
+            /** Mcp Sessions Total */
+            mcp_sessions_total: number;
+            /** Median Seconds To Approve */
+            median_seconds_to_approve: number | null;
+            /** Proposal Acceptance Rate */
+            proposal_acceptance_rate: number | null;
+            /** Repeat Session Members */
+            repeat_session_members: number;
+            /** Weekly Active */
+            weekly_active: boolean;
+        };
+        /** TelemetryOut */
+        TelemetryOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Events */
+            events: components["schemas"]["TelemetryEventOut"][];
+            metrics: components["schemas"]["TelemetryMetricsOut"];
+        };
+        /** TelemetryToggleIn */
+        TelemetryToggleIn: {
+            /** Enabled */
+            enabled: boolean;
         };
         /** TicketIn */
         TicketIn: {
@@ -1505,6 +1571,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProposalOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_telemetry_v1_telemetry_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelemetryOut"];
+                };
+            };
+        };
+    };
+    toggle_telemetry_v1_telemetry_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelemetryToggleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelemetryOut"];
                 };
             };
             /** @description Validation Error */

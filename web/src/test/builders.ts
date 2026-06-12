@@ -14,6 +14,7 @@ import type {
   MemoryLink,
   Project,
   Proposal,
+  TelemetryView,
   Ticket,
 } from "../api/types";
 
@@ -171,5 +172,29 @@ export function buildSnippet(overrides: Partial<AgentSnippet> = {}): AgentSnippe
     },
     instructions: "save as .mcp.json",
     ...overrides,
+  };
+}
+
+type TelemetryViewOverrides = Partial<Omit<TelemetryView, "metrics">> & {
+  metrics?: Partial<TelemetryView["metrics"]>;
+};
+
+export function buildTelemetryView(overrides: TelemetryViewOverrides = {}): TelemetryView {
+  const { metrics, ...rest } = overrides;
+  return {
+    enabled: false,
+    events: [],
+    ...rest,
+    metrics: {
+      events_total: 0,
+      proposal_acceptance_rate: null,
+      median_seconds_to_approve: null,
+      mcp_sessions_total: 0,
+      repeat_session_members: 0,
+      activity_views_total: 0,
+      install_to_first_proposal_seconds: null,
+      weekly_active: false,
+      ...(metrics ?? {}),
+    },
   };
 }
