@@ -181,3 +181,38 @@ def test_rfc8032_vectors_pass_with_pynacl(vector) -> None:  # type: ignore[no-un
     signing_key = nacl.signing.SigningKey(bytes.fromhex(vector.private_key_hex))
     assert signing_key.sign(message).signature.hex() == vector.sig_hex
     assert _nacl_verifies(message, vector.sig_hex, vector.public_key_hex)
+
+
+def test_uppercase_signature_never_verifies() -> None:
+    keys = generate_keypair()
+    signed = sign(_event_from(EVENT_VECTORS[0].entity), keys.private_key)
+    assert signed.sig is not None
+    assert verify_bytes(signing_bytes(signed), signed.sig.upper(), keys.public_key) is False
+
+
+def test_uppercase_or_prefixed_keys_are_rejected() -> None:
+    keys = generate_keypair()
+    with pytest.raises(SchemaViolation, match="64 lowercase hex"):
+        sign_bytes(b"m", keys.private_key.upper())
+    with pytest.raises(SchemaViolation, match="64 lowercase hex"):
+        verify_bytes(b"m", "ab" * 64, "0x" + keys.public_key[2:])
+
+
+def test_keypair_repr_never_shows_the_private_seed() -> None:
+    keys = generate_keypair()
+    assert keys.private_key not in repr(keys)
+    assert keys.private_key not in str(keys)
+    assert keys.public_key in repr(keys)
+
+
+def test_event_and_grant_signatures_cannot_cross_validate() -> None:
+    # Domain separation: even if a future schema change made the canonical
+    # bodies collide, the signed messages differ by tag.
+    from kantaq_protocol import EVENT_SIGNING_DOMAIN, GRANT_SIGNING_DOMAIN
+
+    assert EVENT_SIGNING_DOMAIN != GRANT_SIGNING_DOMAIN
+    keys = generate_keypair()
+    event = sign(_event_from(EVENT_VECTORS[0].entity), keys.private_key)
+    assert event.sig is not None
+    body = signing_bytes(event).removeprefix(EVENT_SIGNING_DOMAIN)
+    assert verify_bytes(GRANT_SIGNING_DOMAIN + body, event.sig, keys.public_key) is False

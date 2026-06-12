@@ -11,6 +11,9 @@ from __future__ import annotations
 
 from kantaq_protocol import crdt
 from kantaq_protocol.canonical import (
+    EVENT_SIGNING_DOMAIN,
+    MAX_DEPTH,
+    MAX_DOCUMENT_BYTES,
     MAX_SAFE_INT,
     canonicalize,
     decode,
@@ -46,8 +49,11 @@ from kantaq_protocol.grants import (
     GRANT_MISSING_SIGNATURE,
     GRANT_NOT_YET_VALID,
     GRANT_OK,
+    GRANT_REVOKED,
+    GRANT_SIGNING_DOMAIN,
     GRANT_UNKNOWN_ROOT,
     GrantVerification,
+    decode_grant,
     encode_canonical_grant,
     grant_signing_bytes,
     sign_grant,
@@ -66,13 +72,18 @@ from kantaq_protocol.signing import (
 __version__: str = "0.0.5"
 
 __all__ = [
+    "EVENT_SIGNING_DOMAIN",
     "GRANT_EXPIRED",
     "GRANT_FORGED",
     "GRANT_INVALID_VALIDITY",
     "GRANT_MISSING_SIGNATURE",
     "GRANT_NOT_YET_VALID",
     "GRANT_OK",
+    "GRANT_REVOKED",
+    "GRANT_SIGNING_DOMAIN",
     "GRANT_UNKNOWN_ROOT",
+    "MAX_DEPTH",
+    "MAX_DOCUMENT_BYTES",
     "MAX_SAFE_INT",
     "OPS",
     "Actor",
@@ -97,6 +108,7 @@ __all__ = [
     "canonicalize",
     "crdt",
     "decode",
+    "decode_grant",
     "dedup_key",
     "encode_canonical",
     "encode_canonical_grant",

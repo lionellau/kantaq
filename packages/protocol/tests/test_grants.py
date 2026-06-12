@@ -106,7 +106,7 @@ def test_forged_beats_expired_in_reporting() -> None:
 
 
 def test_grant_without_verbs_is_rejected() -> None:
-    with pytest.raises(SchemaViolation, match="at least one verb"):
+    with pytest.raises(SchemaViolation, match="non-empty list of strings"):
         sign_grant(_grant(verbs=()), KEYS.private_key)
 
 
@@ -118,7 +118,7 @@ def test_revokes_field_is_signed() -> None:
 
 
 def test_empty_grant_fields_are_rejected() -> None:
-    with pytest.raises(SchemaViolation, match="'subject' must be non-empty"):
+    with pytest.raises(SchemaViolation, match="'subject' must be a non-empty string"):
         sign_grant(_grant(subject=""), KEYS.private_key)
 
 
@@ -130,3 +130,115 @@ def test_the_wire_form_includes_the_signature() -> None:
     wire = encode_canonical_grant(signed)
     assert signed.sig.encode() in wire
     assert grant_signing_bytes(signed) == grant_signing_bytes(_grant())
+
+
+# ------------------------------------------------- adversarial hardening
+
+
+def test_a_revoked_grant_is_refused_when_the_store_says_so() -> None:
+    signed = sign_grant(_grant(), KEYS.private_key)
+    result = verify_grant(signed, ROOTS, now=T0 + 60, revoked_ids={signed.grant_id})
+    assert result.reason == "revoked"
+    assert verify_grant(signed, ROOTS, now=T0 + 60).ok  # absent store input: time+sig only
+
+
+def test_grant_signing_bytes_are_domain_separated_from_events() -> None:
+    from kantaq_protocol import EVENT_SIGNING_DOMAIN, GRANT_SIGNING_DOMAIN
+
+    signed = sign_grant(_grant(), KEYS.private_key)
+    from kantaq_protocol import grant_signing_bytes
+
+    message = grant_signing_bytes(signed)
+    assert message.startswith(GRANT_SIGNING_DOMAIN)
+    assert not message.startswith(EVENT_SIGNING_DOMAIN)
+
+
+def test_a_verbs_string_cannot_be_signed() -> None:
+    # "tickets.write.extra" as a *string* would make `"tickets.write" in
+    # grant.verbs` substring-true downstream (adversarial review, must-fix).
+    with pytest.raises(SchemaViolation, match="non-empty list of strings"):
+        sign_grant(_grant(verbs="tickets.write.extra"), KEYS.private_key)
+
+
+def test_non_string_verb_items_are_rejected() -> None:
+    with pytest.raises(SchemaViolation, match="only non-empty strings"):
+        sign_grant(_grant(verbs=("tickets.read", 7)), KEYS.private_key)
+
+
+def test_bool_timestamps_are_rejected() -> None:
+    with pytest.raises(SchemaViolation, match="'issued_at' must be an integer"):
+        sign_grant(_grant(issued_at=False), KEYS.private_key)
+
+
+def test_non_string_subject_is_rejected() -> None:
+    with pytest.raises(SchemaViolation, match="'subject' must be a non-empty string"):
+        sign_grant(_grant(subject=123), KEYS.private_key)
+
+
+def test_decode_grant_round_trips_exactly() -> None:
+    from kantaq_protocol import decode_grant, encode_canonical_grant
+
+    signed = sign_grant(_grant(revokes="01JOLDGRANT000000000000001"), KEYS.private_key)
+    assert decode_grant(encode_canonical_grant(signed)) == signed
+
+
+def test_decode_grant_rejects_unknown_and_missing_fields() -> None:
+    import json
+
+    from kantaq_protocol import canonicalize, decode_grant, encode_canonical_grant
+
+    raw = json.loads(encode_canonical_grant(sign_grant(_grant(), KEYS.private_key)))
+    raw["admin"] = True
+    with pytest.raises(SchemaViolation, match="unknown grant fields"):
+        decode_grant(canonicalize(raw))
+    del raw["admin"]
+    del raw["verbs"]
+    with pytest.raises(SchemaViolation, match="missing grant fields"):
+        decode_grant(canonicalize(raw))
+
+
+def test_decode_grant_rejects_non_canonical_spellings() -> None:
+    import json
+
+    from kantaq_protocol import decode_grant, encode_canonical_grant
+
+    pretty = json.dumps(
+        json.loads(encode_canonical_grant(sign_grant(_grant(), KEYS.private_key))), indent=2
+    ).encode()
+    with pytest.raises(SchemaViolation, match="not in canonical form"):
+        decode_grant(pretty)
+
+
+def test_decode_grant_rejects_uppercase_sig() -> None:
+    import json
+
+    from kantaq_protocol import canonicalize, decode_grant, encode_canonical_grant
+
+    raw = json.loads(encode_canonical_grant(sign_grant(_grant(), KEYS.private_key)))
+    raw["sig"] = raw["sig"].upper()
+    with pytest.raises(SchemaViolation, match="128 lowercase hex"):
+        decode_grant(canonicalize(raw))
+
+
+def test_decode_grant_rejects_non_list_verbs() -> None:
+    from kantaq_protocol import canonicalize, decode_grant
+
+    with pytest.raises(SchemaViolation, match="'verbs' must be a list"):
+        decode_grant(
+            canonicalize(
+                {
+                    "expires_at": T0 + HOUR,
+                    "grant_id": "g",
+                    "issued_at": T0,
+                    "issuer": "i",
+                    "resource": "r",
+                    "subject": "s",
+                    "verbs": "tickets.read",
+                }
+            )
+        )
+
+
+def test_empty_revokes_is_rejected() -> None:
+    with pytest.raises(SchemaViolation, match="'revokes' must be a non-empty string"):
+        sign_grant(_grant(revokes=""), KEYS.private_key)

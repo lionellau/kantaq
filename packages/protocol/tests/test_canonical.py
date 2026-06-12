@@ -245,5 +245,98 @@ def test_decode_rejects_non_integer_base_rev() -> None:
 def test_decode_rejects_non_string_sig() -> None:
     raw = json.loads(encode_canonical(_event()))
     raw["sig"] = 1
-    with pytest.raises(SchemaViolation, match="'sig' must be a string"):
+    with pytest.raises(SchemaViolation, match="'sig' must be 128 lowercase hex"):
         decode(canonicalize(raw))
+
+
+# ------------------------------------------------- adversarial hardening
+
+
+def test_uppercase_sig_spelling_is_rejected_at_decode() -> None:
+    # bytes.fromhex would accept "AB..."; one signature must have exactly one
+    # byte spelling (E27 adversarial review, must-fix).
+    raw = json.loads(encode_canonical(_event(sig="ab" * 64)))
+    raw["sig"] = raw["sig"].upper()
+    with pytest.raises(SchemaViolation, match="128 lowercase hex"):
+        decode(canonicalize(raw))
+
+
+def test_whitespace_in_sig_is_rejected_at_decode() -> None:
+    raw = json.loads(encode_canonical(_event(sig="ab" * 64)))
+    raw["sig"] = raw["sig"][:64] + " " + raw["sig"][64:-1]
+    with pytest.raises(SchemaViolation, match="128 lowercase hex"):
+        decode(canonicalize(raw))
+
+
+def test_nesting_beyond_the_depth_bound_is_rejected() -> None:
+    from kantaq_protocol import MAX_DEPTH
+
+    deep: object = 1
+    for _ in range(MAX_DEPTH + 2):
+        deep = [deep]
+    with pytest.raises(SchemaViolation, match="depth bound"):
+        canonicalize(deep)
+
+
+def test_a_depth_bomb_document_is_refused_not_crashed() -> None:
+    bomb = b"[" * 50_000 + b"]" * 50_000
+    raw = (
+        b'{"event_id":"e","collection":"c","entity_id":"x","actor_id":"a",'
+        b'"actor_seq":1,"op":"patch","payload":{"p":' + bomb + b"}}"
+    )
+    with pytest.raises(SchemaViolation):
+        decode(raw)
+
+
+def test_an_oversized_document_is_refused() -> None:
+    from kantaq_protocol import MAX_DOCUMENT_BYTES
+
+    big = b"x" * (MAX_DOCUMENT_BYTES + 1)
+    with pytest.raises(SchemaViolation, match="size bound"):
+        decode(big)
+    with pytest.raises(SchemaViolation, match="size bound"):
+        canonicalize("y" * MAX_DOCUMENT_BYTES)
+
+
+def test_a_huge_integer_literal_is_refused_not_crashed() -> None:
+    raw = (
+        b'{"event_id":"e","collection":"c","entity_id":"x","actor_id":"a",'
+        b'"actor_seq":1,"op":"patch","payload":{"n":' + b"9" * 10_000 + b"}}"
+    )
+    with pytest.raises(SchemaViolation):
+        decode(raw)
+
+
+def test_lone_surrogates_are_rejected_not_crashed() -> None:
+    with pytest.raises(SchemaViolation, match="lone surrogate"):
+        canonicalize({"x": "\ud800"})
+    with pytest.raises(SchemaViolation, match="lone surrogate"):
+        canonicalize({"\udfff": 1})
+    # And via decode: JSON that smuggles a lone surrogate in a string.
+    with pytest.raises(SchemaViolation):
+        decode(
+            b'{"actor_id":"a","actor_seq":1,"collection":"c","entity_id":"x",'
+            b'"event_id":"e","op":"patch","payload":{"s":"\\ud800"}}'
+        )
+
+
+def test_event_signing_bytes_are_domain_separated() -> None:
+    from kantaq_protocol import EVENT_SIGNING_DOMAIN
+
+    assert signing_bytes(_event()).startswith(EVENT_SIGNING_DOMAIN)
+
+
+def test_sign_refuses_events_decode_would_refuse() -> None:
+    # One strict validator across encode/sign/verify (adversarial review):
+    # a bool actor_seq or non-object payload cannot be signed either.
+    with pytest.raises(SchemaViolation, match="'actor_seq' must be an integer"):
+        encode_canonical(_event(actor_seq=True))
+    with pytest.raises(SchemaViolation, match="'payload' must be an object"):
+        encode_canonical(_event(payload=[1, 2]))
+    with pytest.raises(SchemaViolation, match="'event_id' must be a non-empty string"):
+        encode_canonical(_event(event_id=123))
+
+
+def test_empty_policy_ref_is_rejected() -> None:
+    with pytest.raises(SchemaViolation, match="'policy_ref' must be a non-empty string"):
+        encode_canonical(_event(policy_ref=""))
