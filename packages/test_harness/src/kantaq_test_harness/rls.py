@@ -57,6 +57,16 @@ create schema if not exists auth;
 -- under `authenticated` call auth.jwt() directly); mirror that here.
 grant usage on schema auth to anon, authenticated, service_role;
 
+-- Supabase grants the API roles usage on public and pre-configures DEFAULT
+-- PRIVILEGES so every newly created public table is auto-granted ALL to all
+-- three roles. Mirror that too — it is load-bearing: the policies file must
+-- explicitly strip anon/authenticated back to its documented ceiling, and
+-- without this line the stub would (and once did) hide an over-grant that
+-- was live in production.
+grant usage on schema public to anon, authenticated, service_role;
+alter default privileges in schema public
+  grant all on tables to anon, authenticated, service_role;
+
 create or replace function auth.jwt() returns jsonb
 language sql stable
 as $fn$
