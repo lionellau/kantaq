@@ -92,6 +92,30 @@ def test_documented_commands_exist(doc: Path) -> None:
     assert not problems, f"{doc.name}: {problems}"
 
 
+def test_quickstart_documents_the_full_loop() -> None:
+    """E29-T2a: the QUICKSTART walks the whole hero loop, not just setup.
+
+    The finalize is "one quickstart for the full loop" — create → sync → an
+    agent proposes → a human approves → sync. Pin the load-bearing pieces so a
+    future edit cannot quietly drop the loop back to a setup-only guide.
+    """
+    text = (REPO_ROOT / "QUICKSTART.md").read_text(encoding="utf-8")
+
+    # Team sync is online + explicit in v0.0.5 (no background daemon): the three
+    # sync subcommands must all be shown.
+    for cmd in ("kantaq sync login", "kantaq sync once", "kantaq sync status"):
+        assert cmd in text, f"QUICKSTART must document `{cmd}`"
+
+    # The loop reaches a proposal and its human approval, not just a live server.
+    assert "agent_action_propose" in text, "QUICKSTART must reach the propose step"
+    assert "Inbox" in text and "Approve" in text, "QUICKSTART must reach approval"
+
+    # The walkthrough heading the README and the Supabase guide deep-link to
+    # (`#the-full-loop-end-to-end`). The internal-link gate strips anchors, so
+    # this is what keeps those cross-doc anchors valid.
+    assert "## The full loop, end to end" in text, "full-loop section heading moved"
+
+
 def test_env_examples_referenced_by_quickstart_are_tracked() -> None:
     quickstart = (REPO_ROOT / "QUICKSTART.md").read_text(encoding="utf-8")
     for example in re.findall(r"\.env[\w.-]*\.example", quickstart):

@@ -87,12 +87,13 @@ fails fast with a clear message if not.
 - **Free-tier pause.** Supabase pauses free projects after about 7 days of
   inactivity. Restoring takes one click in the dashboard; members see a
   `connection verify failed` until you do.
-- **Region matters once sync lands** — pick the region where most of the team
-  works; you cannot cheaply move it later.
+- **Region matters for sync latency** — pick the region where most of the team
+  works; every `kantaq sync once` round-trips to it, and you cannot cheaply move
+  it later.
 - **Cost ceiling.** A 2–10 person team fits comfortably in the Free tier; the
   first paid tier is the escape hatch, not a requirement.
 
-## 7. The team manifest (v0.0.5 — until the onboarding UI lands)
+## 7. The team manifest (v0.0.5 — the maintainer seeds it)
 
 Sync is scoped by Row Level Security, and RLS decides who someone is by their
 row in the **members** table — so the maintainer seeds one workspace row and
@@ -120,8 +121,12 @@ Each teammate also needs a Supabase Auth user for the magic link: dashboard →
 **Authentication → Users → Invite user** (kantaq itself requests sign-in links
 invite-only and never creates accounts).
 
-The E21 onboarding UI automates this; the manifest is the documented v0.0.5
-path.
+This backend manifest stays a **maintainer step in v0.0.5**. The shipped
+**Settings → Members** UI (E21) invites, lists, revokes, and rotates each
+member's *local runtime token* — it does not reach into your Supabase project,
+so seeding the backend `members` rows and the Auth users above is still done
+here by hand. A wizard that drives both sides is a later release; the manifest
+is the documented v0.0.5 path.
 
 ## 8. Syncing (E24-T4)
 
@@ -145,6 +150,10 @@ before serving. The Postgres schema, the magic-link auth client, and the Row
 Level Security policies shipped with Sprint 1 of epic **E24**; the sync
 endpoints (the `sync_events` log + push/pull over Supabase's data API) shipped
 with **E24-T4**. All of it is tested in CI against a real Postgres with a
-tampered client that must fail to read or write another workspace. Known
-v0.0.5 limits: online-only (offline outbox is v0.2), unsigned events (Ed25519
-verification is v0.1), and one workspace per member.
+tampered client that must fail to read or write another workspace. With the
+backend in place, the **full hero loop is live end to end** — create → sync →
+agent proposes → human approves → sync — walked through in
+[the QUICKSTART](../QUICKSTART.md#the-full-loop-end-to-end). Known v0.0.5
+limits: sync is online and explicit (`kantaq sync once`; the offline outbox and
+a background daemon are v0.2), events are unsigned (Ed25519 verification is
+v0.1), and one workspace per member.

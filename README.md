@@ -10,7 +10,7 @@ This repository holds the **code**. Product, architecture, and planning docs are
 
 ## Status
 
-`v0.0.5` — Sprint 1 foundation: repo/env (E01), data layer + migrations (E02), local runtime + run modes (E22), web shell (E18), quality gates + shared test harness (E27), identity + token-gated loopback auth (E06). Next on the spine: Supabase backend (E24) and audit (E07).
+`v0.0.5` — the walking-skeleton core. On the Sprint 1 foundation (repo/env, data layer + migrations, local runtime + run modes, web shell, quality gates + shared test harness, identity + token-gated loopback auth), Sprint 2 adds the full hero loop: online sync through Supabase (E04/E24), the loopback MCP gateway with propose-first tools (E09/E10), and the screens — backlog, ticket page, Inbox, Members, My Agent (E19/E20/E21). End to end: create → sync → an agent proposes → a human approves → sync. See [QUICKSTART.md](QUICKSTART.md#the-full-loop-end-to-end).
 
 ## Quickstart
 
@@ -53,7 +53,7 @@ kantaq/
 |---|---|
 | `make setup` | install both toolchains and build the web UI |
 | `make dev` | run the FastAPI runtime on `127.0.0.1:3939` |
-| `make migrate` | run DB migrations (stub until E02) |
+| `make migrate` | run DB migrations |
 | `make test` | `kantaq test` → pytest + Vitest |
 | `make lint` | ruff + Biome |
 | `make typecheck` | mypy + tsc |

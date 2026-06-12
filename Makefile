@@ -12,7 +12,7 @@ setup: ## install both toolchains and build the web UI
 dev: ## run the FastAPI runtime on 127.0.0.1:3939
 	uv run kantaq dev
 
-migrate: ## run database migrations (stub until Epic E02)
+migrate: ## run database migrations
 	uv run kantaq db migrate
 
 test: ## run pytest + Vitest
