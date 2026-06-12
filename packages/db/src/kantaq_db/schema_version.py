@@ -19,12 +19,12 @@ from typing import Literal
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
-# Bump this whenever a migration changes the version row. Version 2 adds the
-# E06 identity columns (members.status, tokens.revoked_at).
-EXPECTED_SCHEMA_VERSION = 2
+# Bump this whenever a migration changes the version row. Version 3 adds the
+# E12 ticket attachment refs (tickets.attachments).
+EXPECTED_SCHEMA_VERSION = 3
 # The Alembic head revision that defines the expected schema. Kept in sync with
 # the migration filename in ``migrations/versions``.
-HEAD_REVISION = "0002"
+HEAD_REVISION = "0003"
 
 Status = Literal["ok", "uninitialized", "mismatch"]
 
