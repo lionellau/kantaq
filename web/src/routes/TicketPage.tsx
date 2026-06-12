@@ -16,13 +16,14 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { Link, useParams } from "react-router-dom";
 import { api, authFetch } from "../api/client";
-import type { Activity, Comment, Ticket } from "../api/types";
+import type { Activity, Comment, LinkedMemory, Ticket } from "../api/types";
 import ProposalChip from "../components/ProposalChip";
 import SyncBadge, { type SyncState } from "../components/SyncBadge";
 import { fmtDateTime } from "../lib/format";
 import { useSession } from "../lib/session";
 import * as ui from "../lib/ui";
 import { usePolling } from "../lib/usePolling";
+import { VisibilityBadge } from "./Memory";
 
 type TimelineEntry =
   | { kind: "comment"; at: string; comment: Comment }
@@ -57,6 +58,7 @@ export default function TicketPage() {
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [activity, setActivity] = useState<Activity[]>([]);
+  const [linkedMemory, setLinkedMemory] = useState<LinkedMemory[]>([]);
   const [projectName, setProjectName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,10 +67,11 @@ export default function TicketPage() {
       return;
     }
     const path = { params: { path: { ticket_id: ticketId } } };
-    const [ticketRes, commentsRes, activityRes] = await Promise.all([
+    const [ticketRes, commentsRes, activityRes, memoryRes] = await Promise.all([
       api.GET("/v1/tickets/{ticket_id}", path),
       api.GET("/v1/tickets/{ticket_id}/comments", path),
       api.GET("/v1/tickets/{ticket_id}/activity", path),
+      api.GET("/v1/tickets/{ticket_id}/memory", path),
     ]);
     if (ticketRes.error !== undefined) {
       setError("could not load the ticket");
@@ -78,6 +81,7 @@ export default function TicketPage() {
     setTicket(ticketRes.data);
     setComments(commentsRes.data ?? []);
     setActivity(activityRes.data ?? []);
+    setLinkedMemory(memoryRes.data ?? []);
   }, [connected, ticketId]);
 
   useEffect(() => {
@@ -174,6 +178,8 @@ export default function TicketPage() {
           </section>
         )}
 
+        <LinkedMemorySection items={linkedMemory} />
+
         <Attachments ticket={ticket} onChanged={() => void refresh()} />
 
         <section aria-labelledby="timeline-heading">
@@ -232,6 +238,35 @@ export default function TicketPage() {
           <span style={ui.muted}>{fmtDateTime(ticket.updated_at)}</span>
         </div>
       </aside>
+    </section>
+  );
+}
+
+function LinkedMemorySection({ items }: { items: LinkedMemory[] }) {
+  return (
+    <section aria-labelledby="linked-memory-heading">
+      <h2 id="linked-memory-heading" style={ui.sectionHeading}>
+        Linked memory
+      </h2>
+      {items.length === 0 && <p style={ui.muted}>None. Link context from the Memory page.</p>}
+      <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: 8 }}>
+        {items.map(({ link, entry }) => (
+          <li key={link.id} style={ui.card}>
+            <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 600 }}>{entry.title}</span>
+              <span style={ui.chip}>{entry.type}</span>
+              <VisibilityBadge entry={entry} />
+            </div>
+            {entry.body.trim() !== "" && <ReactMarkdown>{entry.body}</ReactMarkdown>}
+            <div style={ui.muted}>
+              linked because: {link.reason} · from {entry.provenance.origin ?? entry.source} by{" "}
+              {entry.provenance.actor_id ?? entry.created_by ?? "unknown"}
+              {entry.provenance.captured_at !== undefined &&
+                ` · captured ${fmtDateTime(entry.provenance.captured_at)}`}
+            </div>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
