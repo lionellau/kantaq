@@ -12,6 +12,12 @@ dependencies = [
     # answers httpx requests with real SQL; imported per-test, never on the
     # pytest plugin path (the MOD-30 coverage rule).
     "httpx>=0.27.0",
+    # FakeMCPClient (the Gateway/Agent profile's real-SDK agent, E09/E10)
+    # drives the official MCP client over in-process ASGI; same per-test
+    # import rule as FakePostgREST.
+    "mcp>=1.16",
+    "anyio>=4.5",
+    "starlette>=0.40.0",
     # The two-replica simulator (MOD-04's harness profile) composes the real
     # tracker + event log on purpose; the leaf fakes stay ORM-free.
     "kantaq-db",

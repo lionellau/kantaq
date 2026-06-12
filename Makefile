@@ -30,7 +30,7 @@ typecheck: ## run mypy + tsc
 eval: ## run context/reco evals (lands with MOD-21 / Epic E16)
 	@echo "no evals yet (implemented in Epic E16 / MOD-21)"
 
-mcp-dev: ## run the loopback MCP gateway (lands with Epic E09)
+mcp-dev: ## run the loopback MCP gateway (random port; see docs/mcp.md)
 	uv run kantaq mcp dev
 
 clean: ## remove build artifacts and caches

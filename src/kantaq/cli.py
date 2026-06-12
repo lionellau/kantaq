@@ -298,8 +298,38 @@ def cmd_token(args: argparse.Namespace) -> int:
 
 
 def cmd_mcp(args: argparse.Namespace) -> int:
-    # The loopback MCP gateway lands in Epic E09 / MOD-08.
-    print(f"kantaq mcp {args.mcp_command}: not implemented yet (Epic E09 / MOD-08)")
+    """Run the loopback MCP gateway (E09 / MOD-08).
+
+    Binds 127.0.0.1 on a random port by default (`LOCAL_MCP_PORT=auto`),
+    publishes the bound URL on stdout and in a 0600 discovery file beside the
+    database (`mcp.json`, no secrets), and serves the v0.0.5 tool catalog.
+    Agents authenticate with a member bearer token (`kantaq token show`).
+    """
+    from kantaq_db.session import get_engine
+    from kantaq_mcp.gateway import Gateway
+    from kantaq_mcp.server import GatewayBindError, serve_gateway
+    from kantaq_runtime.config import get_settings
+
+    settings = get_settings()
+
+    schema_rc = _guard_schema()
+    if schema_rc != 0:
+        return schema_rc
+    _bootstrap_identity(settings)
+
+    host = args.host or settings.local_mcp_host
+    if args.port is not None:
+        port = args.port
+    else:
+        port = 0 if settings.local_mcp_port == "auto" else int(settings.local_mcp_port)
+
+    engine = get_engine(_db_url())
+    discovery = Path(settings.local_db_path).parent / "mcp.json"
+    try:
+        serve_gateway(Gateway(engine), host=host, port=port, discovery_path=discovery)
+    except GatewayBindError as exc:
+        print(f"kantaq mcp dev: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -514,6 +544,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     mcp = sub.add_parser("mcp", help="MCP gateway (E09)")
     mcp.add_argument("mcp_command", choices=["dev"])
+    mcp.add_argument(
+        "--host", default=None, help="override bind host (loopback only; default: LOCAL_MCP_HOST)"
+    )
+    mcp.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="override bind port (default: LOCAL_MCP_PORT, auto = random)",
+    )
     mcp.set_defaults(func=cmd_mcp)
 
     sync = sub.add_parser("sync", help="online sync with the team backend (E24)")
