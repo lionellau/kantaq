@@ -55,6 +55,35 @@ def ensure_local_identity(engine: Engine, keychain: Keychain) -> str | None:
     return minted.plaintext
 
 
+def ensure_device_identity(engine: Engine, keychain: Keychain) -> str:
+    """Boot-time device keypair + registration (E06-T4, FR-E06-3, D-01).
+
+    Idempotent: the seed lives in the keychain, the verify key in the
+    ``devices`` row. Registration is local in v0.1; it reaches the backend
+    when Sprint 4 wires the verified sync path (E24-T5). Returns the device
+    row id; the private key never leaves the keychain.
+    """
+    from sqlmodel import Session, col, select
+
+    from kantaq_core.identity import ensure_device
+    from kantaq_db.models import Member
+    from kantaq_sync_engine import EventLogSink
+
+    with Session(engine) as session:
+        owner = session.exec(
+            select(Member).where(Member.status == "active").order_by(col(Member.id))
+        ).first()
+        owner_id = owner.id if owner is not None else None
+        device = ensure_device(
+            session,
+            keychain,
+            member_id=owner_id,
+            sink=EventLogSink(session, owner_id) if owner_id is not None else None,
+        )
+        session.commit()
+        return device.id
+
+
 def _allowed_origins(settings: Settings) -> frozenset[str]:
     return frozenset(
         {

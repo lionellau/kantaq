@@ -662,6 +662,7 @@ source = { editable = "packages/core" }
 dependencies = [
     { name = "cryptography" },
     { name = "kantaq-db" },
+    { name = "kantaq-protocol" },
     { name = "sqlmodel" },
 ]
 
@@ -669,6 +670,7 @@ dependencies = [
 requires-dist = [
     { name = "cryptography", specifier = ">=45.0" },
     { name = "kantaq-db", editable = "packages/db" },
+    { name = "kantaq-protocol", editable = "packages/protocol" },
     { name = "sqlmodel", specifier = ">=0.0.22" },
 ]
 

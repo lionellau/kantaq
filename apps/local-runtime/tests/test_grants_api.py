@@ -280,3 +280,15 @@ def test_no_response_or_schema_ever_carries_the_device_seed(
 
         dump = json.dumps([row.model_dump(mode="json") for row in session.exec(select(Device))])
     assert seed not in dump
+
+
+def test_listing_another_members_grants_needs_tokens_rotate(
+    client: TestClient, owner: tuple[str, str], member: tuple[str, str]
+) -> None:
+    """E27 review: no cross-member grant enumeration for plain members."""
+    owner_id, owner_token = owner
+    _, member_token = member
+    denied = client.get(f"/v1/grants?member={owner_id}", headers=_bearer(member_token))
+    assert denied.status_code == 403
+    allowed = client.get(f"/v1/grants?member={member[0]}", headers=_bearer(owner_token))
+    assert allowed.status_code == 200

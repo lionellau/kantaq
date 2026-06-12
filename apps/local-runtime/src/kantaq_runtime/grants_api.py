@@ -128,6 +128,9 @@ def list_grants(
     actor: AnyActor, engine: EngineDep, request: Request, member: str | None = None
 ) -> list[GrantOut]:
     subject = member or actor.member_id
+    # Same boundary as issue/revoke (E27 review): grants reveal a member's
+    # resources and verbs — no cross-member enumeration without tokens.rotate.
+    _require_self_or_credential_admin(actor, subject)
     with Session(engine) as session:
         service = _service(session, request)
         return [GrantOut.from_row(row, service=service) for row in service.list_for(subject)]

@@ -179,6 +179,8 @@ alter table audit_events    enable row level security;
 alter table agent_proposals enable row level security;
 alter table memory_entries  enable row level security;
 alter table memory_links    enable row level security;
+alter table devices         enable row level security;
+alter table capability_grants enable row level security;
 
 grant select, insert, update         on workspaces      to authenticated;
 grant select, insert, update, delete on projects        to authenticated;
@@ -190,6 +192,13 @@ grant select, insert                 on audit_events    to authenticated;
 grant select, insert, update         on agent_proposals to authenticated;
 grant select, insert, update, delete on memory_entries  to authenticated;
 grant select, insert, update, delete on memory_links    to authenticated;
+-- Trust-root and grant tables are READ-ONLY for clients (E27 adversarial
+-- review): a client that could insert/update devices could register itself
+-- as a verification root, and one that could update capability_grants could
+-- clear revoked_at. Writes arrive only through the verified ingestion path
+-- (service_role; signature+grant checks land with E24-T5, Sprint 4).
+grant select on devices           to authenticated;
+grant select on capability_grants to authenticated;
 
 grant all on all tables in schema public to service_role;
 
@@ -489,3 +498,33 @@ drop policy if exists memory_links_delete on memory_links;
 create policy memory_links_delete on memory_links
   for delete to authenticated
   using (created_by in (select kantaq.member_ids()));
+
+-- ---------------------------------------------------------------------------
+-- devices (E06 v0.1) — a runtime's Ed25519 verify key. Workspace members may
+-- read every device (the roots grant verification resolves against); clients
+-- can never write a trust root directly. Never deleted (revoked_at flips
+-- instead): a vanished root would orphan signatures.
+-- ---------------------------------------------------------------------------
+
+drop policy if exists devices_select on devices;
+create policy devices_select on devices
+  for select to authenticated
+  using (member_id is null or kantaq.actor_in_my_workspaces(member_id));
+
+-- No insert/update policies for authenticated: device registration goes
+-- through the verified service-role path only (see the grant block above).
+
+-- ---------------------------------------------------------------------------
+-- capability_grants (E06 v0.1) — signed permission slips (authoritative_tx;
+-- the backend verifies signature + grant before accepting events in Sprint 4,
+-- E24-T5). Members read grants in their workspaces; clients can never write
+-- one directly. Never deleted: revoked rows stay for audit, like tokens.
+-- ---------------------------------------------------------------------------
+
+drop policy if exists capability_grants_select on capability_grants;
+create policy capability_grants_select on capability_grants
+  for select to authenticated
+  using (kantaq.actor_in_my_workspaces(subject));
+
+-- No insert/update policies for authenticated: grants are authoritative_tx
+-- and reach the backend only through the verified path (E24-T5, Sprint 4).
