@@ -22,6 +22,22 @@ What the maintainer applies to the team's Supabase project, in order:
    The **service-role key stays in the dashboard** — no kantaq client ever reads
    it, and the policies are written assuming it never leaves the backend (NFR-E24-1).
 
+## Schema updates for existing projects
+
+Projects created **before E13 memory sync** (sprint-3) carry the original
+6-collection allowlist on `sync_events` and will refuse memory events
+(breaking the whole push batch). Run once in the SQL Editor:
+
+```sql
+ALTER TABLE sync_events DROP CONSTRAINT ck_sync_events_collection;
+ALTER TABLE sync_events ADD CONSTRAINT ck_sync_events_collection CHECK (collection IN
+  ('workspaces', 'projects', 'tickets', 'comments', 'members', 'agent_proposals',
+   'memory_entries', 'memory_links'));
+```
+
+(New projects just apply the current `0002_sync_events.sql`, which already
+includes both.)
+
 ## How this is tested
 
 CI applies these exact files to a disposable Postgres 16 with a faithful stub

@@ -46,8 +46,17 @@ CREATE TABLE sync_events (
 	-- "Syncable collections"): tokens never sync (authority local, secret
 	-- material) and audit_events are each replica's own local trail — even a
 	-- tampered client cannot push either into the shared log.
+	-- memory_entries/memory_links joined with E13 (team-visibility rows only;
+	-- local rows never produce events at all — the MOD-19 emit seam).
+	-- devices and capability_grants are DELIBERATELY absent until the backend
+	-- verifies signatures + grants before accepting events (E24-T5, Sprint 4):
+	-- an unverified client-pushed device event must never become a teammate's
+	-- verification root. Keep this list, the local applier's SYNCABLE_MODELS,
+	-- and COLLECTION_META in lock-step — tests/test_sync_allowlists.py pins
+	-- all three against each other.
 	CONSTRAINT ck_sync_events_collection CHECK (collection IN
-		('workspaces', 'projects', 'tickets', 'comments', 'members', 'agent_proposals'))
+		('workspaces', 'projects', 'tickets', 'comments', 'members', 'agent_proposals',
+		 'memory_entries', 'memory_links'))
 );
 
 CREATE INDEX ix_sync_events_collection ON sync_events (collection, revision);
