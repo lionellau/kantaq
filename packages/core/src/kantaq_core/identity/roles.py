@@ -48,6 +48,11 @@ class Action(StrEnum):
     # memory policy (MOD-21) layers on top of this coarse check.
     memory_read = "memory.read"
     memory_write = "memory.write"
+    # The telemetry surface (E28, MOD-25): every human may inspect what the
+    # machine collects (the privacy promise is transparency); only admins flip
+    # the opt-in. Agents get neither unless a token explicitly scopes it.
+    telemetry_read = "telemetry.read"
+    telemetry_write = "telemetry.write"
 
 
 # Human roles → allowed actions. Owner is full admin; Maintainer manages
@@ -65,6 +70,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Action]] = {
             Action.tickets_write,
             Action.memory_read,
             Action.memory_write,
+            Action.telemetry_read,
+            Action.telemetry_write,
         }
     ),
     Role.member: frozenset(
@@ -74,9 +81,17 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Action]] = {
             Action.tickets_write,
             Action.memory_read,
             Action.memory_write,
+            Action.telemetry_read,
         }
     ),
-    Role.viewer: frozenset({Action.members_read, Action.tickets_read, Action.memory_read}),
+    Role.viewer: frozenset(
+        {
+            Action.members_read,
+            Action.tickets_read,
+            Action.memory_read,
+            Action.telemetry_read,
+        }
+    ),
 }
 
 
