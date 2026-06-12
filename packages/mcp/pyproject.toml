@@ -4,7 +4,20 @@ version = "0.0.5"
 description = "kantaq MCP: gateway checks, sessions, tools (MOD-08, MOD-09)"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
-dependencies = []
+dependencies = [
+    "mcp>=1.16",
+    "kantaq-core",
+    "kantaq-db",
+    "kantaq-sync-engine",
+    "sqlmodel>=0.0.22",
+    "starlette>=0.40.0",
+    "uvicorn>=0.30.0",
+]
+
+[tool.uv.sources]
+kantaq-core = { workspace = true }
+kantaq-db = { workspace = true }
+kantaq-sync-engine = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

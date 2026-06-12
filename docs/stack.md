@@ -138,6 +138,13 @@ was not needed.
 |---|---|---|---|
 | Append-only audit trail | **built from scratch** (`kantaq_core.audit`, on SQLModel + SQLAlchemy events) | Apache-2.0 (ours) | Candidates fail the bar: **SQLAlchemy-Continuum** (~1.7k stars) and **sqlalchemy-history** are versioning add-ons below 5k; **django-auditlog** (~3.5k stars) is Django-only; **pgaudit / postgresql-audit** are Postgres-trigger-based, but kantaq needs SQLite parity and NFR-E07-1 demands *app-layer* enforcement. The build is small: one `write()` path into the existing `audit_events` collection (MOD-02) plus SQLAlchemy's built-in event hooks to refuse mutation at three depths: mapper `before_update`/`before_delete` (unit of work), session `do_orm_execute` (bulk ORM statements), and an engine-level `before_execute` backstop (legacy bulk APIs, table-targeted and bare-connection statements). Hardened per the SEC second review. Zero new dependencies. |
 
+### E09–E10 / MOD-08–09 MCP gateway & tools
+
+| Need | Chosen | License | Notes |
+|---|---|---|---|
+| MCP server + client | **modelcontextprotocol/python-sdk** (`mcp`) | MIT | Golden-rule run 2026-06 (GitHub API): the official SDK, **23.3k★**, pushed within 24 h, Anthropic-backed MCP org, no unpatched advisory. We use the **low-level `Server`** (the gateway needs per-session tool catalogs, custom checks, and audit interception — not a decorator framework) over **streamable HTTP** with the SDK's own `TransportSecuritySettings` (DNS-rebinding/Host validation) — the standard applied properly, not re-implemented. Beat **PrefectHQ/fastmcp 2.x** (25.6k★, Apache-2.0 — clears the bar but is a remote-deployment framework: auth providers, proxying, server composition; far more surface than a loopback security gateway wants, and it wraps these same protocol types) and **tadata-org/fastapi_mcp** (11.9k★, MIT — auto-exposes FastAPI routes as tools, the wrong shape for a capability-scoped gateway; last push 2025-11, fails the ~3-month maintenance bar). Also mandated by ADR-0001 ("official Python MCP SDK"). The harness's FakeMCPClient drives the **same SDK's client** over in-process ASGI, so the fake honors the real contract by construction. |
+| Untrusted-content tagging | **built from scratch** (`kantaq_mcp.security`, stdlib `re`, ~30 lines) | Apache-2.0 (ours) | PRD §15.1 content fencing with provenance + marker-escape neutralization. No OSS category exists for this contract (prompt-injection "guard" libraries are model-side classifiers, below the bar and out of scope — the product does not run models). The injection corpus in MOD-30 pins it in CI. |
+
 ## Consequences
 
 - Two toolchains in CI (Python + web). Keep total CI **under 10 minutes**

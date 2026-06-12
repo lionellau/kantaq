@@ -4,8 +4,8 @@ Run kantaq on your own machine in about 10 minutes — solo with zero backend, o
 as a team that syncs through one shared Supabase project.
 
 **The local-first model in one paragraph.** Every person runs their own kantaq:
-a single local process bound to `127.0.0.1` that serves the web UI, the API,
-and (soon) the loopback MCP gateway your agent connects to. There is no shared
+a single local process bound to `127.0.0.1` that serves the web UI and the
+API, plus the loopback MCP gateway your agent connects to. There is no shared
 application instance and nobody logs into anybody else's machine. In team mode
 the only shared thing is a Supabase project that validates and stores committed
 events; each member's local copy syncs against it.
@@ -34,6 +34,20 @@ every API call needs that token, *even from localhost*:
 ```bash
 kantaq token show     # print your bearer token
 ```
+
+### Connect your agent (MCP)
+
+```bash
+make mcp-dev          # or: kantaq mcp dev
+```
+
+The gateway binds `127.0.0.1` on a random port, prints its URL, and publishes
+it to an `mcp.json` discovery file beside the local database. Point your
+agent's HTTP MCP config at that URL with `Authorization: Bearer <token>`
+(`kantaq token show`, or a scoped Agent member token). Two tools ship in
+v0.0.5 — `ticket_get` and `agent_action_propose` (propose-first: an agent
+never changes a ticket; you approve from the Inbox). Full contract:
+[docs/mcp.md](docs/mcp.md).
 
 ```bash
 curl -H "Authorization: Bearer $(kantaq token show)" \

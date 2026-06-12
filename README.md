@@ -33,7 +33,7 @@ A fresh clone reaches green (`setup → migrate → test`) in **under 10 minutes
 kantaq/
   pyproject.toml          uv workspace + shared tool config + `kantaq` CLI
   src/kantaq/             umbrella package: version + the `kantaq` CLI
-  apps/local-runtime/     FastAPI runtime: REST API + (later) MCP route + serves the UI (MOD-14)
+  apps/local-runtime/     FastAPI runtime: REST API + serves the UI (MOD-14)
   packages/
     protocol/             entities, canonical codec, Ed25519, grant verify (MOD-17)
     sync_engine/          event log, snapshots, cursors, push/pull (MOD-04, MOD-26)
