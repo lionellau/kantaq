@@ -27,6 +27,28 @@ CREATE INDEX ix_audit_events_actor_id ON audit_events (actor_id);
 
 CREATE INDEX ix_audit_events_object_ref ON audit_events (object_ref);
 
+CREATE TABLE memory_entries (
+	id VARCHAR(26) NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	actor_seq INTEGER NOT NULL,
+	visibility VARCHAR(16) NOT NULL,
+	hosting_mode VARCHAR(16) NOT NULL,
+	retention_policy VARCHAR(16) NOT NULL,
+	title VARCHAR NOT NULL,
+	body VARCHAR NOT NULL,
+	type VARCHAR(16) NOT NULL,
+	source VARCHAR(16) NOT NULL,
+	space VARCHAR(16) NOT NULL,
+	linked_entities JSON NOT NULL,
+	provenance JSON NOT NULL,
+	confidence VARCHAR(8) NOT NULL,
+	review_status VARCHAR(16) NOT NULL,
+	expires_at TIMESTAMP WITHOUT TIME ZONE,
+	created_by VARCHAR,
+	PRIMARY KEY (id)
+);
+
 CREATE TABLE workspaces (
 	id VARCHAR(26) NOT NULL,
 	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
@@ -162,3 +184,25 @@ CREATE TABLE comments (
 );
 
 CREATE INDEX ix_comments_ticket_id ON comments (ticket_id);
+
+CREATE TABLE memory_links (
+	id VARCHAR(26) NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	actor_seq INTEGER NOT NULL,
+	visibility VARCHAR(16) NOT NULL,
+	hosting_mode VARCHAR(16) NOT NULL,
+	retention_policy VARCHAR(16) NOT NULL,
+	ticket_id VARCHAR NOT NULL,
+	memory_id VARCHAR NOT NULL,
+	reason VARCHAR NOT NULL,
+	created_by VARCHAR,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_memory_link_pair UNIQUE (ticket_id, memory_id),
+	FOREIGN KEY(ticket_id) REFERENCES tickets (id),
+	FOREIGN KEY(memory_id) REFERENCES memory_entries (id)
+);
+
+CREATE INDEX ix_memory_links_memory_id ON memory_links (memory_id);
+
+CREATE INDEX ix_memory_links_ticket_id ON memory_links (ticket_id);

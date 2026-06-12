@@ -18,6 +18,8 @@ from kantaq_test_harness.models import (
     Comment,
     Event,
     Member,
+    MemoryEntry,
+    MemoryLink,
     Project,
     Ticket,
     Token,
@@ -80,6 +82,17 @@ def build_audit_event(rng: SeededRandom | None = None, **overrides: Any) -> Audi
 def build_agent_proposal(rng: SeededRandom | None = None, **overrides: Any) -> AgentProposal:
     r = _rng(rng)
     base = AgentProposal(id=r.ident("prop"), ticket_id=r.ident("tkt"), proposer_id=r.ident("agent"))
+    return replace(base, **overrides)
+
+
+def build_memory_entry(rng: SeededRandom | None = None, **overrides: Any) -> MemoryEntry:
+    base = MemoryEntry(id=_rng(rng).ident("mem"), title="A memory entry")
+    return replace(base, **overrides)
+
+
+def build_memory_link(rng: SeededRandom | None = None, **overrides: Any) -> MemoryLink:
+    r = _rng(rng)
+    base = MemoryLink(id=r.ident("mlk"), ticket_id=r.ident("tkt"), memory_id=r.ident("mem"))
     return replace(base, **overrides)
 
 

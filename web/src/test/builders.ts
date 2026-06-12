@@ -8,7 +8,10 @@ import type {
   Activity,
   AgentSnippet,
   Comment,
+  LinkedMemory,
   Member,
+  MemoryEntry,
+  MemoryLink,
   Project,
   Proposal,
   Ticket,
@@ -101,6 +104,49 @@ export function buildMember(overrides: Partial<Member> = {}): Member {
     role: "Owner",
     status: "active",
     created_at: T0,
+    ...overrides,
+  };
+}
+
+export function buildMemoryEntry(overrides: Partial<MemoryEntry> = {}): MemoryEntry {
+  return {
+    id: "mem-1",
+    title: "Sync design decision",
+    body: "We fold events in commit order.",
+    type: "decision",
+    source: "manual",
+    space: "codebase",
+    linked_entities: [],
+    provenance: { origin: "manual", actor_id: "member-1", captured_at: T0 },
+    confidence: "high",
+    review_status: "draft",
+    visibility: "team",
+    domain_visibility: "personal_synced",
+    expires_at: null,
+    created_by: "member-1",
+    created_at: T0,
+    updated_at: T0,
+    ...overrides,
+  };
+}
+
+export function buildMemoryLink(overrides: Partial<MemoryLink> = {}): MemoryLink {
+  return {
+    id: "mlink-1",
+    ticket_id: "tick-1",
+    memory_id: "mem-1",
+    reason: "explains the design",
+    visibility: "team",
+    created_by: "member-1",
+    created_at: T0,
+    ...overrides,
+  };
+}
+
+export function buildLinkedMemory(overrides: Partial<LinkedMemory> = {}): LinkedMemory {
+  return {
+    link: buildMemoryLink(),
+    entry: buildMemoryEntry(),
     ...overrides,
   };
 }

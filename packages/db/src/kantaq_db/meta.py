@@ -52,8 +52,11 @@ class CollectionMeta:
 
 _DEFAULT_PRIVACY = PrivacyClass()
 
-# The 8 v0.0.5 collections (architecture §6). schema_version is infrastructure,
-# not a collection, so it is deliberately absent here.
+# The 8 v0.0.5 collections (architecture §6) plus the v0.1 memory collections
+# (E13 / MOD-19). schema_version is infrastructure, not a collection, so it is
+# deliberately absent here. The collection-level privacy class stays the
+# default (team/plain/standard) for memory too: rows tighten to
+# visibility="local" per entity (D-14 — tightened, never loosened).
 COLLECTION_META: dict[str, CollectionMeta] = {
     "workspaces": CollectionMeta("workspaces", "backend", "lww", _DEFAULT_PRIVACY),
     "projects": CollectionMeta("projects", "backend", "lww", _DEFAULT_PRIVACY),
@@ -63,9 +66,11 @@ COLLECTION_META: dict[str, CollectionMeta] = {
     "tokens": CollectionMeta("tokens", "local", "authoritative_tx", _DEFAULT_PRIVACY),
     "audit_events": CollectionMeta("audit_events", "backend", "append_only", _DEFAULT_PRIVACY),
     "agent_proposals": CollectionMeta("agent_proposals", "backend", "lww", _DEFAULT_PRIVACY),
+    "memory_entries": CollectionMeta("memory_entries", "backend", "lww", _DEFAULT_PRIVACY),
+    "memory_links": CollectionMeta("memory_links", "backend", "lww", _DEFAULT_PRIVACY),
 }
 
 
 def collection_names() -> tuple[str, ...]:
-    """The 8 syncable collection names, in declaration order."""
+    """The 10 syncable collection names, in declaration order."""
     return tuple(COLLECTION_META)

@@ -3,7 +3,15 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearToken, setToken } from "../lib/session";
-import { buildActivity, buildComment, buildProject, buildTicket } from "../test/builders";
+import {
+  buildActivity,
+  buildComment,
+  buildLinkedMemory,
+  buildMemoryEntry,
+  buildMemoryLink,
+  buildProject,
+  buildTicket,
+} from "../test/builders";
 import { MockApiServer } from "../test/mockApi";
 import { renderApp } from "../test/render";
 
@@ -14,7 +22,8 @@ beforeEach(() => {
   server = new MockApiServer()
     .on("GET /v1/projects/{project_id}", buildProject())
     .on("GET /v1/tickets/{ticket_id}/comments", [])
-    .on("GET /v1/tickets/{ticket_id}/activity", []);
+    .on("GET /v1/tickets/{ticket_id}/activity", [])
+    .on("GET /v1/tickets/{ticket_id}/memory", []);
 });
 
 afterEach(() => {
@@ -117,5 +126,38 @@ describe("the ticket page", () => {
       );
       expect(call).toBeDefined();
     });
+  });
+
+  it("shows linked memory with reason, provenance, and privacy badge (E13-T3)", async () => {
+    server.on("GET /v1/tickets/{ticket_id}", buildTicket());
+    server.on("GET /v1/tickets/{ticket_id}/memory", [
+      buildLinkedMemory(),
+      buildLinkedMemory({
+        link: buildMemoryLink({ id: "mlink-2", memory_id: "mem-2", reason: "private context" }),
+        entry: buildMemoryEntry({
+          id: "mem-2",
+          title: "My private note",
+          visibility: "local",
+          domain_visibility: "private_local",
+          provenance: { origin: "agent", actor_id: "member-1", captured_at: "2026-01-02T00:00:00" },
+        }),
+      }),
+    ]);
+    renderApp("/tickets/tick-1");
+
+    expect(await screen.findByText("Sync design decision")).toBeDefined();
+    expect(screen.getByText(/linked because: explains the design/)).toBeDefined();
+    expect(screen.getByText(/from manual by member-1/)).toBeDefined();
+    // The private entry is visible locally and clearly badged.
+    expect(screen.getByText("My private note")).toBeDefined();
+    expect(screen.getByLabelText("visibility: private to this machine")).toBeDefined();
+    expect(screen.getByText(/from agent by member-1/)).toBeDefined();
+  });
+
+  it("shows the empty linked-memory state", async () => {
+    server.on("GET /v1/tickets/{ticket_id}", buildTicket());
+    renderApp("/tickets/tick-1");
+    await screen.findByRole("heading", { level: 1, name: "Fix the flux capacitor" });
+    expect(screen.getByText(/Link context from the Memory page/)).toBeDefined();
   });
 });

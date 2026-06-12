@@ -20,6 +20,7 @@ from pathlib import Path
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, create_engine
 
+from kantaq_core.memory import MemoryService
 from kantaq_core.tracker import TrackerService
 from kantaq_db import Workspace
 from kantaq_sync_engine import EventLogSink, SyncEngine
@@ -42,6 +43,16 @@ class Replica:
     def service(self, session: Session) -> TrackerService:
         """A tracker service writing through this replica's event log."""
         return TrackerService(
+            session,
+            actor_id=self.actor_id,
+            source="app",
+            sink=EventLogSink(session, self.actor_id),
+            now=self.clock.now,
+        )
+
+    def memory_service(self, session: Session) -> MemoryService:
+        """A memory service writing through this replica's event log (E13)."""
+        return MemoryService(
             session,
             actor_id=self.actor_id,
             source="app",

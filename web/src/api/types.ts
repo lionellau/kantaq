@@ -10,8 +10,24 @@ export type Attachment = components["schemas"]["AttachmentOut"];
 export type Proposal = components["schemas"]["ProposalOut"];
 export type Member = components["schemas"]["MemberOut"];
 export type AgentSnippet = components["schemas"]["AgentSnippetOut"];
+export type MemoryEntry = components["schemas"]["MemoryOut"];
+export type MemoryLink = components["schemas"]["MemoryLinkOut"];
+export type LinkedMemory = components["schemas"]["LinkedMemoryOut"];
 
 // The domain vocabularies (mirrors kantaq_core.tracker.service; values are
 // validated server-side — these drive the filter/create selects only).
 export const TICKET_STATUSES = ["todo", "doing", "done"] as const;
 export const TICKET_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+
+// Mirrors kantaq_core.memory.service (E13 / MOD-19).
+export const MEMORY_TYPES = ["note", "decision", "constraint", "learning", "reference"] as const;
+export const MEMORY_SPACES = [
+  "workspace",
+  "project",
+  "ticket",
+  "codebase",
+  "decision",
+  "release",
+  "agent_run",
+] as const;
+export const MEMORY_CONFIDENCE = ["low", "medium", "high"] as const;

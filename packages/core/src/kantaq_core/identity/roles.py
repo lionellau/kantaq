@@ -43,6 +43,11 @@ class Action(StrEnum):
     # until approved — so agent tokens carry it in scopes without ever holding
     # a direct-write action (FR-E09-4 propose-first default).
     proposals_write = "proposals.write"
+    # The memory surface (E13 / MOD-19): two of the NFR-E06-3 surfaces. One
+    # read and one write action cover entries and links; the per-entry
+    # memory policy (MOD-21) layers on top of this coarse check.
+    memory_read = "memory.read"
+    memory_write = "memory.write"
 
 
 # Human roles → allowed actions. Owner is full admin; Maintainer manages
@@ -58,10 +63,20 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Action]] = {
             Action.tokens_rotate,
             Action.tickets_read,
             Action.tickets_write,
+            Action.memory_read,
+            Action.memory_write,
         }
     ),
-    Role.member: frozenset({Action.members_read, Action.tickets_read, Action.tickets_write}),
-    Role.viewer: frozenset({Action.members_read, Action.tickets_read}),
+    Role.member: frozenset(
+        {
+            Action.members_read,
+            Action.tickets_read,
+            Action.tickets_write,
+            Action.memory_read,
+            Action.memory_write,
+        }
+    ),
+    Role.viewer: frozenset({Action.members_read, Action.tickets_read, Action.memory_read}),
 }
 
 

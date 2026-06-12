@@ -10,7 +10,8 @@ import json
 
 from kantaq_runtime.openapi import read_artifact, render_spec
 
-# The tracker + members surface the typed client is generated for (MOD-03/06).
+# The tracker + members + memory surface the typed client is generated for
+# (MOD-03/06/19).
 EXPECTED_PATHS = (
     "/healthz",
     "/v1/members",
@@ -23,6 +24,11 @@ EXPECTED_PATHS = (
     "/v1/tickets/{ticket_id}/activity",
     "/v1/tickets/{ticket_id}/attachments",
     "/v1/tickets/{ticket_id}/attachments/{blob_id}",
+    "/v1/tickets/{ticket_id}/memory",
+    "/v1/memory",
+    "/v1/memory/{memory_id}",
+    "/v1/memory/{memory_id}/link",
+    "/v1/memory/{memory_id}/links",
 )
 
 
