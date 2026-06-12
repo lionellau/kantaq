@@ -79,6 +79,13 @@ class Ticket(CollectionBase, table=True):
     lifecycle_stage: str = Field(default="intake", max_length=32)
     parent_id: str | None = Field(default=None, foreign_key="tickets.id", index=True)
     created_by: str | None = Field(default=None)
+    # Attachment refs (FR-E12-4, D-13): a list of blob-ref dicts
+    # {blob_id, filename, media_type, size_bytes}; the bytes live in the blob
+    # store (local filesystem in solo mode), never in the row. Attachment
+    # content is untrusted (PRD §15) — stored, never opened or executed.
+    attachments: list[dict[str, Any]] = Field(
+        default_factory=list, sa_column=Column(JSON, nullable=False)
+    )
 
 
 class Comment(CollectionBase, table=True):

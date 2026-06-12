@@ -69,9 +69,11 @@ insert into projects (id, created_at, updated_at, actor_seq, visibility, hosting
 
 insert into tickets (id, created_at, updated_at, actor_seq, visibility, hosting_mode,
   retention_policy, project_id, title, description, status, priority, labels,
-  acceptance_criteria, lifecycle_stage) values
-  ('tkt_a', {ENVELOPE}, 'prj_a', 'A ticket', '', 'todo', 'medium', '[]'::json, '', 'intake'),
-  ('tkt_b', {ENVELOPE}, 'prj_b', 'B ticket', '', 'todo', 'medium', '[]'::json, '', 'intake');
+  acceptance_criteria, lifecycle_stage, attachments) values
+  ('tkt_a', {ENVELOPE}, 'prj_a', 'A ticket', '', 'todo', 'medium', '[]'::json, '',
+   'intake', '[]'::json),
+  ('tkt_b', {ENVELOPE}, 'prj_b', 'B ticket', '', 'todo', 'medium', '[]'::json, '',
+   'intake', '[]'::json);
 
 insert into comments (id, created_at, updated_at, actor_seq, visibility, hosting_mode,
   retention_policy, ticket_id, author_actor_id, body) values
@@ -149,9 +151,9 @@ def test_a_member_writes_in_their_own_workspace(backend: Engine) -> None:
     created = bob.attempt(
         "insert into tickets (id, created_at, updated_at, actor_seq, visibility,"
         " hosting_mode, retention_policy, project_id, title, description, status,"
-        " priority, labels, acceptance_criteria, lifecycle_stage) values"
+        " priority, labels, acceptance_criteria, lifecycle_stage, attachments) values"
         f" ('tkt_new', {ENVELOPE}, 'prj_a', 'mine', '', 'todo', 'medium', '[]'::json,"
-        " '', 'intake')"
+        " '', 'intake', '[]'::json)"
     )
     assert created.ok and created.rowcount == 1
     updated = bob.attempt("update tickets set title = 'renamed' where id = 'tkt_a'")
@@ -173,9 +175,9 @@ def test_tampered_client_cannot_write_another_workspace(backend: Engine) -> None
         "insert ticket into B": bob.attempt(
             "insert into tickets (id, created_at, updated_at, actor_seq, visibility,"
             " hosting_mode, retention_policy, project_id, title, description, status,"
-            " priority, labels, acceptance_criteria, lifecycle_stage) values"
+            " priority, labels, acceptance_criteria, lifecycle_stage, attachments) values"
             f" ('tkt_evil', {ENVELOPE}, 'prj_b', 'evil', '', 'todo', 'medium', '[]'::json,"
-            " '', 'intake')"
+            " '', 'intake', '[]'::json)"
         ),
         "update B ticket": bob.attempt("update tickets set title = 'pwned' where id = 'tkt_b'"),
         "delete B ticket": bob.attempt("delete from tickets where id = 'tkt_b'"),

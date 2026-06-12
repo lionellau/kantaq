@@ -99,13 +99,13 @@ def test_guard_refuses_mismatch(tmp_path: Path) -> None:
 
 
 def test_downgrade_with_data_present(tmp_path: Path) -> None:
-    """0002 must roll back on a database that holds referencing rows.
+    """Every revision must roll back on a database that holds referencing rows.
 
-    Regression: batch-mode ALTER rebuilds the table, and dropping the old
-    ``members`` while ``tokens`` rows reference it trips SQLite's FK
+    Regression (0002): batch-mode ALTER rebuilds the table, and dropping the
+    old ``members`` while ``tokens`` rows reference it trips SQLite's FK
     enforcement. The empty-DB roundtrip cannot catch that, so this one
     migrates, writes a workspace → member → token chain, then walks
-    0002 → 0001 → 0002 and expects the rows to survive.
+    head → 0001 → head and expects the rows to survive.
     """
     from sqlmodel import Session
 
@@ -126,7 +126,7 @@ def test_downgrade_with_data_present(tmp_path: Path) -> None:
         session.commit()
         member_id = member.id
 
-    migrations.downgrade(url, "-1")
+    migrations.downgrade(url, "0001")
     assert schema_version.verify(engine, expected=1).ok
 
     migrations.upgrade(url)

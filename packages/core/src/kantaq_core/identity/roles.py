@@ -32,10 +32,17 @@ class Action(StrEnum):
     members_invite = "members.invite"
     members_revoke = "members.revoke"
     tokens_rotate = "tokens.rotate"
+    # The tracker surface (E12 / MOD-03): one read and one write action cover
+    # projects, tickets, comments, and attachments. "Ticket writes" is one of
+    # the NFR-E06-3 surfaces; finer per-collection actions arrive only if a
+    # module needs them.
+    tickets_read = "tickets.read"
+    tickets_write = "tickets.write"
 
 
 # Human roles → allowed actions. Owner is full admin; Maintainer manages
 # members and agent tokens; Member and Viewer can see the member list.
+# Members do the team's tracker work (read + write); Viewers read it.
 ROLE_PERMISSIONS: dict[Role, frozenset[Action]] = {
     Role.owner: frozenset(Action),
     Role.maintainer: frozenset(
@@ -44,10 +51,12 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Action]] = {
             Action.members_invite,
             Action.members_revoke,
             Action.tokens_rotate,
+            Action.tickets_read,
+            Action.tickets_write,
         }
     ),
-    Role.member: frozenset({Action.members_read}),
-    Role.viewer: frozenset({Action.members_read}),
+    Role.member: frozenset({Action.members_read, Action.tickets_read, Action.tickets_write}),
+    Role.viewer: frozenset({Action.members_read, Action.tickets_read}),
 }
 
 

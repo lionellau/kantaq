@@ -100,6 +100,7 @@ CREATE TABLE tickets (
 	lifecycle_stage VARCHAR(32) NOT NULL,
 	parent_id VARCHAR,
 	created_by VARCHAR,
+	attachments JSON NOT NULL,
 	PRIMARY KEY (id),
 	FOREIGN KEY(project_id) REFERENCES projects (id),
 	FOREIGN KEY(parent_id) REFERENCES tickets (id)

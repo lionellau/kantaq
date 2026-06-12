@@ -13,6 +13,9 @@ dependencies = [
     "kantaq-core",
     "kantaq-db",
     "sqlmodel>=0.0.22",
+    # Multipart parsing for attachment uploads (MOD-03 / E12-T2); the library
+    # FastAPI requires for UploadFile (Starlette ecosystem, MIT).
+    "python-multipart>=0.0.18",
 ]
 
 [build-system]
