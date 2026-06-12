@@ -9,11 +9,14 @@ dependencies = [
     "pyjwt>=2.9.0",
     # Schema generation reads the one SQLModel metadata (D-07).
     "kantaq-db",
+    # The sync endpoints implement the MOD-04 backend port (E24-T4).
+    "kantaq-sync-engine",
     "sqlmodel>=0.0.22",
 ]
 
 [tool.uv.sources]
 kantaq-db = { workspace = true }
+kantaq-sync-engine = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
