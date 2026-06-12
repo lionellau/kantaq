@@ -80,6 +80,12 @@ etc.) and record the choice here.
 | Doc link checking | **built from scratch** (~50-line pytest gate, stdlib `re`/`pathlib`) | Apache-2.0 (ours) | The Docs profile needs *internal* links checked hermetically in CI. **lychee** (~12k stars, MIT/Apache) clears the bar but is a Rust CLI aimed at live-URL checking — adds a toolchain + network flakiness for the part we don't want. **linkchecker** is GPL-3.0 (license bar). **markdown-link-check** (~?<5k stars, npm) is below the bar and network-first. A repo-relative resolver inside pytest is deterministic, offline, and rides the existing gate. Revisit lychee at v0.1 launch for external-URL spot checks. |
 | Quickstart drift | **built from scratch** (pytest introspects the Makefile + `argparse` parser) | Apache-2.0 (ours) | The fresh-clone CI job *executes* the core path; this gate keeps every documented `make`/`kantaq` command real. No third-party category exists for this. |
 
+**E29-T2a (full-loop finalize, 2026-06-12):** no new capability category — the
+task finalizes prose for the now-shipped hero loop (sync + MCP + UI). Golden-rule
+re-affirmed: the existing stdlib doc gates (link resolution, command drift) stay
+the right tools; nothing external clears the bar for *hermetic internal* checks.
+lychee for external-URL spot checks remains the v0.1-launch revisit.
+
 ### E24 / MOD-05 Supabase backend
 
 | Need | Chosen | License | Notes |
