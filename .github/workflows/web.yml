@@ -38,6 +38,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # D-08: the typed client is generated, never hand-edited. Regenerate from
+      # the checked-in OpenAPI document and fail on any drift. (The document
+      # itself is gated against the FastAPI app by test_openapi_drift in py CI.)
+      - name: Typed client drift gate (D-08)
+        run: |
+          pnpm gen:api
+          git diff --exit-code -- src/api/schema.d.ts
+
       - name: Lint (Biome)
         run: pnpm lint
 

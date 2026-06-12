@@ -67,7 +67,10 @@ def create_app(
 
     dist = _web_dist()
 
-    @app.get("/{full_path:path}")
+    # include_in_schema=False: the catch-all serves static files, not API —
+    # it must not leak into the OpenAPI document the TS client is generated
+    # from (E18-T2, D-08).
+    @app.get("/{full_path:path}", include_in_schema=False)
     def spa(full_path: str) -> Response:
         # Serve a built asset if it exists; otherwise fall back to index.html so
         # client-side routes (/memory, /agents, ...) deep-link instead of 404ing.
