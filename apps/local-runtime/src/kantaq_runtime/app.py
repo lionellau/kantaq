@@ -22,6 +22,7 @@ from kantaq_core.identity import TokenVerifier
 from kantaq_runtime import __version__
 from kantaq_runtime.config import Settings, get_settings
 from kantaq_runtime.members_api import router as members_router
+from kantaq_runtime.tracker_api import router as tracker_router
 
 _PLACEHOLDER_HTML = """<!doctype html>
 <html lang="en">
@@ -62,6 +63,7 @@ def create_app(
     # API routes register before the SPA catch-all so /v1/* never falls
     # through to index.html. Auth lives on the routes (kantaq_runtime.auth).
     app.include_router(members_router)
+    app.include_router(tracker_router)
 
     dist = _web_dist()
 
