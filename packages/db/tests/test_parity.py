@@ -30,7 +30,6 @@ def test_both_dialects_render_every_table() -> None:
     # infrastructure: schema_version (E02), event_log + sync_cursors (E04),
     # telemetry_events + local_settings (E28).
     assert len(sqlite_ddl) == 15
-    assert len(sqlite_ddl) == 13
     assert all(ddl.strip().upper().startswith("CREATE TABLE") for ddl in postgres_ddl.values())
 
 

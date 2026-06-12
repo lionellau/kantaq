@@ -59,7 +59,11 @@ export default function Telemetry() {
       return;
     }
     setBusy(true);
-    const { data, error: apiError, response } = await api.PUT("/v1/telemetry", {
+    const {
+      data,
+      error: apiError,
+      response,
+    } = await api.PUT("/v1/telemetry", {
       body: { enabled: !view.enabled },
     });
     setBusy(false);
