@@ -40,6 +40,8 @@ if TYPE_CHECKING:
         HeroFlowTimer,
         HeroFlowTooSlow,
     )
+    from kantaq_test_harness.injection import InjectionFixture, load_injection_corpus
+    from kantaq_test_harness.mcp import FakeMCPClient
     from kantaq_test_harness.models import (
         AgentProposal,
         AuditEvent,
@@ -63,6 +65,11 @@ _LAZY: dict[str, str] = {
     "DEFAULT_BUDGET_SECONDS": "kantaq_test_harness.hero_flow:DEFAULT_BUDGET_SECONDS",
     "HeroFlowTimer": "kantaq_test_harness.hero_flow:HeroFlowTimer",
     "HeroFlowTooSlow": "kantaq_test_harness.hero_flow:HeroFlowTooSlow",
+    # FakeMCPClient pulls the MCP SDK + httpx; the corpus loader is stdlib but
+    # rides the same lazy path so the plugin import stays lean (coverage rule).
+    "FakeMCPClient": "kantaq_test_harness.mcp:FakeMCPClient",
+    "InjectionFixture": "kantaq_test_harness.injection:InjectionFixture",
+    "load_injection_corpus": "kantaq_test_harness.injection:load_injection_corpus",
     "AgentProposal": "kantaq_test_harness.models:AgentProposal",
     "AuditEvent": "kantaq_test_harness.models:AuditEvent",
     "Comment": "kantaq_test_harness.models:Comment",
@@ -112,8 +119,10 @@ __all__ = [
     "FakeBackend",
     "FakeClock",
     "FakeKeychain",
+    "FakeMCPClient",
     "HeroFlowTimer",
     "HeroFlowTooSlow",
+    "InjectionFixture",
     "Member",
     "PrivacyClass",
     "Project",
@@ -130,4 +139,5 @@ __all__ = [
     "build_ticket",
     "build_token",
     "build_workspace",
+    "load_injection_corpus",
 ]
