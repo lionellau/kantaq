@@ -15,7 +15,9 @@ from typing import Any
 from kantaq_test_harness.models import (
     AgentProposal,
     AuditEvent,
+    CapabilityGrantRow,
     Comment,
+    Device,
     Event,
     Member,
     MemoryEntry,
@@ -104,5 +106,28 @@ def build_event(rng: SeededRandom | None = None, **overrides: Any) -> Event:
         entity_id=r.ident("tkt"),
         actor_id=r.ident("mbr"),
         actor_seq=1,
+    )
+    return replace(base, **overrides)
+
+
+def build_device(rng: SeededRandom | None = None, **overrides: Any) -> Device:
+    """A registered device row (E06). The default key is a synthetic hex
+    verify key — pair with a real keypair when signatures must verify."""
+    r = _rng(rng)
+    base = Device(id=r.ident("dev"), public_key=r.token(64), label="test runtime")
+    return replace(base, **overrides)
+
+
+def build_grant_row(rng: SeededRandom | None = None, **overrides: Any) -> CapabilityGrantRow:
+    """An unsigned stored grant (E06); sign via kantaq_protocol when needed."""
+    r = _rng(rng)
+    base = CapabilityGrantRow(
+        id=r.ident("grt"),
+        subject=r.ident("mbr"),
+        issuer=r.ident("dev"),
+        resource=f"workspace/{r.ident('ws')}",
+        verbs=["tickets.read"],
+        issued_at=1_767_225_600,
+        expires_at=1_767_229_200,
     )
     return replace(base, **overrides)

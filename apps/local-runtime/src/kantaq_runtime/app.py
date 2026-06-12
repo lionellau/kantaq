@@ -21,6 +21,7 @@ from sqlalchemy.engine import Engine
 from kantaq_core.identity import TokenVerifier
 from kantaq_runtime import __version__
 from kantaq_runtime.config import Settings, get_settings
+from kantaq_runtime.grants_api import router as grants_router
 from kantaq_runtime.me_api import router as me_router
 from kantaq_runtime.members_api import router as members_router
 from kantaq_runtime.memory_api import router as memory_router
@@ -68,6 +69,7 @@ def create_app(
     # through to index.html. Auth lives on the routes (kantaq_runtime.auth).
     app.include_router(members_router)
     app.include_router(me_router)
+    app.include_router(grants_router)
     app.include_router(proposals_router)
     app.include_router(telemetry_router)
     app.include_router(tracker_router)

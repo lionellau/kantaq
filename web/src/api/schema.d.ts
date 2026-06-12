@@ -21,6 +21,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Grants */
+        get: operations["list_grants_v1_grants_get"];
+        put?: never;
+        /** Issue Grant */
+        post: operations["issue_grant_v1_grants_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/grants/{grant_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke Grant */
+        post: operations["revoke_grant_v1_grants__grant_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/agent-snippet": {
         parameters: {
             query?: never;
@@ -497,6 +532,42 @@ export interface components {
             id: string;
             /** Ticket Id */
             ticket_id: string;
+        };
+        /** GrantIn */
+        GrantIn: {
+            /** Member Id */
+            member_id?: string | null;
+            /** Resource */
+            resource: string;
+            /** Ttl Seconds */
+            ttl_seconds?: number | null;
+            /** Verbs */
+            verbs: string[];
+        };
+        /** GrantOut */
+        GrantOut: {
+            /** Expires At */
+            expires_at: number;
+            /** Id */
+            id: string;
+            /** Issued At */
+            issued_at: number;
+            /** Issuer */
+            issuer: string;
+            /** Reason */
+            reason: string;
+            /** Resource */
+            resource: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Sig */
+            sig: string | null;
+            /** Subject */
+            subject: string;
+            /** Valid */
+            valid: boolean;
+            /** Verbs */
+            verbs: string[];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -992,6 +1063,101 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    list_grants_v1_grants_get: {
+        parameters: {
+            query?: {
+                member?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrantOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    issue_grant_v1_grants_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrantIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrantOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_grant_v1_grants__grant_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrantOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

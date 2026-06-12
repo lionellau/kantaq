@@ -29,6 +29,8 @@ _ALL_TABLES = {
     "memory_links",
     "telemetry_events",
     "local_settings",
+    "devices",
+    "capability_grants",
 }
 
 

@@ -21,7 +21,9 @@ from kantaq_sync_engine.events import Event, Op
 __all__ = [
     "AgentProposal",
     "AuditEvent",
+    "CapabilityGrantRow",
     "Comment",
+    "Device",
     "Event",
     "Member",
     "MemoryEntry",
@@ -137,3 +139,33 @@ class MemoryLink:
     ticket_id: str
     memory_id: str
     reason: str = "context for this ticket"
+
+
+@dataclass
+class Device:
+    """Look-alike of the v0.1 device registration (E06 / MOD-06, D-01)."""
+
+    id: str
+    public_key: str
+    member_id: str | None = None
+    label: str = ""
+    revoked_at: datetime | None = None
+    privacy_class: PrivacyClass = field(default_factory=PrivacyClass)
+
+
+@dataclass
+class CapabilityGrantRow:
+    """Look-alike of the stored v0.1 capability grant (E06 / MOD-06)."""
+
+    id: str
+    subject: str
+    issuer: str
+    resource: str
+    verbs: list[str] = field(default_factory=list)
+    issued_at: int = 0
+    expires_at: int = 0
+    revokes: str | None = None
+    sig: str | None = None
+    token_id: str | None = None
+    revoked_at: datetime | None = None
+    privacy_class: PrivacyClass = field(default_factory=PrivacyClass)

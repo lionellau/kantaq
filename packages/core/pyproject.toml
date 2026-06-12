@@ -11,6 +11,8 @@ dependencies = [
     # Identity domain logic reads/writes the members/tokens collections (MOD-02).
     "sqlmodel>=0.0.22",
     "kantaq-db",
+    # Device keys + capability grants sign/verify via the protocol core (E06 v0.1).
+    "kantaq-protocol",
 ]
 
 [build-system]

@@ -121,6 +121,7 @@ class IdentityService:
         member.updated_at = self._now()
         self._session.add(member)
         self._revoke_tokens(member_id)
+        self._revoke_devices(member_id)
         self._session.commit()
         self._session.refresh(member)
         return member
@@ -162,6 +163,25 @@ class IdentityService:
                 token.revoked_at = self._now()
                 token.updated_at = self._now()
                 self._session.add(token)
+        # E06-T6: the credential a capability grant derived from is dying —
+        # its grants die in the same transaction (rotate and revoke both
+        # funnel through here). Deferred import: grants.py imports this
+        # module for the error types.
+        from kantaq_core.identity.grants import revoke_grants_for_member
+
+        revoke_grants_for_member(self._session, member_id, actor_id=member_id, now=self._now())
+
+    def _revoke_devices(self, member_id: str) -> None:
+        # E27 review: a revoked member's device must stop being a
+        # verification root, or their old key keeps validating grants.
+        from kantaq_db.models import Device
+
+        statement = select(Device).where(Device.member_id == member_id)
+        for device in self._session.exec(statement).all():
+            if device.revoked_at is None:
+                device.revoked_at = self._now()
+                device.updated_at = self._now()
+                self._session.add(device)
 
     def _active_scopes(self, member_id: str) -> list[str]:
         statement = (

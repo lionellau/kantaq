@@ -239,14 +239,20 @@ def _bootstrap_identity(settings: Settings) -> None:
     first boot creates the local Owner. Idempotent on every later boot.
     """
     from kantaq_db.session import get_engine
-    from kantaq_runtime.auth import ensure_local_identity, keychain_for
+    from kantaq_runtime.auth import ensure_device_identity, ensure_local_identity, keychain_for
 
-    minted = ensure_local_identity(get_engine(_db_url()), keychain_for(settings))
+    engine = get_engine(_db_url())
+    keychain = keychain_for(settings)
+    minted = ensure_local_identity(engine, keychain)
     if minted is not None:
         print(
             "first boot: minted the local Owner token (run `kantaq token show`)",
             file=sys.stderr,
         )
+    # E06-T4: every boot ensures the runtime's Ed25519 device identity — the
+    # seed in the keychain, the verify key registered (and synced) as a
+    # devices row. Idempotent; prints nothing on later boots.
+    ensure_device_identity(engine, keychain)
 
 
 def cmd_token(args: argparse.Namespace) -> int:

@@ -102,6 +102,25 @@ CREATE TABLE projects (
 
 CREATE INDEX ix_projects_workspace_id ON projects (workspace_id);
 
+CREATE TABLE devices (
+	id VARCHAR(26) NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	actor_seq INTEGER NOT NULL,
+	visibility VARCHAR(16) NOT NULL,
+	hosting_mode VARCHAR(16) NOT NULL,
+	retention_policy VARCHAR(16) NOT NULL,
+	public_key VARCHAR(64) NOT NULL,
+	member_id VARCHAR,
+	label VARCHAR NOT NULL,
+	revoked_at TIMESTAMP WITHOUT TIME ZONE,
+	PRIMARY KEY (id),
+	UNIQUE (public_key),
+	FOREIGN KEY(member_id) REFERENCES members (id)
+);
+
+CREATE INDEX ix_devices_member_id ON devices (member_id);
+
 CREATE TABLE tickets (
 	id VARCHAR(26) NOT NULL,
 	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
@@ -167,6 +186,36 @@ CREATE TABLE agent_proposals (
 );
 
 CREATE INDEX ix_agent_proposals_ticket_id ON agent_proposals (ticket_id);
+
+CREATE TABLE capability_grants (
+	id VARCHAR(26) NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	actor_seq INTEGER NOT NULL,
+	visibility VARCHAR(16) NOT NULL,
+	hosting_mode VARCHAR(16) NOT NULL,
+	retention_policy VARCHAR(16) NOT NULL,
+	subject VARCHAR NOT NULL,
+	issuer VARCHAR NOT NULL,
+	resource VARCHAR NOT NULL,
+	verbs JSON NOT NULL,
+	issued_at INTEGER NOT NULL,
+	expires_at INTEGER NOT NULL,
+	revokes VARCHAR,
+	sig VARCHAR(128),
+	token_id VARCHAR,
+	revoked_at TIMESTAMP WITHOUT TIME ZONE,
+	PRIMARY KEY (id),
+	FOREIGN KEY(subject) REFERENCES members (id),
+	FOREIGN KEY(issuer) REFERENCES devices (id),
+	FOREIGN KEY(token_id) REFERENCES tokens (id)
+);
+
+CREATE INDEX ix_capability_grants_issuer ON capability_grants (issuer);
+
+CREATE INDEX ix_capability_grants_subject ON capability_grants (subject);
+
+CREATE INDEX ix_capability_grants_token_id ON capability_grants (token_id);
 
 CREATE TABLE comments (
 	id VARCHAR(26) NOT NULL,
