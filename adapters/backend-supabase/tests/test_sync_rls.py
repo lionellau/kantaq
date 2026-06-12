@@ -115,9 +115,11 @@ def test_a_revoked_member_loses_the_log(sync_pg: Engine) -> None:
 
 
 def test_unsyncable_collections_are_refused_at_the_database(sync_pg: Engine) -> None:
-    """tokens/audit_events never sync (MOD-04) — pinned by a CHECK constraint
-    that binds even the service role."""
-    for seq, collection in enumerate(("tokens", "audit_events"), start=50):
+    """tokens/audit_events never sync (MOD-04), and devices/capability_grants
+    stay off the surface until E24-T5's verified ingestion (E27 review) —
+    pinned by a CHECK constraint that binds even the service role."""
+    excluded = ("tokens", "audit_events", "devices", "capability_grants")
+    for seq, collection in enumerate(excluded, start=50):
         smuggled = service(sync_pg).attempt(
             INSERT
             + _event_values(
@@ -126,6 +128,19 @@ def test_unsyncable_collections_are_refused_at_the_database(sync_pg: Engine) -> 
         )
         assert not smuggled.ok, f"{collection} events reached the shared log"
         assert "ck_sync_events_collection" in smuggled.error
+
+
+def test_memory_collections_are_accepted_at_the_database(sync_pg: Engine) -> None:
+    """The E13 regression, proven on real Postgres: team memory events pass
+    the constraint (the local emit seam already keeps local rows out)."""
+    for seq, collection in enumerate(("memory_entries", "memory_links"), start=60):
+        accepted = service(sync_pg).attempt(
+            INSERT
+            + _event_values(
+                f"evt_mem_{collection[7:15].ljust(16, '0')}", "mbr_alice", seq, "ws_a", collection
+            )
+        )
+        assert accepted.ok, f"{collection} event was refused: {accepted.error}"
 
 
 def test_duplicate_actor_seq_is_impossible(sync_pg: Engine) -> None:
