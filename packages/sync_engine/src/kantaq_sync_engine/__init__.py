@@ -21,7 +21,7 @@ from kantaq_sync_engine.engine import (
     PushResult,
     SyncEngine,
 )
-from kantaq_sync_engine.events import BackendPort, CommittedEvent, Event, Op
+from kantaq_sync_engine.events import BackendPort, CommittedEvent, Event, Op, fold_events
 from kantaq_sync_engine.log import (
     DuplicateEventError,
     EventLogSink,
@@ -55,6 +55,7 @@ __all__ = [
     "compose_snapshot",
     "entity_rows",
     "fold_collection",
+    "fold_events",
     "folded_fields",
     "has_event",
     "insert_event",

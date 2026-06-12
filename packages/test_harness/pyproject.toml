@@ -8,6 +8,10 @@ dependencies = [
     "pytest>=8.3.0",
     "hypothesis>=6.100.0",
     "sqlalchemy>=2.0.0",
+    # FakePostgREST (the Backend profile's Supabase data-API fake, E24-T4)
+    # answers httpx requests with real SQL; imported per-test, never on the
+    # pytest plugin path (the MOD-30 coverage rule).
+    "httpx>=0.27.0",
     # The two-replica simulator (MOD-04's harness profile) composes the real
     # tracker + event log on purpose; the leaf fakes stay ORM-free.
     "kantaq-db",

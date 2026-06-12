@@ -12,8 +12,10 @@ from collections.abc import Iterable
 from typing import Any
 
 # The canonical protocol types (MOD-04): FakeBackend satisfies the engine's
-# BackendPort nominally, not just structurally.
-from kantaq_sync_engine.events import CommittedEvent
+# BackendPort nominally, not just structurally — and folds with the engine's
+# own fold_events, so the contract the real adapters (MOD-05/28) implement is
+# pinned to one shape.
+from kantaq_sync_engine.events import CommittedEvent, fold_events
 from kantaq_test_harness.models import Event
 
 __all__ = ["CommittedEvent", "Event", "FakeBackend"]
@@ -54,20 +56,9 @@ class FakeBackend:
 
     def snapshot(self, collection: str) -> dict[str, dict[str, Any]]:
         """Fold the log into current entity state (LWW by commit order)."""
-        state: dict[str, dict[str, Any]] = {}
-        for entry in self._log:
-            event = entry.event
-            if event.collection != collection:
-                continue
-            if event.op == "tombstone":
-                state.pop(event.entity_id, None)
-                continue
-            current = state.setdefault(event.entity_id, {})
-            if event.op == "append":
-                current.setdefault("_appended", []).append(event.payload)
-            else:  # patch: last writer wins on scalar fields
-                current.update(event.payload)
-        return state
+        return fold_events(
+            entry.event for entry in self._log if entry.event.collection == collection
+        )
 
     def __len__(self) -> int:
         return len(self._log)

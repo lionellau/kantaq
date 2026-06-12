@@ -28,6 +28,8 @@ from typing import TYPE_CHECKING
 from kantaq import __version__
 
 if TYPE_CHECKING:
+    from kantaq_backend_supabase import SupabaseAuth
+    from kantaq_core.identity import Keychain
     from kantaq_runtime.config import Settings
 
 DEFAULT_HOST = "127.0.0.1"
@@ -301,6 +303,154 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     return 0
 
 
+# Keychain slots for the member's Supabase session (E24-T4). Sits beside the
+# runtime token in the same 0600 keychain; tokens never print or log.
+SUPABASE_EMAIL_KEY = "supabase-session-email"
+SUPABASE_ACCESS_KEY = "supabase-access-token"
+SUPABASE_REFRESH_KEY = "supabase-refresh-token"
+
+
+def cmd_sync(args: argparse.Namespace) -> int:
+    """Online sync against the configured Supabase backend (E24-T4, MOD-05).
+
+    ``login`` exchanges an emailed one-time code for a session (kept in the
+    keychain). ``once`` runs one push + pull cycle through the MOD-04 sync
+    engine. ``status`` reports local sync state without touching the network.
+    The acting member is resolved from the backend's members mirror by the
+    session's verified email — RLS scopes everything else.
+    """
+    from kantaq_backend_supabase import AuthError, SupabaseAuth, SyncBackendError
+    from kantaq_runtime.auth import keychain_for
+    from kantaq_runtime.config import HubMode, get_settings
+
+    settings = get_settings()
+    if args.sync_command == "status":
+        return _sync_status(settings)
+    if settings.hub_mode is not HubMode.supabase:
+        print(
+            f"kantaq sync {args.sync_command}: HUB_MODE={settings.hub_mode.value} has no "
+            "shared backend (set HUB_MODE=supabase; see docs/setup-supabase.md)",
+            file=sys.stderr,
+        )
+        return 1
+    if not settings.supabase_url or not settings.supabase_anon_key:
+        print("SUPABASE_URL and SUPABASE_ANON_KEY are required", file=sys.stderr)
+        return 1
+
+    url, anon_key = settings.supabase_url, settings.supabase_anon_key
+    keychain = keychain_for(settings)
+    auth = SupabaseAuth(url, anon_key)
+    try:
+        if args.sync_command == "login":
+            return _sync_login(auth, keychain, args.email)
+        return _sync_once(url, anon_key, auth, keychain)
+    except (AuthError, SyncBackendError) as exc:
+        print(f"kantaq sync {args.sync_command}: {exc}", file=sys.stderr)
+        return 1
+
+
+def _sync_login(auth: SupabaseAuth, keychain: Keychain, email: str) -> int:
+    auth.request_magic_link(email)
+    code = input(f"enter the code emailed to {email}: ").strip()
+    session = auth.verify(email, code)
+    keychain.set(SUPABASE_EMAIL_KEY, session.user.email)
+    keychain.set(SUPABASE_ACCESS_KEY, session.access_token)
+    keychain.set(SUPABASE_REFRESH_KEY, session.refresh_token)
+    print(f"signed in as {session.user.email}", file=sys.stderr)
+    return 0
+
+
+def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) -> int:
+    from kantaq_backend_supabase import SupabaseSyncBackend, lookup_active_members
+    from kantaq_db.session import get_engine
+    from kantaq_sync_engine import SyncEngine
+
+    email = keychain.get(SUPABASE_EMAIL_KEY)
+    refresh_token = keychain.get(SUPABASE_REFRESH_KEY)
+    if not email or not refresh_token:
+        print("no Supabase session; run `kantaq sync login --email you@team.dev`", file=sys.stderr)
+        return 1
+
+    # Rotate the session up front so the access token is fresh for the run,
+    # and keep a refresh hook for the (rare) mid-run expiry.
+    session = auth.refresh(refresh_token)
+    keychain.set(SUPABASE_ACCESS_KEY, session.access_token)
+    keychain.set(SUPABASE_REFRESH_KEY, session.refresh_token)
+    tokens = {"access": session.access_token, "refresh": session.refresh_token}
+
+    def current_token() -> str:
+        return str(tokens["access"])
+
+    def refresh_session() -> str:
+        rotated = auth.refresh(tokens["refresh"])
+        tokens["access"] = rotated.access_token
+        tokens["refresh"] = rotated.refresh_token
+        keychain.set(SUPABASE_ACCESS_KEY, rotated.access_token)
+        keychain.set(SUPABASE_REFRESH_KEY, rotated.refresh_token)
+        return str(rotated.access_token)
+
+    mine = [
+        member
+        for member in lookup_active_members(url, anon_key, current_token())
+        if member.email.lower() == email.lower()
+    ]
+    if not mine:
+        print(
+            f"no active member row for {email} on the backend; ask the maintainer "
+            "to add you (docs/setup-supabase.md, team manifest)",
+            file=sys.stderr,
+        )
+        return 1
+    if len(mine) > 1:
+        workspaces = ", ".join(sorted(member.workspace_id for member in mine))
+        print(
+            f"{email} is active in more than one workspace ({workspaces}); "
+            "multi-workspace sync arrives after v0.0.5",
+            file=sys.stderr,
+        )
+        return 1
+
+    me = mine[0]
+    backend = SupabaseSyncBackend(
+        url,
+        anon_key,
+        workspace_id=me.workspace_id,
+        access_token=current_token,
+        refresh=refresh_session,
+    )
+    engine = SyncEngine(get_engine(_db_url()), backend, actor_id=me.id)
+    pushed = engine.push()
+    pulled = engine.pull()
+    print(
+        f"push: {pushed.committed} committed, {pushed.already_known} already known "
+        f"(of {pushed.submitted} pending) · pull: {pulled.applied} applied, "
+        f"{pulled.own_reconciled} own reconciled · cursor {pulled.cursor}"
+    )
+    return 0
+
+
+def _sync_status(settings: Settings) -> int:
+    from sqlmodel import Session, col, func, select
+
+    from kantaq_db import EventLog, SyncCursor
+    from kantaq_db.session import get_engine
+    from kantaq_runtime.auth import keychain_for
+
+    keychain = keychain_for(settings)
+    email = keychain.get(SUPABASE_EMAIL_KEY)
+    with Session(get_engine(_db_url())) as session:
+        pending = session.exec(
+            select(func.count()).select_from(EventLog).where(col(EventLog.committed_rev).is_(None))
+        ).one()
+        cursors = session.exec(select(SyncCursor)).all()
+    print(f"hub_mode = {settings.hub_mode.value}")
+    print(f"session  = {email or '(not signed in)'}")
+    print(f"pending  = {pending} event(s) awaiting push")
+    for cursor in cursors:
+        print(f"cursor   = {cursor.collection}: {cursor.acked_rev} (actor {cursor.actor_id})")
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     """Print the resolved config and verify the backend connection (MOD-14)."""
     from kantaq_db import schema_version
@@ -365,6 +515,14 @@ def build_parser() -> argparse.ArgumentParser:
     mcp = sub.add_parser("mcp", help="MCP gateway (E09)")
     mcp.add_argument("mcp_command", choices=["dev"])
     mcp.set_defaults(func=cmd_mcp)
+
+    sync = sub.add_parser("sync", help="online sync with the team backend (E24)")
+    sync.set_defaults(func=cmd_sync)
+    sync_sub = sync.add_subparsers(dest="sync_command", required=True)
+    sync_login = sync_sub.add_parser("login", help="sign in with an emailed one-time code")
+    sync_login.add_argument("--email", required=True, help="your invited member email")
+    sync_sub.add_parser("once", help="run one push + pull cycle")
+    sync_sub.add_parser("status", help="local sync state (no network)")
 
     return parser
 

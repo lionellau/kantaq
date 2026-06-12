@@ -60,3 +60,25 @@ class BackendPort(Protocol):
     def snapshot(self, collection: str) -> dict[str, dict[str, Any]]:
         """The backend's fold of a collection (LWW by commit order)."""
         ...
+
+
+def fold_events(events: Iterable[Event]) -> dict[str, dict[str, Any]]:
+    """Fold an ordered event stream into per-entity state (D-05 LWW).
+
+    The backend-side fold shape: ``patch`` overwrites fields last-writer-wins,
+    ``append`` accumulates under ``_appended``, ``tombstone`` removes the
+    entity. One fold, one truth — MOD-30's FakeBackend and the real backend
+    adapters (MOD-05/28) all fold with this function, so the contract tests
+    and production cannot drift apart.
+    """
+    state: dict[str, dict[str, Any]] = {}
+    for event in events:
+        if event.op == "tombstone":
+            state.pop(event.entity_id, None)
+            continue
+        current = state.setdefault(event.entity_id, {})
+        if event.op == "append":
+            current.setdefault("_appended", []).append(event.payload)
+        else:  # patch: last writer wins on scalar fields
+            current.update(event.payload)
+    return state

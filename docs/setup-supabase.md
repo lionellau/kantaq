@@ -29,8 +29,15 @@ In the project dashboard open the **SQL Editor** and run, in order:
    Row Level Security. **Do not skip this**: without it any signed-in member
    could read every workspace. With it, Postgres itself scopes every read and
    write by workspace and member — even against a tampered client.
+3. [`supabase/migrations/0002_sync_events.sql`](../supabase/migrations/0002_sync_events.sql)
+   — the shared sync event log members push to and pull from (E24-T4).
+4. [`supabase/policies/0002_sync_rls.sql`](../supabase/policies/0002_sync_rls.sql)
+   — RLS for the log: workspace-scoped, self-attributed, append-only.
 
 (Equivalent: link the repo with the Supabase CLI and `supabase db push`.)
+
+Already ran the first two files during Sprint 1? Just run files 3 and 4 — every
+policy file re-applies cleanly as-is.
 
 Magic-link sign-in needs no extra setup — **Email** auth is enabled by default,
 and kantaq requests links invite-only (no self-signup accounts).
@@ -85,11 +92,59 @@ fails fast with a clear message if not.
 - **Cost ceiling.** A 2–10 person team fits comfortably in the Free tier; the
   first paid tier is the escape hatch, not a requirement.
 
+## 7. The team manifest (v0.0.5 — until the onboarding UI lands)
+
+Sync is scoped by Row Level Security, and RLS decides who someone is by their
+row in the **members** table — so the maintainer seeds one workspace row and
+one member row per teammate before first sync. In the SQL Editor:
+
+```sql
+-- The shared workspace. Use the maintainer's LOCAL workspace id so the
+-- maintainer's own backlog (already in their event log) can push:
+-- find it with:  select id from workspaces;  on your local replica.
+insert into workspaces (id, created_at, updated_at, actor_seq, visibility,
+  hosting_mode, retention_policy, name)
+values ('<workspace-ulid>', now(), now(), 0, 'team', 'plain', 'standard',
+        'Your Team');
+
+-- One row per member. For the maintainer, reuse their LOCAL member id
+-- (select id from members; on the local replica) with their REAL sign-in
+-- email; teammates get fresh ULIDs.
+insert into members (id, created_at, updated_at, actor_seq, visibility,
+  hosting_mode, retention_policy, workspace_id, email, role, status)
+values ('<member-ulid>', now(), now(), 0, 'team', 'plain', 'standard',
+        '<workspace-ulid>', 'person@team.dev', 'Member', 'active');
+```
+
+Each teammate also needs a Supabase Auth user for the magic link: dashboard →
+**Authentication → Users → Invite user** (kantaq itself requests sign-in links
+invite-only and never creates accounts).
+
+The E21 onboarding UI automates this; the manifest is the documented v0.0.5
+path.
+
+## 8. Syncing (E24-T4)
+
+Each member, after `kantaq doctor` passes:
+
+```bash
+kantaq sync login --email person@team.dev   # emailed one-time code → keychain
+kantaq sync once                            # one push + pull cycle
+kantaq sync status                          # local pending/cursor state
+```
+
+The acting member is resolved from the members table by the session's verified
+email; events commit in the backend's order (last writer wins), re-pushing is
+idempotent, and the log is append-only — Postgres refuses every client UPDATE
+or DELETE on it, even from a workspace Owner.
+
 ## v0.0.5 scope — what exists today
 
 The runtime verifies connectivity against this project (auth health endpoint)
 before serving. The Postgres schema, the magic-link auth client, and the Row
-Level Security policies shipped with epic **E24** — the SQL you applied above
-is tested in CI against a real Postgres with a tampered client that must fail
-to read another workspace. Event sync follows in Sprint 2 (E04/E24-T4); until
-then the runtime writes nothing to the project.
+Level Security policies shipped with Sprint 1 of epic **E24**; the sync
+endpoints (the `sync_events` log + push/pull over Supabase's data API) shipped
+with **E24-T4**. All of it is tested in CI against a real Postgres with a
+tampered client that must fail to read or write another workspace. Known
+v0.0.5 limits: online-only (offline outbox is v0.2), unsigned events (Ed25519
+verification is v0.1), and one workspace per member.
