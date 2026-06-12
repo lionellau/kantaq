@@ -177,6 +177,8 @@ alter table members         enable row level security;
 alter table tokens          enable row level security;
 alter table audit_events    enable row level security;
 alter table agent_proposals enable row level security;
+alter table memory_entries  enable row level security;
+alter table memory_links    enable row level security;
 
 grant select, insert, update         on workspaces      to authenticated;
 grant select, insert, update, delete on projects        to authenticated;
@@ -186,6 +188,8 @@ grant select, insert, update         on members         to authenticated;
 grant select, insert, update         on tokens          to authenticated;
 grant select, insert                 on audit_events    to authenticated;
 grant select, insert, update         on agent_proposals to authenticated;
+grant select, insert, update, delete on memory_entries  to authenticated;
+grant select, insert, update, delete on memory_links    to authenticated;
 
 grant all on all tables in schema public to service_role;
 
@@ -424,3 +428,64 @@ drop policy if exists audit_events_insert on audit_events;
 create policy audit_events_insert on audit_events
   for insert to authenticated
   with check (actor_id in (select kantaq.member_ids()));
+
+-- ---------------------------------------------------------------------------
+-- memory_entries (E13, MOD-19) — only team-visibility rows may ever exist at
+-- the backend: visibility = 'team' rides every policy as the database layer
+-- of NFR-E13-1 (local entries never sync; the emit seam in kantaq_core.memory
+-- is the first wall, this is the last). SELECT is workspace-coarse via the
+-- creator's membership; INSERT as yourself (attribution, like comments);
+-- UPDATE/DELETE by the author only until Sprint 4 wires the memory sync flow.
+-- ---------------------------------------------------------------------------
+
+drop policy if exists memory_entries_select on memory_entries;
+create policy memory_entries_select on memory_entries
+  for select to authenticated
+  using (visibility = 'team' and kantaq.actor_in_my_workspaces(created_by));
+
+drop policy if exists memory_entries_insert on memory_entries;
+create policy memory_entries_insert on memory_entries
+  for insert to authenticated
+  with check (visibility = 'team' and created_by in (select kantaq.member_ids()));
+
+drop policy if exists memory_entries_update on memory_entries;
+create policy memory_entries_update on memory_entries
+  for update to authenticated
+  using (created_by in (select kantaq.member_ids()))
+  with check (visibility = 'team' and created_by in (select kantaq.member_ids()));
+
+drop policy if exists memory_entries_delete on memory_entries;
+create policy memory_entries_delete on memory_entries
+  for delete to authenticated
+  using (created_by in (select kantaq.member_ids()));
+
+-- ---------------------------------------------------------------------------
+-- memory_links (E13) — scoped through their ticket like comments; created AS
+-- yourself; the same visibility = 'team' wall (a link to a local entry is
+-- itself local and must never exist here). Author-only delete.
+-- ---------------------------------------------------------------------------
+
+drop policy if exists memory_links_select on memory_links;
+create policy memory_links_select on memory_links
+  for select to authenticated
+  using (visibility = 'team' and kantaq.ticket_in_my_workspaces(ticket_id));
+
+drop policy if exists memory_links_insert on memory_links;
+create policy memory_links_insert on memory_links
+  for insert to authenticated
+  with check (
+    visibility = 'team'
+    and kantaq.ticket_in_my_workspaces(ticket_id)
+    and created_by in (select kantaq.member_ids())
+  );
+
+drop policy if exists memory_links_update on memory_links;
+create policy memory_links_update on memory_links
+  for update to authenticated
+  using (created_by in (select kantaq.member_ids()))
+  with check (visibility = 'team' and created_by in (select kantaq.member_ids()));
+
+drop policy if exists memory_links_delete on memory_links;
+create policy memory_links_delete on memory_links
+  for delete to authenticated
+  using (created_by in (select kantaq.member_ids()));

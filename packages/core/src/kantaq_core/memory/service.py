@@ -382,9 +382,7 @@ class MemoryService:
         if self._session.get(Ticket, ticket_id) is None:
             raise MemoryNotFoundError("tickets", ticket_id)
         links = sorted(
-            self._session.exec(
-                select(MemoryLink).where(MemoryLink.ticket_id == ticket_id)
-            ).all(),
+            self._session.exec(select(MemoryLink).where(MemoryLink.ticket_id == ticket_id)).all(),
             key=lambda r: r.id,
         )
         now = self._now()
