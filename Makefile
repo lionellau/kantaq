@@ -1,7 +1,7 @@
-.PHONY: help setup dev migrate test coverage lint typecheck eval mcp-dev clean
+.PHONY: help setup dev migrate test coverage lint typecheck eval mcp-dev e2e clean
 
 help: ## show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 	  awk 'BEGIN {FS = ":.*?## "}; {printf "  make %-12s %s\n", $$1, $$2}'
 
 setup: ## install both toolchains and build the web UI
@@ -32,6 +32,11 @@ eval: ## run context/reco evals (lands with MOD-21 / Epic E16)
 
 mcp-dev: ## run the loopback MCP gateway (random port; see docs/mcp.md)
 	uv run kantaq mcp dev
+
+e2e: ## run the Playwright hero-flow end-to-end (builds the UI first)
+	pnpm -C web build
+	pnpm -C web exec playwright install chromium
+	pnpm -C web test:e2e
 
 clean: ## remove build artifacts and caches
 	rm -rf web/dist web/node_modules .venv \

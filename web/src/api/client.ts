@@ -42,9 +42,30 @@ function sameOrigin(): string {
 }
 
 export function createApiClient(baseUrl: string = sameOrigin()) {
-  const client = createClient<paths>({ baseUrl });
+  // Resolve `fetch` per call, not at client creation: the app-wide client is
+  // created at module import, and tests install their fetch-level fake
+  // (MockApiServer) afterwards.
+  const client = createClient<paths>({ baseUrl, fetch: (input) => globalThis.fetch(input) });
   client.use(auth);
   return client;
+}
+
+/**
+ * The raw escape hatch for the two non-JSON surfaces (attachment upload is
+ * multipart, download is bytes) — same origin, same bearer, same 401 rule.
+ * Everything JSON goes through the typed client above.
+ */
+export async function authFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const token = getToken();
+  if (token !== null) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  const response = await fetch(`${sameOrigin()}${path}`, { ...init, headers });
+  if (response.status === 401) {
+    clearToken();
+  }
+  return response;
 }
 
 /** The app-wide client instance (same origin as the serving runtime). */

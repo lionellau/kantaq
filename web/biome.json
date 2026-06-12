@@ -2,7 +2,16 @@
   "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    "ignore": ["dist", "node_modules", "coverage", "src/api/schema.d.ts", "src/api/openapi.json"]
+    "ignore": [
+      "dist",
+      "node_modules",
+      "coverage",
+      "src/api/schema.d.ts",
+      "src/api/openapi.json",
+      "e2e/.runtime",
+      "test-results",
+      "playwright-report"
+    ]
   },
   "organizeImports": { "enabled": true },
   "linter": {

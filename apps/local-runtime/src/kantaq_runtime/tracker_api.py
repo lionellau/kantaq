@@ -18,9 +18,10 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import func
 from sqlalchemy.engine import Engine
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from kantaq_core.identity import Action, VerifiedActor
 from kantaq_core.tracker import (
@@ -31,7 +32,15 @@ from kantaq_core.tracker import (
     TrackerService,
     TrackerValidationError,
 )
-from kantaq_db.models import AuditEvent, Comment, Project, Ticket, Workspace
+from kantaq_db.models import (
+    AgentProposal,
+    AuditEvent,
+    Comment,
+    EventLog,
+    Project,
+    Ticket,
+    Workspace,
+)
 from kantaq_runtime.auth import get_engine_dep, require_action
 from kantaq_runtime.config import Settings
 from kantaq_sync_engine import EventLogSink
@@ -124,10 +133,68 @@ class TicketOut(BaseModel):
     attachments: list[AttachmentOut]
     created_at: datetime
     updated_at: datetime
+    # E19 (MOD-11): the per-row badges. `sync_state` is "draft" while any of
+    # this ticket's events is still uncommitted (event_log.committed_rev IS
+    # NULL), "committed" once the backend has acked them all.
+    sync_state: str
+    pending_proposals: int
 
     @classmethod
-    def from_row(cls, row: Ticket) -> TicketOut:
-        return cls.model_validate(row, from_attributes=True)
+    def from_row(
+        cls, row: Ticket, *, sync_state: str = "committed", pending_proposals: int = 0
+    ) -> TicketOut:
+        return cls.model_validate(
+            {**row.model_dump(), "sync_state": sync_state, "pending_proposals": pending_proposals}
+        )
+
+
+def _draft_ticket_ids(session: Session, ticket_ids: list[str]) -> set[str]:
+    """Tickets with at least one event the backend has not committed yet."""
+    if not ticket_ids:
+        return set()
+    statement = (
+        select(EventLog.entity_id)
+        .where(
+            EventLog.collection == "tickets",
+            col(EventLog.entity_id).in_(ticket_ids),
+            col(EventLog.committed_rev).is_(None),
+        )
+        .distinct()
+    )
+    return set(session.exec(statement).all())
+
+
+def _pending_proposal_counts(session: Session, ticket_ids: list[str]) -> dict[str, int]:
+    if not ticket_ids:
+        return {}
+    statement = (
+        select(AgentProposal.ticket_id, func.count())
+        .where(
+            AgentProposal.status == "pending",
+            col(AgentProposal.ticket_id).in_(ticket_ids),
+        )
+        .group_by(col(AgentProposal.ticket_id))
+    )
+    return dict(session.exec(statement).all())
+
+
+def tickets_out(session: Session, rows: list[Ticket]) -> list[TicketOut]:
+    """Decorate ticket rows with their sync + proposal badges (two queries)."""
+    ids = [row.id for row in rows]
+    drafts = _draft_ticket_ids(session, ids)
+    counts = _pending_proposal_counts(session, ids)
+    return [
+        TicketOut.from_row(
+            row,
+            sync_state="draft" if row.id in drafts else "committed",
+            pending_proposals=counts.get(row.id, 0),
+        )
+        for row in rows
+    ]
+
+
+def ticket_out(session: Session, row: Ticket) -> TicketOut:
+    return tickets_out(session, [row])[0]
 
 
 class TicketIn(BaseModel):
@@ -145,6 +212,12 @@ class TicketIn(BaseModel):
 
 
 class TicketPatch(BaseModel):
+    # Fail closed on unknown fields: this shape also coerces agent-proposal
+    # diffs at approve time (MOD-12), where a silently-dropped key would be a
+    # silent bypass if the dump ever stopped flowing through the tracker's
+    # own field validation (SEC second review).
+    model_config = ConfigDict(extra="forbid")
+
     title: str | None = None
     description: str | None = None
     status: str | None = None
@@ -280,7 +353,7 @@ def list_tickets(
         rows = _service(session, actor).list_tickets(
             project_id=project, status=status, assignee=assignee, label=label, stage=stage
         )
-        return [TicketOut.from_row(row) for row in rows]
+        return tickets_out(session, rows)
 
 
 @router.post("/tickets", response_model=TicketOut, status_code=201)
@@ -302,14 +375,14 @@ def create_ticket(body: TicketIn, actor: WriterActor, engine: EngineDep) -> Tick
             )
         except (TrackerNotFoundError, TrackerValidationError) as exc:
             raise _domain(exc) from exc
-        return TicketOut.from_row(row)
+        return ticket_out(session, row)
 
 
 @router.get("/tickets/{ticket_id}", response_model=TicketOut)
 def get_ticket(ticket_id: str, actor: ReaderActor, engine: EngineDep) -> TicketOut:
     with Session(engine) as session:
         try:
-            return TicketOut.from_row(_service(session, actor).get_ticket(ticket_id))
+            return ticket_out(session, _service(session, actor).get_ticket(ticket_id))
         except TrackerNotFoundError as exc:
             raise _domain(exc) from exc
 
@@ -325,7 +398,7 @@ def update_ticket(
             )
         except (TrackerNotFoundError, TrackerValidationError) as exc:
             raise _domain(exc) from exc
-        return TicketOut.from_row(row)
+        return ticket_out(session, row)
 
 
 # ----------------------------------------------------------------- comments
@@ -394,7 +467,7 @@ def upload_attachment(
             row = _service(session, actor).add_attachment(ticket_id, ref)
         except TrackerNotFoundError as exc:
             raise _domain(exc) from exc
-        return TicketOut.from_row(row)
+        return ticket_out(session, row)
 
 
 @router.get(

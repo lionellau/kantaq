@@ -57,3 +57,48 @@ jobs:
 
       - name: Test (Vitest)
         run: pnpm test
+
+  # The hero-flow end-to-end (E19/E20, harness standard §4 UI profile): a real
+  # runtime (migrations → bootstrap → seeded proposal) serving the built UI,
+  # driven by Playwright. Backs the sprint-2 dogfood-gate demo.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync workspace
+        working-directory: .
+        run: uv sync --frozen
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the UI (the runtime serves web/dist)
+        run: pnpm build
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Hero-flow end-to-end (Playwright)
+        run: pnpm test:e2e

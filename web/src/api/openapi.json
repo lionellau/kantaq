@@ -57,6 +57,75 @@
         "title": "ActivityOut",
         "type": "object"
       },
+      "AgentSnippetOut": {
+        "properties": {
+          "gateway_live": {
+            "title": "Gateway Live",
+            "type": "boolean"
+          },
+          "gateway_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gateway Url"
+          },
+          "instructions": {
+            "title": "Instructions",
+            "type": "string"
+          },
+          "member_id": {
+            "title": "Member Id",
+            "type": "string"
+          },
+          "snippet": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snippet"
+          },
+          "token_placeholder": {
+            "title": "Token Placeholder",
+            "type": "string"
+          }
+        },
+        "required": [
+          "member_id",
+          "gateway_url",
+          "gateway_live",
+          "token_placeholder",
+          "snippet",
+          "instructions"
+        ],
+        "title": "AgentSnippetOut",
+        "type": "object"
+      },
+      "ApproveOut": {
+        "properties": {
+          "proposal": {
+            "$ref": "#/components/schemas/ProposalOut"
+          },
+          "ticket": {
+            "$ref": "#/components/schemas/TicketOut"
+          }
+        },
+        "required": [
+          "proposal",
+          "ticket"
+        ],
+        "title": "ApproveOut",
+        "type": "object"
+      },
       "AttachmentOut": {
         "properties": {
           "blob_id": {
@@ -456,6 +525,64 @@
         "title": "ProjectPatch",
         "type": "object"
       },
+      "ProposalOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "diff": {
+            "additionalProperties": true,
+            "title": "Diff",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "proposer_id": {
+            "title": "Proposer Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "ticket_id": {
+            "title": "Ticket Id",
+            "type": "string"
+          },
+          "ticket_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Title"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ticket_id",
+          "ticket_title",
+          "proposer_id",
+          "status",
+          "diff",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ProposalOut",
+        "type": "object"
+      },
       "Role": {
         "description": "The 5 base roles (PRD \u00a711). Stored on ``members.role``.",
         "enum": [
@@ -654,6 +781,10 @@
             ],
             "title": "Parent Id"
           },
+          "pending_proposals": {
+            "title": "Pending Proposals",
+            "type": "integer"
+          },
           "priority": {
             "title": "Priority",
             "type": "string"
@@ -664,6 +795,10 @@
           },
           "status": {
             "title": "Status",
+            "type": "string"
+          },
+          "sync_state": {
+            "title": "Sync State",
             "type": "string"
           },
           "title": {
@@ -692,12 +827,15 @@
           "created_by",
           "attachments",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "sync_state",
+          "pending_proposals"
         ],
         "title": "TicketOut",
         "type": "object"
       },
       "TicketPatch": {
+        "additionalProperties": false,
         "properties": {
           "acceptance_criteria": {
             "anyOf": [
@@ -885,6 +1023,27 @@
           }
         },
         "summary": "Healthz"
+      }
+    },
+    "/v1/me/agent-snippet": {
+      "get": {
+        "operationId": "agent_snippet_v1_me_agent_snippet_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSnippetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Agent Snippet",
+        "tags": [
+          "me"
+        ]
       }
     },
     "/v1/members": {
@@ -1218,6 +1377,159 @@
         "summary": "Update Project",
         "tags": [
           "tracker"
+        ]
+      }
+    },
+    "/v1/proposals": {
+      "get": {
+        "operationId": "list_proposals_v1_proposals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ticket",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ticket"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProposalOut"
+                  },
+                  "title": "Response List Proposals V1 Proposals Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Proposals",
+        "tags": [
+          "proposals"
+        ]
+      }
+    },
+    "/v1/proposals/{proposal_id}/approve": {
+      "post": {
+        "operationId": "approve_proposal_v1_proposals__proposal_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApproveOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Proposal",
+        "tags": [
+          "proposals"
+        ]
+      }
+    },
+    "/v1/proposals/{proposal_id}/reject": {
+      "post": {
+        "operationId": "reject_proposal_v1_proposals__proposal_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Proposal",
+        "tags": [
+          "proposals"
         ]
       }
     },

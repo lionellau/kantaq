@@ -38,3 +38,8 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# ---- Playwright (E19/E20 hero-flow e2e) ----
+web/e2e/.runtime/
+web/playwright-report/
+web/test-results/

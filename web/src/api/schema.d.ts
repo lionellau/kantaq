@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/agent-snippet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Agent Snippet */
+        get: operations["agent_snippet_v1_me_agent_snippet_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/members": {
         parameters: {
             query?: never;
@@ -123,6 +140,57 @@ export interface paths {
         head?: never;
         /** Update Project */
         patch: operations["update_project_v1_projects__project_id__patch"];
+        trace?: never;
+    };
+    "/v1/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Proposals */
+        get: operations["list_proposals_v1_proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/proposals/{proposal_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Proposal */
+        post: operations["approve_proposal_v1_proposals__proposal_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/proposals/{proposal_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Proposal */
+        post: operations["reject_proposal_v1_proposals__proposal_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/tickets": {
@@ -261,6 +329,28 @@ export interface components {
             created_at: string;
             /** Id */
             id: string;
+        };
+        /** AgentSnippetOut */
+        AgentSnippetOut: {
+            /** Gateway Live */
+            gateway_live: boolean;
+            /** Gateway Url */
+            gateway_url: string | null;
+            /** Instructions */
+            instructions: string;
+            /** Member Id */
+            member_id: string;
+            /** Snippet */
+            snippet: {
+                [key: string]: unknown;
+            } | null;
+            /** Token Placeholder */
+            token_placeholder: string;
+        };
+        /** ApproveOut */
+        ApproveOut: {
+            proposal: components["schemas"]["ProposalOut"];
+            ticket: components["schemas"]["TicketOut"];
         };
         /** AttachmentOut */
         AttachmentOut: {
@@ -410,6 +500,33 @@ export interface components {
             /** Target Date */
             target_date?: string | null;
         };
+        /** ProposalOut */
+        ProposalOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Diff */
+            diff: {
+                [key: string]: unknown;
+            };
+            /** Id */
+            id: string;
+            /** Proposer Id */
+            proposer_id: string;
+            /** Status */
+            status: string;
+            /** Ticket Id */
+            ticket_id: string;
+            /** Ticket Title */
+            ticket_title: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /**
          * Role
          * @description The 5 base roles (PRD §11). Stored on ``members.role``.
@@ -490,12 +607,16 @@ export interface components {
             lifecycle_stage: string;
             /** Parent Id */
             parent_id: string | null;
+            /** Pending Proposals */
+            pending_proposals: number;
             /** Priority */
             priority: string;
             /** Project Id */
             project_id: string;
             /** Status */
             status: string;
+            /** Sync State */
+            sync_state: string;
             /** Title */
             title: string;
             /**
@@ -567,6 +688,26 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    agent_snippet_v1_me_agent_snippet_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSnippetOut"];
                 };
             };
         };
@@ -803,6 +944,100 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_proposals_v1_proposals_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                ticket?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_proposal_v1_proposals__proposal_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApproveOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_proposal_v1_proposals__proposal_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalOut"];
                 };
             };
             /** @description Validation Error */
