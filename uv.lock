@@ -647,6 +647,7 @@ dependencies = [
     { name = "httpx" },
     { name = "kantaq-core" },
     { name = "kantaq-db" },
+    { name = "kantaq-sync-engine" },
     { name = "pydantic-settings" },
     { name = "python-multipart" },
     { name = "sqlmodel" },
@@ -659,6 +660,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "kantaq-core", editable = "packages/core" },
     { name = "kantaq-db", editable = "packages/db" },
+    { name = "kantaq-sync-engine", editable = "packages/sync_engine" },
     { name = "pydantic-settings", specifier = ">=2.4.0" },
     { name = "python-multipart", specifier = ">=0.0.18" },
     { name = "sqlmodel", specifier = ">=0.0.22" },
@@ -679,6 +681,18 @@ source = { editable = "packages/protocol" }
 name = "kantaq-sync-engine"
 version = "0.0.5"
 source = { editable = "packages/sync_engine" }
+dependencies = [
+    { name = "kantaq-core" },
+    { name = "kantaq-db" },
+    { name = "sqlmodel" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "kantaq-core", editable = "packages/core" },
+    { name = "kantaq-db", editable = "packages/db" },
+    { name = "sqlmodel", specifier = ">=0.0.22" },
+]
 
 [[package]]
 name = "kantaq-test-harness"
@@ -686,15 +700,23 @@ version = "0.0.5"
 source = { editable = "packages/test_harness" }
 dependencies = [
     { name = "hypothesis" },
+    { name = "kantaq-core" },
+    { name = "kantaq-db" },
+    { name = "kantaq-sync-engine" },
     { name = "pytest" },
     { name = "sqlalchemy" },
+    { name = "sqlmodel" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "hypothesis", specifier = ">=6.100.0" },
+    { name = "kantaq-core", editable = "packages/core" },
+    { name = "kantaq-db", editable = "packages/db" },
+    { name = "kantaq-sync-engine", editable = "packages/sync_engine" },
     { name = "pytest", specifier = ">=8.3.0" },
     { name = "sqlalchemy", specifier = ">=2.0.0" },
+    { name = "sqlmodel", specifier = ">=0.0.22" },
 ]
 
 [[package]]
