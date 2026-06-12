@@ -40,6 +40,7 @@ from sqlmodel import Session
 
 from kantaq_core import audit
 from kantaq_core.identity import TokenVerifier, VerifiedActor
+from kantaq_core.telemetry import TelemetryService
 from kantaq_mcp.catalog import CATALOG_BY_NAME, ToolSpec, dispatch
 from kantaq_mcp.session import (
     DEFAULT_SESSION_TTL,
@@ -123,7 +124,17 @@ class Gateway:
     # ---------------------------------------------------------------- catalog
 
     def session_for(self, actor: VerifiedActor, *, session_id: str) -> GatewaySession:
-        return self.sessions.get_or_create(actor, session_id=session_id, now=self._now())
+        created = self.sessions.get(session_id) is None
+        session = self.sessions.get_or_create(actor, session_id=session_id, now=self._now())
+        if created:
+            # Telemetry (E28, opt-in no-op): repeat-session signal. The member
+            # ULID only — never the token, scopes, or any call content.
+            with Session(self._engine) as db:
+                if TelemetryService(db, now=self._now).record(
+                    "mcp_session_started", {"member_id": session.member_id}
+                ):
+                    db.commit()
+        return session
 
     def allowed_specs(self, session: GatewaySession) -> list[ToolSpec]:
         return [CATALOG_BY_NAME[name] for name in session.allowed_tools]

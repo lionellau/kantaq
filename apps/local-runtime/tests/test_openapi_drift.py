@@ -29,6 +29,7 @@ EXPECTED_PATHS = (
     "/v1/memory/{memory_id}",
     "/v1/memory/{memory_id}/link",
     "/v1/memory/{memory_id}/links",
+    "/v1/telemetry",
 )
 
 

@@ -33,6 +33,7 @@ from sqlmodel import Session, col, select
 
 from kantaq_core import audit
 from kantaq_core.identity import Action, VerifiedActor
+from kantaq_core.telemetry import TelemetryService
 from kantaq_core.tracker import TrackerNotFoundError, TrackerService, TrackerValidationError
 from kantaq_core.tracker.events import DomainEvent
 from kantaq_db.models import AgentProposal, Ticket
@@ -146,6 +147,12 @@ def _flip_status(
             payload=audit.snapshot(proposal),
         )
     )
+    # Telemetry (E28, opt-in no-op): the decision outcome and how long the
+    # proposal waited — numbers only, never the diff or ticket content.
+    TelemetryService(session).record(
+        f"proposal_{status}",
+        {"seconds_to_decision": (ts - proposal.created_at).total_seconds()},
+    )
 
 
 @router.get("", response_model=list[ProposalOut])
@@ -167,6 +174,8 @@ def list_proposals(
         if ticket is not None:
             statement = statement.where(AgentProposal.ticket_id == ticket)
         rows = sorted(session.exec(statement).all(), key=lambda p: p.id, reverse=True)
+        if TelemetryService(session).record("proposals_listed", {"count": len(rows)}):
+            session.commit()
         return [
             ProposalOut.from_row(row, ticket_title=_ticket_title(session, row.ticket_id))
             for row in rows
