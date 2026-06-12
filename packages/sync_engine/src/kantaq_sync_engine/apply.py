@@ -21,12 +21,23 @@ from typing import Any
 from sqlmodel import Session, SQLModel
 
 from kantaq_core.tracker.events import DomainEvent, fold_entity
-from kantaq_db import AgentProposal, Comment, Member, Project, Ticket, Workspace
+from kantaq_db import (
+    AgentProposal,
+    Comment,
+    Member,
+    MemoryEntry,
+    MemoryLink,
+    Project,
+    Ticket,
+    Workspace,
+)
 from kantaq_sync_engine.log import entity_rows
 
 # The syncable collections this engine can fold into rows (architecture §6).
 # tokens never sync (authority local, secret material); audit_events are each
 # replica's own local trail (replays write their own, source="sync").
+# memory_entries/memory_links (E13): only team-visibility rows ever produce
+# events — local rows never enter the log at all (NFR-E13-1, MOD-19).
 SYNCABLE_MODELS: dict[str, type[SQLModel]] = {
     "workspaces": Workspace,
     "projects": Project,
@@ -34,6 +45,8 @@ SYNCABLE_MODELS: dict[str, type[SQLModel]] = {
     "comments": Comment,
     "members": Member,
     "agent_proposals": AgentProposal,
+    "memory_entries": MemoryEntry,
+    "memory_links": MemoryLink,
 }
 
 

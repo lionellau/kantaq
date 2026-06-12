@@ -159,6 +159,12 @@ was not needed.
 | Server state / data fetching | **none (openapi-fetch + the MOD-14 2 s poll)** | — | Evaluated **TanStack Query** (~46k★, MIT), **SWR** (~32k★, MIT), **RTK Query** (Redux Toolkit ~11k★, MIT) — all clear the bar, none adopted. The locked convergence model is "local replica + 2 s poll" (MOD-14, NFR-E04-1): views refetch on one cadence and render what the replica says. A client cache with invalidation semantics would sit *on top of* a local replica that already is the cache, duplicating state for ~5 screens. Revisit if v0.1 adds realtime push. |
 | Hero-flow end-to-end runner | **Playwright** (`@playwright/test`) | Apache-2.0 | Named by the harness standard (§4, UI profile) and now adopted in code: ~76k★, Microsoft, weekly releases. Beat **Cypress** (~49k★, MIT — slower runs, no first-class multi-context, bundled service upsell) and **Selenium/WebDriverIO** (lower-level, no built-in `webServer`/trace tooling). The `webServer` hook boots the real runtime (`scripts/e2e_server.py`), so the e2e drives the same stack a member runs. |
 
+### E13 / MOD-19 memory spaces & graph
+
+| Need | Chosen | License | Notes |
+|---|---|---|---|
+| Note/graph data model (memory entries + ticket↔memory links) | **built on the in-stack components** (SQLModel + Alembic, two protocol collections) | Apache-2.0 (ours) | Golden-rule run 2026-06. Evaluated **NetworkX** (~17k★, BSD-3, active — clears the bar, but it is an in-memory graph *analysis* library; kantaq's memory graph must be persistent protocol collections that fold from sync events, and v0.1 needs zero graph algorithms over a bipartite ticket↔memory link table), **Kùzu** (MIT embedded property-graph DB — **archived 2025-10** after the Apple acquisition, fails the maintenance bar; a second storage engine beside SQLite would also break D-07 one-model-two-dialects and cannot participate in event-fold sync), and **RDFLib** (~4.7k★, BSD-3 — below the 5k bar; RDF triples don't map to SQLModel collections). At v0.1 scale the "graph" is a relational join table (`memory_links`) on the already-mandated SQLModel/Alembic/SQLite stack — the only shape the sync protocol can carry. Provenance: considered W3C PROV-DM as a vocabulary; deliberately **not** claimed — we do not implement its entity/activity/agent model. Memory provenance is a small structured dict (`origin`, `actor_id`, `captured_at`, `detail`), spec'd in MOD-19. |
+
 ## Consequences
 
 - Two toolchains in CI (Python + web). Keep total CI **under 10 minutes**

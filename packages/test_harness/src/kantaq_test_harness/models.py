@@ -24,6 +24,8 @@ __all__ = [
     "Comment",
     "Event",
     "Member",
+    "MemoryEntry",
+    "MemoryLink",
     "Op",
     "PrivacyClass",
     "Project",
@@ -107,3 +109,31 @@ class AgentProposal:
     proposer_id: str
     diff: dict[str, Any] = field(default_factory=dict)
     status: str = "pending"
+
+
+@dataclass
+class MemoryEntry:
+    """Look-alike of the v0.1 memory collection (E13 / MOD-19)."""
+
+    id: str
+    title: str
+    body: str = ""
+    type: str = "note"
+    source: str = "manual"
+    space: str = "workspace"
+    confidence: str = "medium"
+    review_status: str = "draft"
+    provenance: dict[str, Any] = field(default_factory=dict)
+    linked_entities: list[str] = field(default_factory=list)
+    expires_at: datetime | None = None
+    privacy_class: PrivacyClass = field(default_factory=PrivacyClass)
+
+
+@dataclass
+class MemoryLink:
+    """Ticket↔memory link with a reason (E13 / MOD-19)."""
+
+    id: str
+    ticket_id: str
+    memory_id: str
+    reason: str = "context for this ticket"
