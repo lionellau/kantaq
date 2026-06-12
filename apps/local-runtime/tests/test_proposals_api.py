@@ -289,3 +289,62 @@ def test_reject_declines_without_touching_the_ticket(
         assert reject.actor_id != agent_id
         events = list(session.exec(select(EventLog)).all())
         assert any(e.collection == "agent_proposals" and e.entity_id == proposal_id for e in events)
+
+
+# ------------------------------------------- SEC second-review regressions
+
+
+def test_flip_loses_to_a_concurrent_decision(
+    client: TestClient, engine: Engine, owner_token: str, agent: tuple[str, str]
+) -> None:
+    """The status flip is a compare-and-swap: a decision that raced and lost
+    409s instead of applying on top of the winner (double-apply guard)."""
+    from fastapi import HTTPException
+
+    from kantaq_runtime.proposals_api import _flip_status, _now
+
+    ticket = _create_ticket(client, owner_token)
+    proposal_id = _propose(engine, agent[0], ticket["id"], {"status": "doing"})
+
+    with Session(engine) as stale:
+        proposal = stale.get(AgentProposal, proposal_id)
+        assert proposal is not None
+        stale.rollback()  # release the read so the winner can commit
+
+        winner = client.post(f"/v1/proposals/{proposal_id}/reject", headers=_bearer(owner_token))
+        assert winner.status_code == 200
+
+        with pytest.raises(HTTPException) as denied:
+            _flip_status(stale, proposal, actor_id="someone", status="approved", ts=_now())
+        assert denied.value.status_code == 409
+
+    with Session(engine) as session:
+        row = session.get(AgentProposal, proposal_id)
+        assert row is not None and row.status == "rejected"
+        decisions = [
+            a
+            for a in session.exec(select(AuditEvent)).all()
+            if a.action in ("proposal.approve", "proposal.reject")
+        ]
+        assert [a.action for a in decisions] == ["proposal.reject"]
+
+
+def test_approve_refuses_unknown_diff_fields(
+    client: TestClient, engine: Engine, owner_token: str, agent: tuple[str, str]
+) -> None:
+    """TicketPatch is extra="forbid": a forged diff key 422s instead of being
+    silently dropped (a synced replica must not trust remote diffs)."""
+    ticket = _create_ticket(client, owner_token)
+    proposal_id = _propose(engine, agent[0], ticket["id"], {"status": "doing"})
+    with Session(engine) as session:
+        proposal = session.get(AgentProposal, proposal_id)
+        assert proposal is not None
+        proposal.diff = {"changes": {"status": "doing", "created_by": "evil"}, "note": ""}
+        session.add(proposal)
+        session.commit()
+
+    response = client.post(f"/v1/proposals/{proposal_id}/approve", headers=_bearer(owner_token))
+    assert response.status_code == 422
+    with Session(engine) as session:
+        row = session.get(AgentProposal, proposal_id)
+        assert row is not None and row.status == "pending"

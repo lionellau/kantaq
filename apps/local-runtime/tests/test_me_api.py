@@ -128,3 +128,31 @@ def test_malformed_discovery_fails_closed(
     (db_dir / "mcp.json").write_text("not json", encoding="utf-8")
     body = client.get("/v1/me/agent-snippet", headers=_bearer(owner_token)).json()
     assert body["gateway_live"] is False
+
+
+def test_an_oversized_discovery_file_fails_closed(
+    client: TestClient, owner_token: str, db_dir: Path
+) -> None:
+    """A same-user process dumping a huge mcp.json must not buffer-bomb the
+    runtime: anything past the size cap reads as 'no gateway'."""
+    blob = '{"url": "http://127.0.0.1:54321/v1/mcp", "pid": 1, "pad": "' + "x" * (128 * 1024) + '"}'
+    (db_dir / "mcp.json").write_text(blob, encoding="utf-8")
+    body = client.get("/v1/me/agent-snippet", headers=_bearer(owner_token)).json()
+    assert body["gateway_live"] is False
+    assert body["snippet"] is None
+
+
+def test_a_symlinked_discovery_file_fails_closed(
+    client: TestClient, owner_token: str, db_dir: Path, tmp_path: Path
+) -> None:
+    """mcp.json must be a regular file in the data dir — a symlink pointing
+    elsewhere is someone else's payload."""
+    foreign = tmp_path / "foreign.json"
+    foreign.write_text(
+        json.dumps({"url": "http://127.0.0.1:54321/v1/mcp", "pid": os.getpid()}),
+        encoding="utf-8",
+    )
+    (db_dir / "mcp.json").symlink_to(foreign)
+    body = client.get("/v1/me/agent-snippet", headers=_bearer(owner_token)).json()
+    assert body["gateway_live"] is False
+    assert body["snippet"] is None

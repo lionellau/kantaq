@@ -835,6 +835,7 @@
         "type": "object"
       },
       "TicketPatch": {
+        "additionalProperties": false,
         "properties": {
           "acceptance_criteria": {
             "anyOf": [

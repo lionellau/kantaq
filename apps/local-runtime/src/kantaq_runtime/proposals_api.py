@@ -23,12 +23,13 @@ Permissions: reading the queue needs ``tickets.read``; approve and reject need
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ValidationError
-from sqlalchemy.engine import Engine
-from sqlmodel import Session, select
+from sqlalchemy import update as sa_update
+from sqlalchemy.engine import CursorResult, Engine
+from sqlmodel import Session, col, select
 
 from kantaq_core import audit
 from kantaq_core.identity import Action, VerifiedActor
@@ -106,12 +107,26 @@ def _flip_status(
 
     The caller decides the transaction boundary: approve lets TrackerService
     commit (one transaction with the ticket patch); reject commits itself.
+
+    The flip is a compare-and-swap: handlers run in a threadpool, so two
+    decisions can both read "pending" before either commits. The conditional
+    UPDATE takes the write lock and re-checks the status under it — the loser
+    matches zero rows and 409s instead of applying twice (SEC second review,
+    must-fix).
     """
     before = audit.snapshot(proposal)
-    proposal.status = status
-    proposal.updated_at = ts
-    session.add(proposal)
-    session.flush()
+    claimed = cast(
+        "CursorResult[Any]",
+        session.execute(
+            sa_update(AgentProposal)
+            .where(col(AgentProposal.id) == proposal.id, col(AgentProposal.status) == "pending")
+            .values(status=status, updated_at=ts)
+        ),
+    )
+    if claimed.rowcount != 1:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="proposal was decided concurrently")
+    session.refresh(proposal)
     audit.write(
         session,
         actor_id=actor_id,

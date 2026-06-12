@@ -64,14 +64,29 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
+# The discovery file is a handful of short fields; anything bigger is not ours
+# (SEC second review: an unbounded read_text is a same-user DoS vector).
+_DISCOVERY_MAX_BYTES = 64 * 1024
+
+
 def _live_gateway_url(discovery_path: Path) -> str | None:
     """The gateway URL from the discovery file, or None unless provably usable.
 
-    Fail closed at every step: unreadable file, malformed JSON, a dead pid, or
-    a non-loopback host all mean "no gateway" rather than a guessed URL.
+    Fail closed at every step: unreadable, symlinked-away, oversized, or
+    malformed files, a dead pid, or a non-loopback host all mean "no gateway"
+    rather than a guessed URL.
     """
     try:
-        payload = json.loads(discovery_path.read_text(encoding="utf-8"))
+        # The gateway writes a regular file in the data directory; a symlink
+        # pointing elsewhere is someone else's payload (SEC second review).
+        resolved = discovery_path.resolve(strict=True)
+        if resolved.parent != discovery_path.parent.resolve():
+            return None
+        with resolved.open("rb") as handle:
+            raw = handle.read(_DISCOVERY_MAX_BYTES + 1)
+        if len(raw) > _DISCOVERY_MAX_BYTES:
+            return None
+        payload = json.loads(raw)
     except (OSError, ValueError):
         return None
     url = payload.get("url")

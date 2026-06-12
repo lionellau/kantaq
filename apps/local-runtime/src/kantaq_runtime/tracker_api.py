@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, col, select
@@ -212,6 +212,12 @@ class TicketIn(BaseModel):
 
 
 class TicketPatch(BaseModel):
+    # Fail closed on unknown fields: this shape also coerces agent-proposal
+    # diffs at approve time (MOD-12), where a silently-dropped key would be a
+    # silent bypass if the dump ever stopped flowing through the tracker's
+    # own field validation (SEC second review).
+    model_config = ConfigDict(extra="forbid")
+
     title: str | None = None
     description: str | None = None
     status: str | None = None
