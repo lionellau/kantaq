@@ -161,6 +161,22 @@ def test_grant_subject_must_match_the_actor() -> None:
     assert "subject" in verdict.reason
 
 
+def test_grant_resource_must_scope_the_workspace() -> None:
+    """DEBT-15(d) / E27 HIGH-2(b): a grant issued for another workspace cannot
+    ride an event here — the gate enforces workspace scope, not just RLS."""
+    kp = generate_keypair()
+    grant = _grant(kp.private_key)  # resource="workspace/ws_a"
+    # The matching workspace verifies; a foreign one is denied.
+    assert verify_event(
+        _event(kp.private_key), _context(kp.public_key, grant, workspace_id="workspace/ws_a")
+    ).ok
+    verdict = verify_event(
+        _event(kp.private_key), _context(kp.public_key, grant, workspace_id="ws_other")
+    )
+    assert not verdict.ok and verdict.code == POLICY_DENIED
+    assert "workspace" in verdict.reason
+
+
 def test_grant_verbs_must_authorise_the_collection() -> None:
     """E27 fix: a narrow grant cannot ride a write to a collection it does not
     cover — the fine per-verb scoping D-03 assigns to grants."""
