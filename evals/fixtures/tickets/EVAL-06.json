@@ -1,135 +1,135 @@
 {
-  "ticket": {
-    "id": "EVAL-06",
-    "title": "Agent security: prompt injection prevention, data isolation & output sanitisation",
-    "description": "Review and harden agent prompt-injection defenses, per-user data isolation, and output sanitisation.",
-    "lifecycle_stage": "review",
-    "status": "Done",
-    "labels": [
-      "Security",
-      "AI/Agents"
-    ]
-  },
-  "candidate_memory": [
-    {
-      "id": "mem-agent-stack",
-      "linked": false
-    },
-    {
-      "id": "mem-agent-trace",
-      "linked": false
-    },
-    {
-      "id": "mem-conventions",
-      "linked": false
-    },
-    {
-      "id": "mem-dec-async-jd",
-      "linked": false
-    },
-    {
-      "id": "mem-input-validator",
-      "linked": false
-    },
-    {
-      "id": "mem-pm-security-audit",
-      "linked": true,
-      "link_reason": "the audit of this work"
-    },
-    {
-      "id": "mem-security-policy",
-      "linked": true,
-      "link_reason": "the policy under review"
-    },
-    {
-      "id": "mem-vicky-codex-local",
-      "linked": false
-    }
-  ],
-  "bundles": {
-    "code_agent": {
-      "must_include": [
-        "mem-pm-security-audit",
-        "mem-input-validator",
-        "mem-agent-stack"
-      ],
-      "must_exclude": [
-        "mem-security-policy",
-        "mem-conventions",
-        "mem-vicky-codex-local",
-        "mem-agent-trace"
-      ],
-      "optional": [
-        "mem-dec-async-jd"
-      ],
-      "rationale": "Code sees the audit, the validation services, and the agent build; the workspace policy/conventions are out of scope and the two local notes are private. The async decision is in scope but tangential \u2014 optional."
-    },
-    "qa_agent": {
-      "must_include": [
-        "mem-pm-security-audit",
-        "mem-input-validator",
-        "mem-agent-stack"
-      ],
-      "must_exclude": [
-        "mem-security-policy",
-        "mem-conventions",
-        "mem-vicky-codex-local",
-        "mem-agent-trace"
-      ],
-      "optional": [
-        "mem-dec-async-jd"
-      ],
-      "rationale": "Same in-scope codebase/ticket set for QA; workspace entries out of scope, local notes private, the async decision optional."
-    },
-    "design_agent": {
-      "must_include": [
-        "mem-security-policy",
-        "mem-pm-security-audit",
-        "mem-conventions"
-      ],
-      "must_exclude": [
-        "mem-input-validator",
-        "mem-agent-stack",
-        "mem-vicky-codex-local",
-        "mem-agent-trace"
-      ],
-      "optional": [
-        "mem-dec-async-jd"
-      ],
-      "rationale": "Design sees the workspace policy/conventions and the ticket audit; codebase internals are out of scope, the local notes private, the async decision optional."
-    },
-    "product_agent": {
-      "must_include": [
-        "mem-security-policy",
-        "mem-pm-security-audit",
-        "mem-conventions"
-      ],
-      "must_exclude": [
-        "mem-input-validator",
-        "mem-agent-stack",
-        "mem-vicky-codex-local",
-        "mem-agent-trace"
-      ],
-      "optional": [
-        "mem-dec-async-jd"
-      ],
-      "rationale": "Product sees policy/audit/conventions; codebase internals out of scope, local notes private, the async decision optional."
-    },
-    "human_teammate": {
-      "must_include": [
-        "mem-security-policy",
-        "mem-pm-security-audit",
-        "mem-input-validator",
-        "mem-agent-stack",
-        "mem-conventions",
-        "mem-dec-async-jd",
-        "mem-vicky-codex-local"
-      ],
-      "must_exclude": [
-        "mem-agent-trace"
-      ],
-      "optional": [],
-      "rationale": "Vicky sees every team entry AND her own local Codex note; only Leo's local agent trace is invisible \u2014 the baseline-owner asymmetry."
-    }
-  }
+ "ticket": {
+ "id": "EVAL-06",
+ "title": "Agent security: prompt injection prevention, data isolation & output sanitisation",
+ "description": "Review and harden agent prompt-injection defenses, per-user data isolation, and output sanitisation.",
+ "lifecycle_stage": "review",
+ "status": "Done",
+ "labels": [
+ "Security",
+ "AI/Agents"
+ ]
+ },
+ "candidate_memory": [
+ {
+ "id": "mem-agent-stack",
+ "linked": false
+ },
+ {
+ "id": "mem-agent-trace",
+ "linked": false
+ },
+ {
+ "id": "mem-conventions",
+ "linked": false
+ },
+ {
+ "id": "mem-dec-async-jd",
+ "linked": false
+ },
+ {
+ "id": "mem-input-validator",
+ "linked": false
+ },
+ {
+ "id": "mem-pm-security-audit",
+ "linked": true,
+ "link_reason": "the audit of this work"
+ },
+ {
+ "id": "mem-security-policy",
+ "linked": true,
+ "link_reason": "the policy under review"
+ },
+ {
+ "id": "mem-robin-codex-local",
+ "linked": false
+ }
+ ],
+ "bundles": {
+ "code_agent": {
+ "must_include": [
+ "mem-pm-security-audit",
+ "mem-input-validator",
+ "mem-agent-stack"
+ ],
+ "must_exclude": [
+ "mem-security-policy",
+ "mem-conventions",
+ "mem-robin-codex-local",
+ "mem-agent-trace"
+ ],
+ "optional": [
+ "mem-dec-async-jd"
+ ],
+ "rationale": "Code sees the audit, the validation services, and the agent build; the workspace policy/conventions are out of scope and the two local notes are private. The async decision is in scope but tangential \u2014 optional."
+ },
+ "qa_agent": {
+ "must_include": [
+ "mem-pm-security-audit",
+ "mem-input-validator",
+ "mem-agent-stack"
+ ],
+ "must_exclude": [
+ "mem-security-policy",
+ "mem-conventions",
+ "mem-robin-codex-local",
+ "mem-agent-trace"
+ ],
+ "optional": [
+ "mem-dec-async-jd"
+ ],
+ "rationale": "Same in-scope codebase/ticket set for QA; workspace entries out of scope, local notes private, the async decision optional."
+ },
+ "design_agent": {
+ "must_include": [
+ "mem-security-policy",
+ "mem-pm-security-audit",
+ "mem-conventions"
+ ],
+ "must_exclude": [
+ "mem-input-validator",
+ "mem-agent-stack",
+ "mem-robin-codex-local",
+ "mem-agent-trace"
+ ],
+ "optional": [
+ "mem-dec-async-jd"
+ ],
+ "rationale": "Design sees the workspace policy/conventions and the ticket audit; codebase internals are out of scope, the local notes private, the async decision optional."
+ },
+ "product_agent": {
+ "must_include": [
+ "mem-security-policy",
+ "mem-pm-security-audit",
+ "mem-conventions"
+ ],
+ "must_exclude": [
+ "mem-input-validator",
+ "mem-agent-stack",
+ "mem-robin-codex-local",
+ "mem-agent-trace"
+ ],
+ "optional": [
+ "mem-dec-async-jd"
+ ],
+ "rationale": "Product sees policy/audit/conventions; codebase internals out of scope, local notes private, the async decision optional."
+ },
+ "human_teammate": {
+ "must_include": [
+ "mem-security-policy",
+ "mem-pm-security-audit",
+ "mem-input-validator",
+ "mem-agent-stack",
+ "mem-conventions",
+ "mem-dec-async-jd",
+ "mem-robin-codex-local"
+ ],
+ "must_exclude": [
+ "mem-agent-trace"
+ ],
+ "optional": [],
+ "rationale": "Robin sees every team entry AND her own local Codex note; only Alex's local agent trace is invisible \u2014 the baseline-owner asymmetry."
+ }
+ }
 }

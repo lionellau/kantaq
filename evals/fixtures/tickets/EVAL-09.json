@@ -1,133 +1,133 @@
 {
-  "ticket": {
-    "id": "EVAL-09",
-    "title": "Draft Terms of Service & Privacy Policy",
-    "description": "Draft and review the V1-scoped ToS and Privacy Policy: credit terms, user-owned content, AI output 'as is', data handling.",
-    "lifecycle_stage": "review",
-    "status": "In Review",
-    "labels": [
-      "Security",
-      "Growth/GTM"
-    ]
-  },
-  "candidate_memory": [
-    {
-      "id": "mem-conventions",
-      "linked": false
-    },
-    {
-      "id": "mem-credit-system",
-      "linked": true,
-      "link_reason": "the credit terms the ToS states"
-    },
-    {
-      "id": "mem-dec-pr124-rejected",
-      "linked": false
-    },
-    {
-      "id": "mem-prd-v52",
-      "linked": false
-    },
-    {
-      "id": "mem-rel-launch-plan",
-      "linked": false
-    },
-    {
-      "id": "mem-sam-local-legal",
-      "linked": false
-    },
-    {
-      "id": "mem-security-policy",
-      "linked": false
-    },
-    {
-      "id": "mem-tos-scope",
-      "linked": true,
-      "link_reason": "the V1 legal scope"
-    }
-  ],
-  "bundles": {
-    "code_agent": {
-      "must_include": [
-        "mem-tos-scope",
-        "mem-credit-system",
-        "mem-prd-v52"
-      ],
-      "must_exclude": [
-        "mem-dec-pr124-rejected",
-        "mem-security-policy",
-        "mem-sam-local-legal",
-        "mem-rel-launch-plan",
-        "mem-conventions"
-      ],
-      "optional": [],
-      "rationale": "Code sees the ticket scope, the credit terms, and the PRD; the rejected PR #124 decision is withheld, workspace/release entries out of scope, Sam's note local."
-    },
-    "qa_agent": {
-      "must_include": [
-        "mem-tos-scope"
-      ],
-      "must_exclude": [
-        "mem-dec-pr124-rejected",
-        "mem-credit-system",
-        "mem-security-policy",
-        "mem-prd-v52",
-        "mem-sam-local-legal",
-        "mem-conventions"
-      ],
-      "optional": [
-        "mem-rel-launch-plan"
-      ],
-      "rationale": "QA sees the ticket scope; the rejected decision is withheld, project/workspace entries out of scope, Sam's note local. The launch plan is in scope (release) but irrelevant to legal review \u2014 optional."
-    },
-    "design_agent": {
-      "must_include": [
-        "mem-tos-scope",
-        "mem-credit-system",
-        "mem-security-policy",
-        "mem-prd-v52"
-      ],
-      "must_exclude": [
-        "mem-dec-pr124-rejected",
-        "mem-sam-local-legal",
-        "mem-rel-launch-plan"
-      ],
-      "optional": [
-        "mem-conventions"
-      ],
-      "rationale": "Design sees the scope/credit/policy/PRD; the rejected decision withheld, release/local out, conventions tangential to legal \u2014 optional."
-    },
-    "product_agent": {
-      "must_include": [
-        "mem-tos-scope",
-        "mem-credit-system",
-        "mem-security-policy",
-        "mem-prd-v52",
-        "mem-rel-launch-plan",
-        "mem-conventions"
-      ],
-      "must_exclude": [
-        "mem-dec-pr124-rejected",
-        "mem-sam-local-legal"
-      ],
-      "optional": [],
-      "rationale": "Product sees the widest set \u2014 scope, credit, policy, PRD, the launch plan, conventions; the rejected PR #124 decision is withheld and Sam's note is local."
-    },
-    "human_teammate": {
-      "must_include": [
-        "mem-tos-scope",
-        "mem-dec-pr124-rejected",
-        "mem-credit-system",
-        "mem-security-policy",
-        "mem-prd-v52",
-        "mem-rel-launch-plan",
-        "mem-conventions"
-      ],
-      "must_exclude": [
-        "mem-sam-local-legal"
-      ],
-      "optional": [],
-      "rationale": "Vicky sees every team entry including the rejected PR #124 decision; only Sam's local legal note is invisible."
-    }
-  }
+ "ticket": {
+ "id": "EVAL-09",
+ "title": "Draft Terms of Service & Privacy Policy",
+ "description": "Draft and review the V1-scoped ToS and Privacy Policy: credit terms, user-owned content, AI output 'as is', data handling.",
+ "lifecycle_stage": "review",
+ "status": "In Review",
+ "labels": [
+ "Security",
+ "Growth/GTM"
+ ]
+ },
+ "candidate_memory": [
+ {
+ "id": "mem-conventions",
+ "linked": false
+ },
+ {
+ "id": "mem-credit-system",
+ "linked": true,
+ "link_reason": "the credit terms the ToS states"
+ },
+ {
+ "id": "mem-dec-legal-rejected",
+ "linked": false
+ },
+ {
+ "id": "mem-prd-v52",
+ "linked": false
+ },
+ {
+ "id": "mem-rel-launch-plan",
+ "linked": false
+ },
+ {
+ "id": "mem-jordan-local-legal",
+ "linked": false
+ },
+ {
+ "id": "mem-security-policy",
+ "linked": false
+ },
+ {
+ "id": "mem-tos-scope",
+ "linked": true,
+ "link_reason": "the V1 legal scope"
+ }
+ ],
+ "bundles": {
+ "code_agent": {
+ "must_include": [
+ "mem-tos-scope",
+ "mem-credit-system",
+ "mem-prd-v52"
+ ],
+ "must_exclude": [
+ "mem-dec-legal-rejected",
+ "mem-security-policy",
+ "mem-jordan-local-legal",
+ "mem-rel-launch-plan",
+ "mem-conventions"
+ ],
+ "optional": [],
+ "rationale": "Code sees the ticket scope, the credit terms, and the PRD; the rejected a PR decision is withheld, workspace/release entries out of scope, Jordan's note local."
+ },
+ "qa_agent": {
+ "must_include": [
+ "mem-tos-scope"
+ ],
+ "must_exclude": [
+ "mem-dec-legal-rejected",
+ "mem-credit-system",
+ "mem-security-policy",
+ "mem-prd-v52",
+ "mem-jordan-local-legal",
+ "mem-conventions"
+ ],
+ "optional": [
+ "mem-rel-launch-plan"
+ ],
+ "rationale": "QA sees the ticket scope; the rejected decision is withheld, project/workspace entries out of scope, Jordan's note local. The launch plan is in scope (release) but irrelevant to legal review \u2014 optional."
+ },
+ "design_agent": {
+ "must_include": [
+ "mem-tos-scope",
+ "mem-credit-system",
+ "mem-security-policy",
+ "mem-prd-v52"
+ ],
+ "must_exclude": [
+ "mem-dec-legal-rejected",
+ "mem-jordan-local-legal",
+ "mem-rel-launch-plan"
+ ],
+ "optional": [
+ "mem-conventions"
+ ],
+ "rationale": "Design sees the scope/credit/policy/PRD; the rejected decision withheld, release/local out, conventions tangential to legal \u2014 optional."
+ },
+ "product_agent": {
+ "must_include": [
+ "mem-tos-scope",
+ "mem-credit-system",
+ "mem-security-policy",
+ "mem-prd-v52",
+ "mem-rel-launch-plan",
+ "mem-conventions"
+ ],
+ "must_exclude": [
+ "mem-dec-legal-rejected",
+ "mem-jordan-local-legal"
+ ],
+ "optional": [],
+ "rationale": "Product sees the widest set \u2014 scope, credit, policy, PRD, the launch plan, conventions; the rejected a PR decision is withheld and Jordan's note is local."
+ },
+ "human_teammate": {
+ "must_include": [
+ "mem-tos-scope",
+ "mem-dec-legal-rejected",
+ "mem-credit-system",
+ "mem-security-policy",
+ "mem-prd-v52",
+ "mem-rel-launch-plan",
+ "mem-conventions"
+ ],
+ "must_exclude": [
+ "mem-jordan-local-legal"
+ ],
+ "optional": [],
+ "rationale": "Robin sees every team entry including the rejected a PR decision; only Jordan's local legal note is invisible."
+ }
+ }
 }

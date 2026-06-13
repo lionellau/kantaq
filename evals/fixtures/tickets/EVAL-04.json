@@ -1,132 +1,132 @@
 {
-  "ticket": {
-    "id": "EVAL-04",
-    "title": "Smoke test: invoke_runtime.sh against live Bedrock agents",
-    "description": "Validate the full local to Bedrock round-trip for the 5 specialist agents before staging.",
-    "lifecycle_stage": "qa",
-    "status": "Done",
-    "labels": [
-      "QA/Testing",
-      "Infrastructure",
-      "AI/Agents"
-    ]
-  },
-  "candidate_memory": [
-    {
-      "id": "mem-agent-stack",
-      "linked": false
-    },
-    {
-      "id": "mem-agent-summary",
-      "linked": false
-    },
-    {
-      "id": "mem-agent-trace",
-      "linked": false
-    },
-    {
-      "id": "mem-conventions",
-      "linked": false
-    },
-    {
-      "id": "mem-dec-async-jd",
-      "linked": false
-    },
-    {
-      "id": "mem-prd-v52",
-      "linked": false
-    },
-    {
-      "id": "mem-rel-smoke-pass",
-      "linked": true,
-      "link_reason": "the smoke-test result"
-    },
-    {
-      "id": "mem-smoke-reqs",
-      "linked": true,
-      "link_reason": "the smoke-test acceptance"
-    }
-  ],
-  "bundles": {
-    "code_agent": {
-      "must_include": [
-        "mem-smoke-reqs",
-        "mem-agent-stack",
-        "mem-dec-async-jd",
-        "mem-prd-v52"
-      ],
-      "must_exclude": [
-        "mem-rel-smoke-pass",
-        "mem-agent-summary",
-        "mem-conventions",
-        "mem-agent-trace"
-      ],
-      "optional": [],
-      "rationale": "Code sees the acceptance, the agent build, the async decision, and the PRD; the smoke-test release note and the agent_run summary/trace are out of scope (trace local), conventions are workspace."
-    },
-    "qa_agent": {
-      "must_include": [
-        "mem-smoke-reqs",
-        "mem-rel-smoke-pass",
-        "mem-agent-stack",
-        "mem-dec-async-jd"
-      ],
-      "must_exclude": [
-        "mem-agent-summary",
-        "mem-conventions",
-        "mem-prd-v52",
-        "mem-agent-trace"
-      ],
-      "optional": [],
-      "rationale": "QA needs the acceptance, the smoke result, the agent build, and the decision; the agent_run summary/trace, conventions, and the project PRD are out of scope (trace local)."
-    },
-    "design_agent": {
-      "must_include": [
-        "mem-smoke-reqs",
-        "mem-conventions",
-        "mem-dec-async-jd",
-        "mem-prd-v52"
-      ],
-      "must_exclude": [
-        "mem-rel-smoke-pass",
-        "mem-agent-summary",
-        "mem-agent-stack",
-        "mem-agent-trace"
-      ],
-      "optional": [],
-      "rationale": "Design's scope picks up the ticket, conventions, the decision, and the PRD; codebase/release/agent_run are out of scope, the trace is local."
-    },
-    "product_agent": {
-      "must_include": [
-        "mem-smoke-reqs",
-        "mem-rel-smoke-pass",
-        "mem-conventions",
-        "mem-dec-async-jd",
-        "mem-prd-v52"
-      ],
-      "must_exclude": [
-        "mem-agent-summary",
-        "mem-agent-stack",
-        "mem-agent-trace"
-      ],
-      "optional": [],
-      "rationale": "Product sees ticket/release/workspace/decision/project; codebase and agent_run entries are out of scope, the trace is local."
-    },
-    "human_teammate": {
-      "must_include": [
-        "mem-smoke-reqs",
-        "mem-rel-smoke-pass",
-        "mem-agent-summary",
-        "mem-agent-stack",
-        "mem-conventions",
-        "mem-dec-async-jd",
-        "mem-prd-v52"
-      ],
-      "must_exclude": [
-        "mem-agent-trace"
-      ],
-      "optional": [],
-      "rationale": "Vicky sees every team entry including the team-shared agent run summary; only Leo's local agent trace is invisible."
-    }
-  }
+ "ticket": {
+ "id": "EVAL-04",
+ "title": "Smoke test: invoke_runtime.sh against live Bedrock agents",
+ "description": "Validate the full local to Bedrock round-trip for the 5 specialist agents before staging.",
+ "lifecycle_stage": "qa",
+ "status": "Done",
+ "labels": [
+ "QA/Testing",
+ "Infrastructure",
+ "AI/Agents"
+ ]
+ },
+ "candidate_memory": [
+ {
+ "id": "mem-agent-stack",
+ "linked": false
+ },
+ {
+ "id": "mem-agent-summary",
+ "linked": false
+ },
+ {
+ "id": "mem-agent-trace",
+ "linked": false
+ },
+ {
+ "id": "mem-conventions",
+ "linked": false
+ },
+ {
+ "id": "mem-dec-async-jd",
+ "linked": false
+ },
+ {
+ "id": "mem-prd-v52",
+ "linked": false
+ },
+ {
+ "id": "mem-rel-smoke-pass",
+ "linked": true,
+ "link_reason": "the smoke-test result"
+ },
+ {
+ "id": "mem-smoke-reqs",
+ "linked": true,
+ "link_reason": "the smoke-test acceptance"
+ }
+ ],
+ "bundles": {
+ "code_agent": {
+ "must_include": [
+ "mem-smoke-reqs",
+ "mem-agent-stack",
+ "mem-dec-async-jd",
+ "mem-prd-v52"
+ ],
+ "must_exclude": [
+ "mem-rel-smoke-pass",
+ "mem-agent-summary",
+ "mem-conventions",
+ "mem-agent-trace"
+ ],
+ "optional": [],
+ "rationale": "Code sees the acceptance, the agent build, the async decision, and the PRD; the smoke-test release note and the agent_run summary/trace are out of scope (trace local), conventions are workspace."
+ },
+ "qa_agent": {
+ "must_include": [
+ "mem-smoke-reqs",
+ "mem-rel-smoke-pass",
+ "mem-agent-stack",
+ "mem-dec-async-jd"
+ ],
+ "must_exclude": [
+ "mem-agent-summary",
+ "mem-conventions",
+ "mem-prd-v52",
+ "mem-agent-trace"
+ ],
+ "optional": [],
+ "rationale": "QA needs the acceptance, the smoke result, the agent build, and the decision; the agent_run summary/trace, conventions, and the project PRD are out of scope (trace local)."
+ },
+ "design_agent": {
+ "must_include": [
+ "mem-smoke-reqs",
+ "mem-conventions",
+ "mem-dec-async-jd",
+ "mem-prd-v52"
+ ],
+ "must_exclude": [
+ "mem-rel-smoke-pass",
+ "mem-agent-summary",
+ "mem-agent-stack",
+ "mem-agent-trace"
+ ],
+ "optional": [],
+ "rationale": "Design's scope picks up the ticket, conventions, the decision, and the PRD; codebase/release/agent_run are out of scope, the trace is local."
+ },
+ "product_agent": {
+ "must_include": [
+ "mem-smoke-reqs",
+ "mem-rel-smoke-pass",
+ "mem-conventions",
+ "mem-dec-async-jd",
+ "mem-prd-v52"
+ ],
+ "must_exclude": [
+ "mem-agent-summary",
+ "mem-agent-stack",
+ "mem-agent-trace"
+ ],
+ "optional": [],
+ "rationale": "Product sees ticket/release/workspace/decision/project; codebase and agent_run entries are out of scope, the trace is local."
+ },
+ "human_teammate": {
+ "must_include": [
+ "mem-smoke-reqs",
+ "mem-rel-smoke-pass",
+ "mem-agent-summary",
+ "mem-agent-stack",
+ "mem-conventions",
+ "mem-dec-async-jd",
+ "mem-prd-v52"
+ ],
+ "must_exclude": [
+ "mem-agent-trace"
+ ],
+ "optional": [],
+ "rationale": "Robin sees every team entry including the team-shared agent run summary; only Alex's local agent trace is invisible."
+ }
+ }
 }

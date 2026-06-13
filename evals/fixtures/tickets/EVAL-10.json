@@ -1,129 +1,129 @@
 {
-  "ticket": {
-    "id": "EVAL-10",
-    "title": "Implement user-level memory (preferences, profile, AgentCore namespace)",
-    "description": "Persist stable user preferences/profile in DynamoDB; MemoryManager over SessionStore with Pydantic schemas.",
-    "lifecycle_stage": "implementation",
-    "status": "Done",
-    "labels": [
-      "Backend"
-    ]
-  },
-  "candidate_memory": [
-    {
-      "id": "mem-agent-summary",
-      "linked": false
-    },
-    {
-      "id": "mem-conventions",
-      "linked": false
-    },
-    {
-      "id": "mem-dec-user-memory",
-      "linked": true,
-      "link_reason": "the storage decision (DynamoDB, not AgentCore)"
-    },
-    {
-      "id": "mem-memory-arch",
-      "linked": true,
-      "link_reason": "the memory architecture this implements"
-    },
-    {
-      "id": "mem-prd-v52",
-      "linked": false
-    },
-    {
-      "id": "mem-rel-smoke-pass",
-      "linked": false
-    },
-    {
-      "id": "mem-security-policy",
-      "linked": false
-    },
-    {
-      "id": "mem-vicky-codex-local",
-      "linked": false
-    }
-  ],
-  "bundles": {
-    "code_agent": {
-      "must_include": [
-        "mem-memory-arch",
-        "mem-dec-user-memory",
-        "mem-prd-v52"
-      ],
-      "must_exclude": [
-        "mem-conventions",
-        "mem-agent-summary",
-        "mem-vicky-codex-local",
-        "mem-rel-smoke-pass",
-        "mem-security-policy"
-      ],
-      "optional": [],
-      "rationale": "Code sees the architecture, the storage decision, and the PRD; conventions/policy are workspace, the agent_run summary and the smoke release note are out of scope, Vicky's Codex note is local."
-    },
-    "qa_agent": {
-      "must_include": [
-        "mem-memory-arch",
-        "mem-dec-user-memory",
-        "mem-rel-smoke-pass"
-      ],
-      "must_exclude": [
-        "mem-conventions",
-        "mem-prd-v52",
-        "mem-agent-summary",
-        "mem-vicky-codex-local",
-        "mem-security-policy"
-      ],
-      "optional": [],
-      "rationale": "QA swaps the PRD for the smoke release note; workspace/project and agent_run entries are out of scope, Vicky's note is local."
-    },
-    "design_agent": {
-      "must_include": [
-        "mem-dec-user-memory",
-        "mem-conventions",
-        "mem-prd-v52",
-        "mem-security-policy"
-      ],
-      "must_exclude": [
-        "mem-memory-arch",
-        "mem-agent-summary",
-        "mem-vicky-codex-local",
-        "mem-rel-smoke-pass"
-      ],
-      "optional": [],
-      "rationale": "Design sees the decision/conventions/PRD/policy; codebase, agent_run, and release entries are out of scope, Vicky's note is local."
-    },
-    "product_agent": {
-      "must_include": [
-        "mem-dec-user-memory",
-        "mem-conventions",
-        "mem-prd-v52",
-        "mem-rel-smoke-pass",
-        "mem-security-policy"
-      ],
-      "must_exclude": [
-        "mem-memory-arch",
-        "mem-agent-summary",
-        "mem-vicky-codex-local"
-      ],
-      "optional": [],
-      "rationale": "Product sees the decision/conventions/PRD/release/policy; the codebase architecture and the agent_run summary are out of scope, Vicky's note is local."
-    },
-    "human_teammate": {
-      "must_include": [
-        "mem-memory-arch",
-        "mem-dec-user-memory",
-        "mem-conventions",
-        "mem-prd-v52",
-        "mem-agent-summary",
-        "mem-vicky-codex-local",
-        "mem-rel-smoke-pass",
-        "mem-security-policy"
-      ],
-      "must_exclude": [],
-      "optional": [],
-      "rationale": "Every candidate is team-visible or Vicky's own local note, so she sees all of them \u2014 the human baseline as the full superset."
-    }
-  }
+ "ticket": {
+ "id": "EVAL-10",
+ "title": "Implement user-level memory (preferences, profile, AgentCore namespace)",
+ "description": "Persist stable user preferences/profile in DynamoDB; MemoryManager over SessionStore with Pydantic schemas.",
+ "lifecycle_stage": "implementation",
+ "status": "Done",
+ "labels": [
+ "Backend"
+ ]
+ },
+ "candidate_memory": [
+ {
+ "id": "mem-agent-summary",
+ "linked": false
+ },
+ {
+ "id": "mem-conventions",
+ "linked": false
+ },
+ {
+ "id": "mem-dec-user-memory",
+ "linked": true,
+ "link_reason": "the storage decision (DynamoDB, not AgentCore)"
+ },
+ {
+ "id": "mem-memory-arch",
+ "linked": true,
+ "link_reason": "the memory architecture this implements"
+ },
+ {
+ "id": "mem-prd-v52",
+ "linked": false
+ },
+ {
+ "id": "mem-rel-smoke-pass",
+ "linked": false
+ },
+ {
+ "id": "mem-security-policy",
+ "linked": false
+ },
+ {
+ "id": "mem-robin-codex-local",
+ "linked": false
+ }
+ ],
+ "bundles": {
+ "code_agent": {
+ "must_include": [
+ "mem-memory-arch",
+ "mem-dec-user-memory",
+ "mem-prd-v52"
+ ],
+ "must_exclude": [
+ "mem-conventions",
+ "mem-agent-summary",
+ "mem-robin-codex-local",
+ "mem-rel-smoke-pass",
+ "mem-security-policy"
+ ],
+ "optional": [],
+ "rationale": "Code sees the architecture, the storage decision, and the PRD; conventions/policy are workspace, the agent_run summary and the smoke release note are out of scope, Robin's Codex note is local."
+ },
+ "qa_agent": {
+ "must_include": [
+ "mem-memory-arch",
+ "mem-dec-user-memory",
+ "mem-rel-smoke-pass"
+ ],
+ "must_exclude": [
+ "mem-conventions",
+ "mem-prd-v52",
+ "mem-agent-summary",
+ "mem-robin-codex-local",
+ "mem-security-policy"
+ ],
+ "optional": [],
+ "rationale": "QA swaps the PRD for the smoke release note; workspace/project and agent_run entries are out of scope, Robin's note is local."
+ },
+ "design_agent": {
+ "must_include": [
+ "mem-dec-user-memory",
+ "mem-conventions",
+ "mem-prd-v52",
+ "mem-security-policy"
+ ],
+ "must_exclude": [
+ "mem-memory-arch",
+ "mem-agent-summary",
+ "mem-robin-codex-local",
+ "mem-rel-smoke-pass"
+ ],
+ "optional": [],
+ "rationale": "Design sees the decision/conventions/PRD/policy; codebase, agent_run, and release entries are out of scope, Robin's note is local."
+ },
+ "product_agent": {
+ "must_include": [
+ "mem-dec-user-memory",
+ "mem-conventions",
+ "mem-prd-v52",
+ "mem-rel-smoke-pass",
+ "mem-security-policy"
+ ],
+ "must_exclude": [
+ "mem-memory-arch",
+ "mem-agent-summary",
+ "mem-robin-codex-local"
+ ],
+ "optional": [],
+ "rationale": "Product sees the decision/conventions/PRD/release/policy; the codebase architecture and the agent_run summary are out of scope, Robin's note is local."
+ },
+ "human_teammate": {
+ "must_include": [
+ "mem-memory-arch",
+ "mem-dec-user-memory",
+ "mem-conventions",
+ "mem-prd-v52",
+ "mem-agent-summary",
+ "mem-robin-codex-local",
+ "mem-rel-smoke-pass",
+ "mem-security-policy"
+ ],
+ "must_exclude": [],
+ "optional": [],
+ "rationale": "Every candidate is team-visible or Robin's own local note, so she sees all of them \u2014 the human baseline as the full superset."
+ }
+ }
 }
