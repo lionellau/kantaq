@@ -13,8 +13,10 @@ path (``session.delete``, or flushing a modified row), bulk ORM
 *any* compiled UPDATE/DELETE against ``audit_events``, which also covers
 ``bulk_update_mappings`` and statements issued on a bare connection. There is
 deliberately no update or delete function here. Textual raw SQL is below the
-app layer; tamper-evidence for that arrives with the hash chain (FR-E07-4,
-v0.1 — DEBT-01).
+app layer — the guards cannot *refuse* it, but the hash chain (FR-E07-4) makes
+it *evident*: ``write`` links every row into a tamper-evident chain and
+``verify_chain`` recomputes it, so a below-app-layer edit, removal, insertion,
+or reorder of a row shows up as a named failure.
 
 Agent *reads* are aggregated (NFR-E07-2, RISK-06): the gateway records each read
 on an ``AgentReadLog`` (thread-safe) and flushes one summary row per agent, so
@@ -34,9 +36,10 @@ from sqlalchemy import Delete, Update, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Mapper, ORMExecuteState
 from sqlalchemy.orm import Session as SASession
-from sqlmodel import Session, SQLModel
+from sqlmodel import Session, SQLModel, col, select
 
 from kantaq_db import AuditEvent
+from kantaq_protocol import chain_hash
 
 # Where a write came from. "app" = the human UI/API path, "cli" = kantaq CLI,
 # "mcp" = an agent via the MCP gateway, "sync" = the sync engine replaying.
@@ -48,6 +51,36 @@ ACTION_MAX_LENGTH = 64
 
 AGENT_READ_ACTION = "agent.read"
 
+# The immutable row fields bound into each hash-chain link (FR-E07-4). The
+# whole record is committed — not just the id — so a below-app-layer *content*
+# edit (which leaves the id untouched) is evident, not only insertion/removal.
+# Order is irrelevant: the canonical codec sorts keys. ``created_at`` is bound
+# as exact integer microseconds UTC (the codec carries no floats or datetimes),
+# detecting a backdated row; ``updated_at`` is excluded because an audit row
+# never updates (it always equals ``created_at``), and the privacy_class
+# envelope columns are excluded because they are write-time constants, not the
+# "what happened" content tamper-evidence protects.
+_CHAINED_FIELDS = (
+    "id",
+    "actor_seq",
+    "created_at",
+    "actor_id",
+    "action",
+    "object_ref",
+    "source",
+    "before",
+    "after",
+)
+
+# Structured verification reasons (wire vocabulary, like the FR-E03-5 / grant codes).
+CHAIN_OK = "ok"
+CHAIN_EMPTY = "empty"  # no rows in the range — vacuously intact
+CHAIN_UNCHAINED = "unchained"  # a row with no chain_hash (pre-v0.1 / DEBT-01, or nulled)
+CHAIN_TAMPERED = "tampered"  # stored hash != recomputed link (edit/remove/insert/reorder)
+CHAIN_TRUNCATED = "truncated"  # the range does not reach the expected tip (tail removed)
+
+_UNIX_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
 
 class AuditWriteError(ValueError):
     """An audit write was missing or malformed in its attribution."""
@@ -55,6 +88,59 @@ class AuditWriteError(ValueError):
 
 class AppendOnlyAuditError(RuntimeError):
     """An update or delete touched an audit row (NFR-E07-1: append-only)."""
+
+
+@dataclass(frozen=True)
+class ChainVerification:
+    """The outcome of one ``verify_chain`` pass: ``ok`` or a named failure.
+
+    ``event_id`` is the id of the first row where the chain diverges (or the
+    last row checked, for ``truncated``), so an auditor can point at the gap.
+    """
+
+    ok: bool
+    reason: str
+    event_id: str | None = None
+
+    def __bool__(self) -> bool:
+        return self.ok
+
+
+def _epoch_micros(ts: datetime) -> int:
+    """Exact integer microseconds since the Unix epoch, UTC (no float rounding).
+
+    kantaq always writes UTC; a naive datetime (SQLite reads strip the tzinfo)
+    is read as UTC, so the value is identical whether the row is in memory,
+    SQLite, or Postgres — the chain link is reproducible across stores.
+    """
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=UTC)
+    delta = ts - _UNIX_EPOCH
+    return (delta.days * 86_400 + delta.seconds) * 1_000_000 + delta.microseconds
+
+
+def _chain_record(row: AuditEvent) -> dict[str, Any]:
+    """The canonical, in-profile content of a row that the chain commits to.
+
+    Built from ``_CHAINED_FIELDS`` so the bound set is one source of truth;
+    ``created_at`` is the only field needing a serialization (to int micros).
+    """
+    record: dict[str, Any] = {}
+    for name in _CHAINED_FIELDS:
+        value = getattr(row, name)
+        record[name] = _epoch_micros(value) if name == "created_at" else value
+    return record
+
+
+def _current_tip(session: Session) -> str | None:
+    """The ``chain_hash`` of the most recent row (max ULID), or None if empty.
+
+    The local runtime is the only audit writer (gateway-written only, MOD-07),
+    and ULIDs are monotonic, so the max-id row is always the chain's tip.
+    """
+    return session.exec(
+        select(AuditEvent.chain_hash).order_by(col(AuditEvent.id).desc()).limit(1)
+    ).first()
 
 
 def write(
@@ -72,7 +158,13 @@ def write(
 
     ``actor_id`` and ``source`` are required — an unattributed or misattributed
     audit row is worse than none, so there is no default to fall back on
-    (FR-E07-1). ``before``/``after`` must be JSON-safe; use ``snapshot``.
+    (FR-E07-1). ``before``/``after`` must be canonically encodable (the codec's
+    restricted RFC 8785 profile: no floats); ``snapshot`` produces such dicts.
+
+    The row is linked into the hash chain (FR-E07-4) before it is flushed:
+    ``chain_hash = H(previous_tip ‖ this row's content)``. Nothing is written
+    if the content is outside the canonical profile — the ``SchemaViolation``
+    is raised here, before ``session.add``.
     """
     if not actor_id or not actor_id.strip():
         raise AuditWriteError("audit rows must be attributed: actor_id is required")
@@ -94,9 +186,73 @@ def write(
         created_at=ts,
         updated_at=ts,
     )
+    # Link before add: the tip query must not autoflush this row, and a
+    # non-canonical payload must fail before anything is persisted.
+    row.chain_hash = chain_hash(_current_tip(session), _chain_record(row))
     session.add(row)
     session.flush()
     return row
+
+
+def verify_chain(
+    session: Session,
+    *,
+    start_id: str | None = None,
+    end_id: str | None = None,
+    expected_tip: str | None = None,
+) -> ChainVerification:
+    """Recompute the audit hash chain over a range and report the first break.
+
+    Walks ``audit_events`` in ULID (``id``) order — which is insertion order —
+    recomputing each row's link from the running predecessor hash and comparing
+    it to the stored ``chain_hash``. Any below-app-layer tamper that the
+    append-only guards cannot refuse is caught:
+
+    - a **content edit** or a **reordered/forged** row → its recomputed link
+      no longer matches its stored hash (``CHAIN_TAMPERED``);
+    - a **removed interior** row → the *next* row's predecessor is wrong, so its
+      link fails (``CHAIN_TAMPERED`` at that row);
+    - a **removed tail** row → the chain stays internally consistent but no
+      longer reaches ``expected_tip`` (``CHAIN_TRUNCATED``); pass the anchor you
+      expect the range to end on to detect truncation;
+    - a row that was never chained (pre-v0.1 / DEBT-01) → ``CHAIN_UNCHAINED``.
+
+    ``start_id``/``end_id`` bound the range (inclusive); when ``start_id`` is
+    given, the chain_hash of the row just before it seeds the walk — that
+    boundary row is the trusted anchor of a "verified range". Omit ``start_id``
+    to verify from genesis. ``populate_existing`` forces a fresh read so a tamper
+    applied out-of-band is seen even if the session has the row cached.
+    """
+    previous: str | None = None
+    if start_id is not None:
+        previous = session.exec(
+            select(AuditEvent.chain_hash)
+            .where(col(AuditEvent.id) < start_id)
+            .order_by(col(AuditEvent.id).desc())
+            .limit(1)
+        ).first()
+
+    stmt = select(AuditEvent).order_by(col(AuditEvent.id).asc())
+    if start_id is not None:
+        stmt = stmt.where(col(AuditEvent.id) >= start_id)
+    if end_id is not None:
+        stmt = stmt.where(col(AuditEvent.id) <= end_id)
+    rows = session.exec(stmt.execution_options(populate_existing=True)).all()
+
+    last_id: str | None = None
+    for row in rows:
+        if row.chain_hash is None:
+            return ChainVerification(False, CHAIN_UNCHAINED, row.id)
+        if chain_hash(previous, _chain_record(row)) != row.chain_hash:
+            return ChainVerification(False, CHAIN_TAMPERED, row.id)
+        previous = row.chain_hash
+        last_id = row.id
+
+    if expected_tip is not None and previous != expected_tip:
+        return ChainVerification(False, CHAIN_TRUNCATED, last_id)
+    if last_id is None:
+        return ChainVerification(True, CHAIN_EMPTY, None)
+    return ChainVerification(True, CHAIN_OK, last_id)
 
 
 def snapshot(row: SQLModel) -> dict[str, Any]:
