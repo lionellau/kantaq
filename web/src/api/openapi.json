@@ -1139,6 +1139,76 @@
         "title": "ProposalOut",
         "type": "object"
       },
+      "RelationIn": {
+        "properties": {
+          "to_id": {
+            "title": "To Id",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "to_id",
+          "type"
+        ],
+        "title": "RelationIn",
+        "type": "object"
+      },
+      "RelationOut": {
+        "description": "One typed ticket relationship (E12-T3), seen from a ticket's side.\n\n``direction`` is relative to the ticket in the request path: ``outgoing``\nwhen it is the ``from`` end (e.g. it *blocks* the other), ``incoming`` when\nit is the ``to`` end (e.g. it *is blocked by* the other). The raw stored\nedge (``from_id``/``to_id``/``type``) is always one of the five real types \u2014\nno inverse pseudo-type is invented for the view.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "from_id": {
+            "title": "From Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "to_id": {
+            "title": "To Id",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "from_id",
+          "to_id",
+          "type",
+          "direction",
+          "created_by",
+          "created_at"
+        ],
+        "title": "RelationOut",
+        "type": "object"
+      },
       "Role": {
         "description": "The 5 base roles (PRD \u00a711). Stored on ``members.role``.",
         "enum": [
@@ -1416,6 +1486,10 @@
             "title": "Attachments",
             "type": "array"
           },
+          "blocked": {
+            "title": "Blocked",
+            "type": "boolean"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -1493,9 +1567,17 @@
             "title": "Recommended Next Stages",
             "type": "array"
           },
+          "relationship_count": {
+            "title": "Relationship Count",
+            "type": "integer"
+          },
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "subticket_count": {
+            "title": "Subticket Count",
+            "type": "integer"
           },
           "sync_state": {
             "title": "Sync State",
@@ -1530,7 +1612,10 @@
           "updated_at",
           "sync_state",
           "pending_proposals",
-          "recommended_next_stages"
+          "recommended_next_stages",
+          "subticket_count",
+          "relationship_count",
+          "blocked"
         ],
         "title": "TicketOut",
         "type": "object"
@@ -2910,6 +2995,22 @@
               ],
               "title": "Stage"
             }
+          },
+          {
+            "in": "query",
+            "name": "parent",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent"
+            }
           }
         ],
         "responses": {
@@ -3371,6 +3472,147 @@
         "summary": "Ticket Memory",
         "tags": [
           "memory"
+        ]
+      }
+    },
+    "/v1/tickets/{ticket_id}/relations": {
+      "get": {
+        "description": "Every typed relationship touching the ticket, from either end.",
+        "operationId": "list_relations_v1_tickets__ticket_id__relations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RelationOut"
+                  },
+                  "title": "Response List Relations V1 Tickets  Ticket Id  Relations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Relations",
+        "tags": [
+          "tracker"
+        ]
+      },
+      "post": {
+        "operationId": "create_relation_v1_tickets__ticket_id__relations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Relation",
+        "tags": [
+          "tracker"
+        ]
+      }
+    },
+    "/v1/tickets/{ticket_id}/relations/{relationship_id}": {
+      "delete": {
+        "operationId": "delete_relation_v1_tickets__ticket_id__relations__relationship_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "relationship_id",
+            "required": true,
+            "schema": {
+              "title": "Relationship Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Relation",
+        "tags": [
+          "tracker"
         ]
       }
     }

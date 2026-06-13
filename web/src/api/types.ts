@@ -14,11 +14,21 @@ export type MemoryEntry = components["schemas"]["MemoryOut"];
 export type MemoryLink = components["schemas"]["MemoryLinkOut"];
 export type LinkedMemory = components["schemas"]["LinkedMemoryOut"];
 export type TelemetryView = components["schemas"]["TelemetryOut"];
+export type Relation = components["schemas"]["RelationOut"];
+export type RelationInput = components["schemas"]["RelationIn"];
 
 // The domain vocabularies (mirrors kantaq_core.tracker.service; values are
 // validated server-side — these drive the filter/create selects only).
 export const TICKET_STATUSES = ["todo", "doing", "done"] as const;
 export const TICKET_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+// Mirrors kantaq_core.tracker.service.RELATIONSHIP_TYPES (E12-T3 / MOD-03).
+export const RELATIONSHIP_TYPES = [
+  "related",
+  "blocked-by",
+  "blocking",
+  "duplicate",
+  "caused-by",
+] as const;
 
 // Mirrors kantaq_core.memory.service (E13 / MOD-19).
 export const MEMORY_TYPES = ["note", "decision", "constraint", "learning", "reference"] as const;

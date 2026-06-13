@@ -352,3 +352,124 @@ def test_attachment_activity_and_dedup(client: TestClient, owner_token: str) -> 
         f"/v1/tickets/{ticket['id']}/activity", headers=_bearer(owner_token)
     ).json()
     assert [a["action"] for a in activity] == ["ticket.create", "ticket.attach"]
+
+
+# -------------------------------------------------------------- relations (E12-T3)
+
+
+def _relation(client: TestClient, token: str, ticket_id: str, to_id: str, rel_type: str) -> Any:
+    return client.post(
+        f"/v1/tickets/{ticket_id}/relations",
+        json={"to_id": to_id, "type": rel_type},
+        headers=_bearer(token),
+    )
+
+
+def test_relation_round_trip_and_direction(client: TestClient, owner_token: str) -> None:
+    project = _create_project(client, owner_token)
+    a = _create_ticket(client, owner_token, project["id"], title="A")
+    b = _create_ticket(client, owner_token, project["id"], title="B")
+
+    created = _relation(client, owner_token, a["id"], b["id"], "blocking")
+    assert created.status_code == 201, created.text
+    rel = created.json()
+    assert rel["type"] == "blocking"
+    assert rel["direction"] == "outgoing"  # A is the from-end
+
+    # The same edge reads as incoming from B's side.
+    from_b = client.get(f"/v1/tickets/{b['id']}/relations", headers=_bearer(owner_token)).json()
+    assert [(r["type"], r["direction"]) for r in from_b] == [("blocking", "incoming")]
+
+    # Delete it (scoped to the ticket) — then both ends are clean.
+    deleted = client.delete(
+        f"/v1/tickets/{a['id']}/relations/{rel['id']}", headers=_bearer(owner_token)
+    )
+    assert deleted.status_code == 204
+    assert client.get(f"/v1/tickets/{a['id']}/relations", headers=_bearer(owner_token)).json() == []
+
+
+def test_relation_integrity_maps_to_422(client: TestClient, owner_token: str) -> None:
+    project = _create_project(client, owner_token)
+    a = _create_ticket(client, owner_token, project["id"], title="A")
+    b = _create_ticket(client, owner_token, project["id"], title="B")
+
+    assert _relation(client, owner_token, a["id"], a["id"], "related").status_code == 422  # self
+    assert _relation(client, owner_token, a["id"], b["id"], "nope").status_code == 422  # type
+    assert _relation(client, owner_token, a["id"], b["id"], "blocking").status_code == 201
+    # inverse spelling of the same dependency is a duplicate (422)
+    assert _relation(client, owner_token, b["id"], a["id"], "blocked-by").status_code == 422
+    # missing endpoint is a 404
+    assert _relation(client, owner_token, a["id"], "tkt_ghost", "related").status_code == 404
+
+
+def test_delete_relation_scoped_to_the_ticket(client: TestClient, owner_token: str) -> None:
+    project = _create_project(client, owner_token)
+    a = _create_ticket(client, owner_token, project["id"], title="A")
+    b = _create_ticket(client, owner_token, project["id"], title="B")
+    c = _create_ticket(client, owner_token, project["id"], title="C")
+    rel = _relation(client, owner_token, a["id"], b["id"], "related").json()
+
+    # The relationship exists but does not touch C → 404 under C's path.
+    mismatched = client.delete(
+        f"/v1/tickets/{c['id']}/relations/{rel['id']}", headers=_bearer(owner_token)
+    )
+    assert mismatched.status_code == 404
+
+
+def test_viewer_cannot_write_relations(
+    client: TestClient, owner_token: str, viewer_token: str
+) -> None:
+    project = _create_project(client, owner_token)
+    a = _create_ticket(client, owner_token, project["id"], title="A")
+    b = _create_ticket(client, owner_token, project["id"], title="B")
+    rel = _relation(client, owner_token, a["id"], b["id"], "related").json()
+
+    # Viewer reads relations…
+    listed = client.get(f"/v1/tickets/{a['id']}/relations", headers=_bearer(viewer_token))
+    assert listed.status_code == 200 and len(listed.json()) == 1
+    # …but cannot create or delete them.
+    assert _relation(client, viewer_token, a["id"], b["id"], "blocking").status_code == 403
+    assert (
+        client.delete(
+            f"/v1/tickets/{a['id']}/relations/{rel['id']}", headers=_bearer(viewer_token)
+        ).status_code
+        == 403
+    )
+
+
+def test_list_badges_subtickets_relationships_blocked(client: TestClient, owner_token: str) -> None:
+    project = _create_project(client, owner_token)
+    parent = _create_ticket(client, owner_token, project["id"], title="Parent")
+    child = _create_ticket(
+        client, owner_token, project["id"], title="Child", parent_id=parent["id"]
+    )
+    blocker = _create_ticket(client, owner_token, project["id"], title="Blocker")
+    # blocker blocks child → child is blocked (blocker is not done)
+    assert _relation(client, owner_token, blocker["id"], child["id"], "blocking").status_code == 201
+
+    by_id = {t["id"]: t for t in client.get("/v1/tickets", headers=_bearer(owner_token)).json()}
+    assert by_id[parent["id"]]["subticket_count"] == 1
+    assert by_id[child["id"]]["blocked"] is True
+    assert by_id[child["id"]]["relationship_count"] == 1
+    assert by_id[blocker["id"]]["blocked"] is False
+
+    # Once the blocker is done, the child is no longer blocked.
+    client.patch(
+        f"/v1/tickets/{blocker['id']}", json={"status": "done"}, headers=_bearer(owner_token)
+    )
+    refreshed = client.get(f"/v1/tickets/{child['id']}", headers=_bearer(owner_token)).json()
+    assert refreshed["blocked"] is False
+
+
+def test_parent_filter_returns_subtickets(client: TestClient, owner_token: str) -> None:
+    project = _create_project(client, owner_token)
+    parent = _create_ticket(client, owner_token, project["id"], title="Parent")
+    child = _create_ticket(
+        client, owner_token, project["id"], title="Child", parent_id=parent["id"]
+    )
+    _create_ticket(client, owner_token, project["id"], title="Unrelated")
+
+    children = client.get(
+        "/v1/tickets", params={"parent": parent["id"]}, headers=_bearer(owner_token)
+    ).json()
+    assert [t["id"] for t in children] == [child["id"]]

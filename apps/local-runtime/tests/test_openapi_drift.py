@@ -22,6 +22,8 @@ EXPECTED_PATHS = (
     "/v1/tickets",
     "/v1/tickets/{ticket_id}",
     "/v1/tickets/{ticket_id}/comments",
+    "/v1/tickets/{ticket_id}/relations",
+    "/v1/tickets/{ticket_id}/relations/{relationship_id}",
     "/v1/tickets/{ticket_id}/activity",
     "/v1/tickets/{ticket_id}/attachments",
     "/v1/tickets/{ticket_id}/attachments/{blob_id}",
