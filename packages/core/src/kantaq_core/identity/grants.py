@@ -231,6 +231,15 @@ class GrantService:
         )
         return list(self._session.exec(statement).all())
 
+    def list_all(self) -> list[CapabilityGrantRow]:
+        """Every grant in the workspace (the Agents-page trust surface, E20-T3).
+
+        Cross-member enumeration — the caller gates it behind ``tokens.rotate``,
+        the same boundary ``list_for`` carries at the API edge.
+        """
+        statement = select(CapabilityGrantRow).order_by(col(CapabilityGrantRow.id).desc())
+        return list(self._session.exec(statement).all())
+
     def get(self, grant_id: str) -> CapabilityGrantRow:
         row = self._session.get(CapabilityGrantRow, grant_id)
         if row is None:

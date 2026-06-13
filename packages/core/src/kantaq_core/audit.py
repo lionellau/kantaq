@@ -194,6 +194,35 @@ def write(
     return row
 
 
+def read_range(
+    session: Session,
+    *,
+    actor_id: str | None = None,
+    action: str | None = None,
+    source: str | None = None,
+    limit: int = 100,
+) -> list[AuditEvent]:
+    """Most-recent-first audit rows, optionally filtered (E20-T3 trust surface).
+
+    A live read straight off the append-only log — the Agents page and the
+    Inbox's denied-calls tab call it on every poll, never a cache (NFR-E20-1),
+    so a denial is visible the instant it is written. ``actor_id`` scopes to one
+    member's trail; ``action`` narrows to one kind (``"tool.deny"`` for denied
+    calls); ``source`` to one origin (``"mcp"`` for agent calls). Newest first by
+    ``created_at`` with the ULID ``id`` as a stable tiebreak; ``limit`` is clamped
+    by the caller (the API caps it) so a range read cannot scan the whole log.
+    """
+    stmt = select(AuditEvent)
+    if actor_id is not None:
+        stmt = stmt.where(col(AuditEvent.actor_id) == actor_id)
+    if action is not None:
+        stmt = stmt.where(col(AuditEvent.action) == action)
+    if source is not None:
+        stmt = stmt.where(col(AuditEvent.source) == source)
+    stmt = stmt.order_by(col(AuditEvent.created_at).desc(), col(AuditEvent.id).desc()).limit(limit)
+    return list(session.exec(stmt).all())
+
+
 def verify_chain(
     session: Session,
     *,
