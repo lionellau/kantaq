@@ -1,19 +1,33 @@
-"""The per-call gateway: checks, dispatch, audit (MOD-08, E09-T2).
+"""The per-call gateway: the eight checks, dispatch, audit (MOD-08, E09-T3).
 
 Every tool call passes through ``Gateway.handle_call`` before any domain code
-runs. The v0.0.5 check sequence (the minimal-session cut of the 8-check list,
-FR-E09-3 — the grant-derived checks land in v0.1):
+runs. The full v0.1 check sequence (FR-E09-3 — the eight checks, plus the
+operational liveness/rate cuts):
 
 1. identity — the request's verified actor is the actor the session was bound
-   to (token validity itself is re-verified on every HTTP request).
+   to (token validity itself is re-verified on every HTTP request). For a
+   grant-derived session, the grant is **re-checked live** here too, so a
+   revoked grant stops the session within the verifier budget (NFR-E06-2).
 2. session liveness — a killed session stays dead until the agent re-inits.
-3. expiry — sessions outlive nothing; an expired session only denies.
+3. expiry — sessions outlive nothing (a grant session expires with its grant);
+   an expired session only denies.
 4. rate limit — 50 calls/min, 500/session (PRD §15.1 defense 6); exceeding
-   kills the session. Counted before the allowlist so a runaway loop of
+   kills the session. Counted before the catalog checks so a runaway loop of
    garbage calls is cut off, not entertained.
-5. tool allowlist — fixed at session creation; unknown tools deny the same way.
-6. write mode — propose verbs need ``propose_only``; nothing grants
-   ``direct_write`` in v0.0.5 (FR-E09-4).
+5. collection scope — every collection the tool touches is inside the grant's
+   resource scope (workspace-wide for token/v0.1 grants).
+6. tool allowlist — fixed at session creation; unknown tools deny the same way.
+7. verb match — the tool's required capability is one the grant authorized
+   (re-checked against the grant verbs, independent of the cached allowlist).
+8. write mode — propose verbs need ``propose_only``; nothing grants
+   ``direct_write`` in v0.1 (FR-E09-4).
+9. audit policy — the session carries a known audit policy; a call that cannot
+   be audited per policy is refused (an agent action is never unaudited).
+
+The eighth named check, **memory policy on reads**, is enforced inside the
+memory-read tools via the session-derived ``ToolScope``: an entry the policy
+excludes raises ``PolicyDenied``, which the gateway turns into an audited
+``tool.deny`` (reason ``memory_policy``) — fail-closed, no existence leak.
 
 A failed check applies nothing and writes a ``tool.deny`` audit row in its own
 transaction (NFR-E09-1: the denial is atomic — there is no domain transaction
@@ -32,6 +46,7 @@ Audit policy (v0.0.5, per MOD-07's action vocabulary and PRD §8.6):
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, NoReturn
 
@@ -39,15 +54,22 @@ from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
 from kantaq_core import audit
-from kantaq_core.identity import TokenVerifier, VerifiedActor
+from kantaq_core.identity import Role, TokenVerifier, VerifiedActor, verify_grant_row
+from kantaq_core.memory_policy import policy_for
 from kantaq_core.telemetry import TelemetryService
+from kantaq_db.models import CapabilityGrantRow
 from kantaq_mcp.catalog import CATALOG_BY_NAME, ToolSpec, dispatch
 from kantaq_mcp.session import (
     DEFAULT_SESSION_TTL,
+    KNOWN_AUDIT_POLICIES,
     WRITE_MODE_PROPOSE_ONLY,
     GatewaySession,
+    SessionDerivationError,
     SessionRegistry,
+    derive_session_from_grant,
 )
+from kantaq_mcp.tools import PolicyDenied, ToolScope
+from kantaq_protocol import GRANT_EXPIRED
 
 # How often aggregated agent reads are flushed to one summary row per agent.
 DEFAULT_READ_FLUSH_INTERVAL = timedelta(seconds=60)
@@ -57,11 +79,29 @@ DEFAULT_READ_FLUSH_INTERVAL = timedelta(seconds=60)
 # says so explicitly.
 UNKNOWN_ACTOR = "unknown"
 
+# The 8-check deny vocabulary (FR-E09-3) plus the operational liveness/rate cuts.
 DENY_IDENTITY = "identity"
-DENY_EXPIRY = "expiry"
-DENY_RATE_LIMIT = "rate_limit"
+DENY_COLLECTION_SCOPE = "collection_scope"
 DENY_TOOL_ALLOWLIST = "tool_allowlist"
+DENY_VERB_MATCH = "verb_match"
 DENY_WRITE_MODE = "write_mode"
+DENY_MEMORY_POLICY = "memory_policy"
+DENY_EXPIRY = "expiry"
+DENY_AUDIT_POLICY = "audit_policy"
+DENY_RATE_LIMIT = "rate_limit"
+
+
+@dataclass(frozen=True)
+class GrantSessionRequest:
+    """An agent's request to bind a session to a capability grant (E09-T3).
+
+    Presented on the MCP connection (the ``mcp-grant-id`` / ``mcp-agent-role``
+    headers) or to ``/v1/session/init``. ``agent_role`` is the optional context
+    role (``code_agent`` …) that selects the memory policy applied to reads.
+    """
+
+    grant_id: str
+    agent_role: str | None = None
 
 
 class GatewayDenied(Exception):
@@ -123,21 +163,139 @@ class Gateway:
 
     # ---------------------------------------------------------------- catalog
 
-    def session_for(self, actor: VerifiedActor, *, session_id: str) -> GatewaySession:
-        created = self.sessions.get(session_id) is None
-        session = self.sessions.get_or_create(actor, session_id=session_id, now=self._now())
-        if created:
-            # Telemetry (E28, opt-in no-op): repeat-session signal. The member
-            # ULID only — never the token, scopes, or any call content.
-            with Session(self._engine) as db:
-                if TelemetryService(db, now=self._now).record(
-                    "mcp_session_started", {"member_id": session.member_id}
-                ):
-                    db.commit()
+    def session_for(
+        self,
+        actor: VerifiedActor,
+        *,
+        session_id: str,
+        grant_request: GrantSessionRequest | None = None,
+    ) -> GatewaySession:
+        """The gateway session for this transport id (token- or grant-derived).
+
+        A session is created once and fixed: a returning ``session_id`` gets the
+        same session (the model cannot escalate by changing headers mid-session).
+        ``grant_request`` (when present, and only on first use) binds the session
+        to a verified capability grant (FR-E09-2).
+        """
+        existing = self.sessions.get(session_id)
+        if existing is not None:
+            return existing
+        if grant_request is not None:
+            session = self._derive_grant_session(actor, session_id, grant_request)
+        else:
+            session = self.sessions.get_or_create(actor, session_id=session_id, now=self._now())
+        # Telemetry (E28, opt-in no-op): repeat-session signal. The member
+        # ULID only — never the token, scopes, or any call content.
+        with Session(self._engine) as db:
+            if TelemetryService(db, now=self._now).record(
+                "mcp_session_started", {"member_id": session.member_id}
+            ):
+                db.commit()
         return session
+
+    def _verify_and_derive(
+        self, actor: VerifiedActor, session_id: str, request: GrantSessionRequest
+    ) -> GatewaySession:
+        """Verify the grant and derive a grant-scoped session (no registration).
+
+        Fails closed with an audited denial: an unknown grant, a grant that is
+        not the caller's, a forged/expired/revoked grant, or a bad agent role
+        all refuse — nothing is created.
+        """
+        now = self._now()
+        with Session(self._engine) as db:
+            row = db.get(CapabilityGrantRow, request.grant_id)
+            if row is None:
+                self._deny_session_init(actor, DENY_IDENTITY, "no such grant")
+            if row.subject != actor.member_id:
+                self._deny_session_init(actor, DENY_IDENTITY, "grant does not belong to you")
+            result = verify_grant_row(db, row, now=now)
+            if not result.ok:
+                reason = DENY_EXPIRY if result.reason == GRANT_EXPIRED else DENY_IDENTITY
+                self._deny_session_init(actor, reason, f"grant rejected: {result.reason}")
+            expires_at = _naive_utc(datetime.fromtimestamp(row.expires_at, UTC))
+            try:
+                return derive_session_from_grant(
+                    actor,
+                    session_id=session_id,
+                    now=now,
+                    grant_id=row.id,
+                    resource=row.resource,
+                    verbs=tuple(row.verbs),
+                    expires_at=expires_at,
+                    agent_role=request.agent_role,
+                )
+            except SessionDerivationError as exc:
+                self._deny_session_init(actor, DENY_IDENTITY, str(exc))
+
+    def _derive_grant_session(
+        self, actor: VerifiedActor, session_id: str, request: GrantSessionRequest
+    ) -> GatewaySession:
+        """Verify, derive, and register a grant-scoped session for a transport id."""
+        return self.sessions.put(self._verify_and_derive(actor, session_id, request))
+
+    def describe_grant_session(
+        self, actor: VerifiedActor, request: GrantSessionRequest
+    ) -> dict[str, Any]:
+        """The `/v1/session/init` descriptor: what session this grant yields.
+
+        Verifies the grant and reports the session the agent will get — the
+        allowlist, write mode, collection scope, expiry, and the headers to send
+        on the MCP connection — without binding it to a transport id yet. The
+        binding happens when the agent connects with those headers.
+        """
+        session = self._verify_and_derive(actor, "(preview)", request)
+        return {
+            "grant_id": session.grant_id,
+            "agent_role": session.agent_role,
+            "member_id": session.member_id,
+            "collection_scope": list(session.collection_scope),
+            "allowed_tools": list(session.allowed_tools),
+            "write_mode": session.write_mode,
+            "memory_policy_id": session.memory_policy_id,
+            "audit_policy": session.audit_policy,
+            "expires_at": session.expires_at.isoformat(),
+            "connect_headers": {
+                "mcp-grant-id": session.grant_id,
+                **({"mcp-agent-role": session.agent_role} if session.agent_role else {}),
+            },
+        }
+
+    def _deny_session_init(self, actor: VerifiedActor, reason: str, detail: str) -> NoReturn:
+        self._write_denial(actor_id=actor.member_id, tool_name=None, reason=reason, detail=detail)
+        raise GatewayDenied(reason, detail)
 
     def allowed_specs(self, session: GatewaySession) -> list[ToolSpec]:
         return [CATALOG_BY_NAME[name] for name in session.allowed_tools]
+
+    def _tool_scope(self, session: GatewaySession) -> ToolScope:
+        """The read scope handed to a tool: the agent role's memory policy, if any.
+
+        A role-less *agent* session carries ``is_agent`` with no policy, so the
+        memory tools fail closed (an agent must declare a context role to read
+        memory); a human session reads memory unfiltered.
+        """
+        is_agent = session.role == Role.agent.value
+        if session.agent_role is None:
+            return ToolScope(is_agent=is_agent)
+        return ToolScope(
+            agent_role=session.agent_role,
+            memory_policy=policy_for(session.agent_role),
+            is_agent=is_agent,
+        )
+
+    def _grant_live(self, grant_id: str, now: datetime) -> bool:
+        """Re-check a derived session's grant for revocation/expiry (NFR-E06-2).
+
+        A cheap per-call store read (the signature was verified at session
+        creation and cannot change); revocation written by the runtime API is
+        visible across the shared SQLite immediately, well inside the 5 s budget.
+        """
+        with Session(self._engine) as db:
+            row = db.get(CapabilityGrantRow, grant_id)
+            if row is None:
+                return False
+            return verify_grant_row(db, row, now=now).ok
 
     # ------------------------------------------------------------------ calls
 
@@ -149,9 +307,11 @@ class Gateway:
         tool_name: str,
         args: dict[str, Any],
     ) -> dict[str, Any]:
-        """Run the checks, then the tool. Raises GatewayDenied on any failure."""
+        """Run the eight checks, then the tool. Raises GatewayDenied on failure."""
         now = self._now()
 
+        # 1. identity — the token's actor is the session's, and (grant sessions)
+        #    the grant is still live (revocation < 5 s, NFR-E06-2).
         if actor.member_id != session.member_id:
             self._deny(
                 session,
@@ -159,6 +319,14 @@ class Gateway:
                 DENY_IDENTITY,
                 "the presented token does not belong to this session",
             )
+        if session.grant_id is not None and not self._grant_live(session.grant_id, now):
+            self._deny(
+                session,
+                tool_name,
+                DENY_IDENTITY,
+                "the session's grant was revoked or is no longer valid; re-initialize",
+            )
+        # 2. liveness + 3. expiry + 4. rate limit (the operational cuts).
         if session.killed:
             self._deny(
                 session,
@@ -175,15 +343,36 @@ class Gateway:
                 DENY_RATE_LIMIT,
                 "rate limit exceeded (50/minute, 500/session); session terminated",
             )
+        # Unknown tool: nothing to scope/verb-check against — deny as allowlist.
         spec = CATALOG_BY_NAME.get(tool_name)
-        if spec is None or tool_name not in session.allowed_tools:
+        if spec is None:
+            self._deny(session, tool_name, DENY_TOOL_ALLOWLIST, f"unknown tool {tool_name!r}")
+        # 5. collection scope.
+        if not session.permits_collections(spec.collections):
+            self._deny(
+                session,
+                tool_name,
+                DENY_COLLECTION_SCOPE,
+                f"tool {tool_name!r} touches {list(spec.collections)} outside the "
+                f"session's collection scope {list(session.collection_scope)}",
+            )
+        # 6. tool allowlist.
+        if tool_name not in session.allowed_tools:
             self._deny(
                 session,
                 tool_name,
                 DENY_TOOL_ALLOWLIST,
                 f"tool {tool_name!r} is not in this session's allowlist",
             )
-        assert spec is not None  # narrowed by the allowlist check above
+        # 7. verb match — the capability is one the grant authorized.
+        if not session.permits_verb(spec.required_action):
+            self._deny(
+                session,
+                tool_name,
+                DENY_VERB_MATCH,
+                f"the grant does not authorize {spec.required_action!r} for {tool_name!r}",
+            )
+        # 8. write mode.
         if spec.verb != "read" and session.write_mode != WRITE_MODE_PROPOSE_ONLY:
             self._deny(
                 session,
@@ -191,9 +380,25 @@ class Gateway:
                 DENY_WRITE_MODE,
                 f"session write mode {session.write_mode!r} does not allow {spec.verb!r}",
             )
+        # audit policy — an agent action must be auditable per a known policy.
+        if session.audit_policy not in KNOWN_AUDIT_POLICIES:
+            self._deny(
+                session,
+                tool_name,
+                DENY_AUDIT_POLICY,
+                f"session audit policy {session.audit_policy!r} is unknown",
+            )
 
-        with Session(self._engine) as db:
-            result = dispatch(spec, db, actor_id=session.member_id, args=args, now=self._now)
+        scope = self._tool_scope(session)
+        try:
+            with Session(self._engine) as db:
+                result = dispatch(
+                    spec, db, actor_id=session.member_id, args=args, now=self._now, scope=scope
+                )
+        except PolicyDenied as denied:
+            # The memory-policy check (check on reads): a withheld entry is a
+            # denial, not a domain error — audited, fail-closed, no existence leak.
+            self._deny(session, tool_name, DENY_MEMORY_POLICY, str(denied))
 
         if spec.verb == "read":
             self._read_log.record(

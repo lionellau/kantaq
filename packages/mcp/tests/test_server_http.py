@@ -78,16 +78,22 @@ def test_connect_lists_the_session_allowlist(
     agent: MintedToken,
     viewer: MintedToken,
 ) -> None:
+    from kantaq_mcp.catalog import CATALOG
+
+    def _tools_for(*actions: str) -> set[str]:
+        return {spec.name for spec in CATALOG if spec.required_action in actions}
+
     with FakeMCPClient(app_factory(), token=agent.plaintext) as client:
         assert client.initialize_result is not None
         assert client.initialize_result.serverInfo.name == "kantaq-gateway"
         assert client.session_id, "stateful transport: the session id keys the gateway session"
-        names = [tool.name for tool in client.list_tools().tools]
-        assert names == ["ticket_get", "agent_action_propose"]
+        names = {tool.name for tool in client.list_tools().tools}
+        assert names == _tools_for("tickets.read", "proposals.write")
 
     with FakeMCPClient(app_factory(), token=viewer.plaintext) as client:
-        names = [tool.name for tool in client.list_tools().tools]
-        assert names == ["ticket_get"], "the allowlist is fixed by the member's scope"
+        names = {tool.name for tool in client.list_tools().tools}
+        # The allowlist is fixed by the member's scope: a Viewer reads only.
+        assert names == _tools_for("tickets.read", "memory.read")
 
 
 def test_ticket_get_round_trip_over_the_wire(

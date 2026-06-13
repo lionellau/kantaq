@@ -41,17 +41,23 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from kantaq_core.identity import VerifiedActor
-from kantaq_mcp import __version__
-from kantaq_mcp.gateway import Gateway, GatewayDenied
-from kantaq_mcp.security import SYSTEM_PROMPT_TEMPLATE
+from kantaq_mcp import __version__, security
+from kantaq_mcp.gateway import Gateway, GatewayDenied, GrantSessionRequest
+from kantaq_mcp.security import LOOPBACK_HOSTS, SYSTEM_PROMPT_TEMPLATE
 from kantaq_mcp.session import GatewaySession
 from kantaq_mcp.tools import ToolError
 
 MCP_PATH = "/v1/mcp"
+SESSION_INIT_PATH = "/v1/session/init"
 
-# The hosts a member may bind the gateway to. There is deliberately no
-# "0.0.0.0 with opt-in" in v0.0.5 (PRD §8.5: loopback only).
-LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost"})
+# Headers an agent sends on the MCP connection to bind a capability grant
+# (E09-T3). Absent → the v0.0.5 token-derived minimal session.
+GRANT_HEADER = "mcp-grant-id"
+AGENT_ROLE_HEADER = "mcp-agent-role"
+
+# The loopback bind/origin rules are MOD-18's, consolidated in security.py
+# (E08-T3); re-exported here for the bind helpers and back-compat.
+__all__ = ["LOOPBACK_HOSTS"]
 
 _ACTOR_SCOPE_KEY = "kantaq_actor"
 
@@ -78,7 +84,7 @@ class BearerAuthMiddleware:
             await self._app(scope, receive, send)
             return
         headers = Headers(scope=scope)
-        if headers.get("origin") is not None:
+        if security.is_browser_origin(headers.get("origin")):
             response = JSONResponse({"detail": "origin not allowed"}, status_code=403)
             await response(scope, receive, send)
             return
@@ -110,7 +116,16 @@ def _request_actor_session(
         raise RuntimeError("kantaq gateway requires the HTTP transport request context")
     actor: VerifiedActor = request.scope["state"][_ACTOR_SCOPE_KEY]
     session_id = request.headers.get("mcp-session-id") or "pre-initialize"
-    return actor, gateway.session_for(actor, session_id=session_id)
+    grant_id = request.headers.get(GRANT_HEADER)
+    grant_request = (
+        GrantSessionRequest(
+            grant_id=grant_id,
+            agent_role=request.headers.get(AGENT_ROLE_HEADER) or None,
+        )
+        if grant_id
+        else None
+    )
+    return actor, gateway.session_for(actor, session_id=session_id, grant_request=grant_request)
 
 
 def _error_result(code: str, message: str) -> types.CallToolResult:
@@ -187,6 +202,45 @@ def build_gateway_app(
     async def healthz(_request: Request) -> JSONResponse:
         return JSONResponse({"status": "ok", "version": __version__})
 
+    async def session_init(request: Request) -> JSONResponse:
+        """`POST /v1/session/init` — verify a grant, return the session descriptor.
+
+        The explicit grant-derived session surface (FR-E09-2): an agent (or the
+        snippet generator) presents its member token + ``{grant_id, agent_role?}``
+        and learns the session it will get and the headers to connect with. The
+        binding itself happens on the MCP transport with those headers.
+        """
+        if security.is_browser_origin(request.headers.get("origin")):
+            return JSONResponse({"detail": "origin not allowed"}, status_code=403)
+        scheme, _, credentials = request.headers.get("authorization", "").partition(" ")
+        token = credentials.strip() if scheme.lower() == "bearer" else ""
+        actor = gateway.authenticate(token or None)
+        if actor is None:
+            detail = "invalid or revoked token" if token else "bearer token required"
+            gateway.audit_identity_denial(detail=detail)
+            return JSONResponse(
+                {"detail": detail}, status_code=401, headers={"WWW-Authenticate": "Bearer"}
+            )
+        try:
+            body = await request.json()
+        except (ValueError, TypeError):
+            return JSONResponse({"detail": "invalid JSON body"}, status_code=400)
+        grant_id = body.get("grant_id") if isinstance(body, dict) else None
+        if not isinstance(grant_id, str) or not grant_id:
+            return JSONResponse({"detail": "grant_id (string) is required"}, status_code=400)
+        agent_role = body.get("agent_role") if isinstance(body, dict) else None
+        request_model = GrantSessionRequest(
+            grant_id=grant_id, agent_role=agent_role if isinstance(agent_role, str) else None
+        )
+        try:
+            descriptor = gateway.describe_grant_session(actor, request_model)
+        except GatewayDenied as denied:
+            return JSONResponse(
+                {"error": {"code": denied.reason, "message": denied.message}}, status_code=403
+            )
+        descriptor["instructions"] = SYSTEM_PROMPT_TEMPLATE
+        return JSONResponse(descriptor)
+
     @contextlib.asynccontextmanager
     async def lifespan(_app: Starlette) -> AsyncIterator[None]:
         async with manager.run():
@@ -201,6 +255,7 @@ def build_gateway_app(
     return Starlette(
         routes=[
             Route("/healthz", healthz),
+            Route(SESSION_INIT_PATH, session_init, methods=["POST"]),
             # An exact-path ASGI route (not a Mount): the MCP endpoint is one
             # URL, and a Mount would 307-redirect "/v1/mcp" to "/v1/mcp/".
             Route(
@@ -231,7 +286,7 @@ def bind_loopback_socket(host: str, port: int) -> socket.socket:
     Refuses anything that is not loopback (FR-E09-1); ``port=0`` asks the OS
     for a free port — the PRD's "random port, published to the user only".
     """
-    if host not in LOOPBACK_HOSTS:
+    if not security.is_loopback_host(host):
         raise GatewayBindError(
             f"the MCP gateway binds loopback only; refusing host {host!r} "
             "(LOCAL_MCP_HOST must stay 127.0.0.1)"

@@ -80,6 +80,43 @@ def _to_protocol(row: CapabilityGrantRow) -> CapabilityGrant:
     )
 
 
+def verify_grant_row(
+    session: Session,
+    row: CapabilityGrantRow,
+    *,
+    now: datetime | None = None,
+) -> GrantVerification:
+    """Offline grant verification against this store — no signing key needed.
+
+    The MOD-17 cryptographic check (signature against the registered device
+    roots, time validity) plus the store backstops the E27 review demanded: a
+    validly signed row still fails if its lifetime exceeds the 24 h ceiling or
+    its subject member is revoked. Extracted from :meth:`GrantService.verify` so
+    the MCP gateway can re-check a derived session's grant for liveness on every
+    call (revocation < 5 s, NFR-E06-2) without holding the device key.
+    """
+    ts = now or _utcnow()
+    revoked = set(
+        session.exec(
+            select(CapabilityGrantRow.id).where(col(CapabilityGrantRow.revoked_at).is_not(None))
+        ).all()
+    )
+    result = verify_grant(
+        _to_protocol(row),
+        verification_roots(session),
+        now=_unix(ts),
+        revoked_ids=revoked,
+    )
+    if not result.ok:
+        return result
+    if row.expires_at - row.issued_at > MAX_GRANT_TTL_SECONDS:
+        return GrantVerification(False, GRANT_INVALID_VALIDITY)
+    subject = session.get(Member, row.subject)
+    if subject is None or subject.status == "revoked":
+        return GrantVerification(False, GRANT_REVOKED)
+    return result
+
+
 class GrantService:
     """Issue, verify, list, and revoke grants on one session."""
 
@@ -182,25 +219,7 @@ class GrantService:
         if its lifetime exceeds the 24 h ceiling or its subject is revoked —
         a synced or imported row must not out-privilege what issuance allows.
         """
-        revoked = set(
-            self._session.exec(
-                select(CapabilityGrantRow.id).where(col(CapabilityGrantRow.revoked_at).is_not(None))
-            ).all()
-        )
-        result = verify_grant(
-            _to_protocol(row),
-            verification_roots(self._session),
-            now=_unix(self._now()),
-            revoked_ids=revoked,
-        )
-        if not result.ok:
-            return result
-        if row.expires_at - row.issued_at > MAX_GRANT_TTL_SECONDS:
-            return GrantVerification(False, GRANT_INVALID_VALIDITY)
-        subject = self._session.get(Member, row.subject)
-        if subject is None or subject.status == "revoked":
-            return GrantVerification(False, GRANT_REVOKED)
-        return result
+        return verify_grant_row(self._session, row, now=self._now())
 
     # ------------------------------------------------------------ list/revoke
 

@@ -27,6 +27,7 @@ from kantaq_core.identity.grants import (
     local_grant_index,
     revoke_grants_for_device,
     revoke_grants_for_member,
+    verify_grant_row,
 )
 from kantaq_core.identity.keychain import FileKeychain, Keychain
 from kantaq_core.identity.roles import ROLE_PERMISSIONS, Action, Role, can
@@ -73,6 +74,7 @@ __all__ = [
     "revoke_device",
     "revoke_grants_for_device",
     "revoke_grants_for_member",
+    "verify_grant_row",
     "verification_roots",
     "VerifiedActor",
     "can",

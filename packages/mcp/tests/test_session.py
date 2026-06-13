@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from kantaq_core.identity import VerifiedActor
+from kantaq_mcp.catalog import CATALOG
 from kantaq_mcp.session import (
     RATE_LIMIT_PER_MINUTE,
     RATE_LIMIT_PER_SESSION,
@@ -20,15 +21,20 @@ def _actor(role: str, scopes: tuple[str, ...] = ()) -> VerifiedActor:
     return VerifiedActor(member_id="m-1", role=role, token_id="t-1", scopes=scopes)
 
 
-def test_owner_session_gets_both_tools_propose_only() -> None:
+def _tools_for(*actions: str) -> set[str]:
+    """The catalog tools an actor holding exactly ``actions`` may use."""
+    return {spec.name for spec in CATALOG if spec.required_action in actions}
+
+
+def test_owner_session_gets_the_whole_catalog_propose_only() -> None:
     session = derive_session(_actor("Owner"), session_id="s", now=FakeClock().now())
-    assert session.allowed_tools == ("ticket_get", "agent_action_propose")
-    assert session.write_mode == WRITE_MODE_PROPOSE_ONLY  # nothing direct-writes in v0.0.5
+    assert set(session.allowed_tools) == {spec.name for spec in CATALOG}  # Owner holds every action
+    assert session.write_mode == WRITE_MODE_PROPOSE_ONLY  # nothing direct-writes in v0.1
 
 
 def test_viewer_session_is_read_only_with_read_tools_only() -> None:
     session = derive_session(_actor("Viewer"), session_id="s", now=FakeClock().now())
-    assert session.allowed_tools == ("ticket_get",)
+    assert set(session.allowed_tools) == _tools_for("tickets.read", "memory.read")
     assert session.write_mode == WRITE_MODE_READ_ONLY
 
 
@@ -38,13 +44,13 @@ def test_agent_session_follows_token_scopes_not_a_role_matrix() -> None:
         session_id="s",
         now=FakeClock().now(),
     )
-    assert scoped.allowed_tools == ("ticket_get", "agent_action_propose")
+    assert set(scoped.allowed_tools) == _tools_for("tickets.read", "proposals.write")
     assert scoped.write_mode == WRITE_MODE_PROPOSE_ONLY
 
     read_only = derive_session(
         _actor("Agent", scopes=("tickets.read",)), session_id="s", now=FakeClock().now()
     )
-    assert read_only.allowed_tools == ("ticket_get",)
+    assert set(read_only.allowed_tools) == _tools_for("tickets.read")
     assert read_only.write_mode == WRITE_MODE_READ_ONLY
 
     unscoped = derive_session(_actor("Agent"), session_id="s", now=FakeClock().now())
