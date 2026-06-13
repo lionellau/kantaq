@@ -13,7 +13,7 @@ file instead of rendering or executing whatever it claims to be.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -23,7 +23,7 @@ from sqlalchemy import func
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, col, select
 
-from kantaq_core import lifecycle
+from kantaq_core import context, lifecycle, reco
 from kantaq_core.identity import Action, VerifiedActor
 from kantaq_core.telemetry import TelemetryService
 from kantaq_core.tracker import (
@@ -564,6 +564,70 @@ def get_ticket(ticket_id: str, actor: ReaderActor, engine: EngineDep) -> TicketO
             return ticket_out(session, _service(session, actor).get_ticket(ticket_id))
         except TrackerNotFoundError as exc:
             raise _domain(exc) from exc
+
+
+class RecommendationOut(BaseModel):
+    """The MOD-22 recommendation contract (FR-E17-1), one per (ticket, container)."""
+
+    role: str
+    skill_container: str
+    why: str
+    required_memory: list[str]
+    missing_memory: list[str]
+    expected_output: str
+    mapped_tool: str
+    mcp_session_template: str
+    risk_level: str
+    confidence: str
+    approval_rule: str
+
+    @classmethod
+    def from_rec(cls, rec: reco.Recommendation) -> RecommendationOut:
+        return cls(
+            role=rec.role,
+            skill_container=rec.skill_container,
+            why=rec.why,
+            required_memory=list(rec.required_memory),
+            missing_memory=list(rec.missing_memory),
+            expected_output=rec.expected_output,
+            mapped_tool=rec.mapped_tool,
+            mcp_session_template=rec.mcp_session_template,
+            risk_level=rec.risk_level,
+            confidence=rec.confidence,
+            approval_rule=rec.approval_rule,
+        )
+
+
+@router.get("/tickets/{ticket_id}/recommendations", response_model=list[RecommendationOut])
+def get_recommendations(
+    ticket_id: str, actor: ReaderActor, engine: EngineDep
+) -> list[RecommendationOut]:
+    """Structured role/skill recommendations for a ticket (E17-T1, FR-E17-1).
+
+    The rule engine (MOD-22) is keyed on the ticket's lifecycle stage + label
+    signals; each recommendation's ``missing_memory`` is resolved per role through
+    the MOD-21 resolver, so the panel can show "this role wants codebase context
+    and there is none linked". Read-only: needs ``tickets.read``.
+    """
+    with Session(engine) as session:
+        try:
+            ticket = _service(session, actor).get_ticket(ticket_id)
+        except TrackerNotFoundError as exc:
+            raise _domain(exc) from exc
+
+        now = datetime.now(UTC)
+        missing_by_role: dict[str, tuple[str, ...]] = {}
+
+        def missing_memory_for(role: str) -> tuple[str, ...]:
+            if role not in missing_by_role:
+                bundle = context.resolve_for_ticket(
+                    session, ticket, role, actor_id=actor.member_id, now=now
+                )
+                missing_by_role[role] = bundle.missing
+            return missing_by_role[role]
+
+        recs = reco.recommend(ticket, missing_memory_for=missing_memory_for)
+        return [RecommendationOut.from_rec(rec) for rec in recs]
 
 
 @router.patch("/tickets/{ticket_id}", response_model=TicketOut)

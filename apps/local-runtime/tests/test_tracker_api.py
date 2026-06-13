@@ -473,3 +473,63 @@ def test_parent_filter_returns_subtickets(client: TestClient, owner_token: str) 
         "/v1/tickets", params={"parent": parent["id"]}, headers=_bearer(owner_token)
     ).json()
     assert [t["id"] for t in children] == [child["id"]]
+
+
+# ------------------------------------------------ recommendations (E17-T1)
+
+
+def test_recommendations_return_structured_contracts(client: TestClient, owner_token: str) -> None:
+    """A review-stage ticket recommends roles with the full MOD-22 contract."""
+    project = _create_project(client, owner_token)
+    ticket = _create_ticket(
+        client, owner_token, project["id"], lifecycle_stage="review", labels=["Security"]
+    )
+    response = client.get(
+        f"/v1/tickets/{ticket['id']}/recommendations", headers=_bearer(owner_token)
+    )
+    assert response.status_code == 200, response.text
+    recs = response.json()
+    assert recs, "a review-stage ticket should recommend at least one role/skill"
+    by_container = {r["skill_container"]: r for r in recs}
+    # The review stage's canonical containers are present (MOD-20).
+    assert {"code-review", "security-review", "architecture-review"} <= set(by_container)
+    rec = by_container["security-review"]
+    # Every contract field is populated and well-formed.
+    assert rec["role"] == "code_agent"
+    assert rec["risk_level"] in {"low", "medium", "high"}
+    assert rec["confidence"] in {"rule_match_strong", "rule_match_partial", "heuristic_only"}
+    assert rec["approval_rule"] in {"propose_first", "read_only"}
+    assert 'role_context_get(ticket="' in rec["mcp_session_template"]
+    assert rec["required_memory"]  # the role's policy scopes
+
+
+def test_recommendations_report_missing_memory_from_the_resolver(
+    client: TestClient, owner_token: str
+) -> None:
+    """A fresh ticket has no linked memory -> every required scope is missing."""
+    project = _create_project(client, owner_token)
+    ticket = _create_ticket(client, owner_token, project["id"], lifecycle_stage="implementation")
+    recs = client.get(
+        f"/v1/tickets/{ticket['id']}/recommendations", headers=_bearer(owner_token)
+    ).json()
+    code_rec = next(r for r in recs if r["role"] == "code_agent")
+    # code_agent reads codebase/decision/ticket/project; none is present here.
+    assert set(code_rec["missing_memory"]) == {"codebase", "decision", "ticket", "project"}
+    assert set(code_rec["required_memory"]) == set(code_rec["missing_memory"])
+
+
+def test_recommendations_are_readable_by_a_viewer_but_need_a_token(
+    client: TestClient, owner_token: str, viewer_token: str
+) -> None:
+    project = _create_project(client, owner_token)
+    ticket = _create_ticket(client, owner_token, project["id"])
+    # Read-only surface: a Viewer may read recommendations.
+    ok = client.get(f"/v1/tickets/{ticket['id']}/recommendations", headers=_bearer(viewer_token))
+    assert ok.status_code == 200
+    # No token is rejected.
+    assert client.get(f"/v1/tickets/{ticket['id']}/recommendations").status_code == 401
+    # An unknown ticket is a 404.
+    assert (
+        client.get("/v1/tickets/tkt_nope/recommendations", headers=_bearer(owner_token)).status_code
+        == 404
+    )

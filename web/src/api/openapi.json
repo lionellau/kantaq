@@ -1257,6 +1257,76 @@
         "title": "ProposalOut",
         "type": "object"
       },
+      "RecommendationOut": {
+        "description": "The MOD-22 recommendation contract (FR-E17-1), one per (ticket, container).",
+        "properties": {
+          "approval_rule": {
+            "title": "Approval Rule",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "string"
+          },
+          "expected_output": {
+            "title": "Expected Output",
+            "type": "string"
+          },
+          "mapped_tool": {
+            "title": "Mapped Tool",
+            "type": "string"
+          },
+          "mcp_session_template": {
+            "title": "Mcp Session Template",
+            "type": "string"
+          },
+          "missing_memory": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Memory",
+            "type": "array"
+          },
+          "required_memory": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Memory",
+            "type": "array"
+          },
+          "risk_level": {
+            "title": "Risk Level",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "skill_container": {
+            "title": "Skill Container",
+            "type": "string"
+          },
+          "why": {
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "skill_container",
+          "why",
+          "required_memory",
+          "missing_memory",
+          "expected_output",
+          "mapped_tool",
+          "mcp_session_template",
+          "risk_level",
+          "confidence",
+          "approval_rule"
+        ],
+        "title": "RecommendationOut",
+        "type": "object"
+      },
       "RelationIn": {
         "properties": {
           "to_id": {
@@ -3795,6 +3865,53 @@
         "summary": "Ticket Memory",
         "tags": [
           "memory"
+        ]
+      }
+    },
+    "/v1/tickets/{ticket_id}/recommendations": {
+      "get": {
+        "description": "Structured role/skill recommendations for a ticket (E17-T1, FR-E17-1).\n\nThe rule engine (MOD-22) is keyed on the ticket's lifecycle stage + label\nsignals; each recommendation's ``missing_memory`` is resolved per role through\nthe MOD-21 resolver, so the panel can show \"this role wants codebase context\nand there is none linked\". Read-only: needs ``tickets.read``.",
+        "operationId": "get_recommendations_v1_tickets__ticket_id__recommendations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecommendationOut"
+                  },
+                  "title": "Response Get Recommendations V1 Tickets  Ticket Id  Recommendations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Recommendations",
+        "tags": [
+          "tracker"
         ]
       }
     },

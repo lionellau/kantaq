@@ -562,6 +562,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tickets/{ticket_id}/recommendations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Recommendations
+         * @description Structured role/skill recommendations for a ticket (E17-T1, FR-E17-1).
+         *
+         *     The rule engine (MOD-22) is keyed on the ticket's lifecycle stage + label
+         *     signals; each recommendation's ``missing_memory`` is resolved per role through
+         *     the MOD-21 resolver, so the panel can show "this role wants codebase context
+         *     and there is none linked". Read-only: needs ``tickets.read``.
+         */
+        get: operations["get_recommendations_v1_tickets__ticket_id__recommendations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tickets/{ticket_id}/relations": {
         parameters: {
             query?: never;
@@ -1066,6 +1091,34 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * RecommendationOut
+         * @description The MOD-22 recommendation contract (FR-E17-1), one per (ticket, container).
+         */
+        RecommendationOut: {
+            /** Approval Rule */
+            approval_rule: string;
+            /** Confidence */
+            confidence: string;
+            /** Expected Output */
+            expected_output: string;
+            /** Mapped Tool */
+            mapped_tool: string;
+            /** Mcp Session Template */
+            mcp_session_template: string;
+            /** Missing Memory */
+            missing_memory: string[];
+            /** Required Memory */
+            required_memory: string[];
+            /** Risk Level */
+            risk_level: string;
+            /** Role */
+            role: string;
+            /** Skill Container */
+            skill_container: string;
+            /** Why */
+            why: string;
         };
         /** RelationIn */
         RelationIn: {
@@ -2536,6 +2589,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LinkedMemoryOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_recommendations_v1_tickets__ticket_id__recommendations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecommendationOut"][];
                 };
             };
             /** @description Validation Error */
