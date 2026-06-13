@@ -36,25 +36,29 @@ from kantaq_core.tracker.service import (
 )
 from kantaq_db.models import AgentProposal, MemoryEntry, Project, Ticket, Workspace
 from kantaq_mcp.security import tag_untrusted
-from kantaq_sync_engine.log import EventLogSink
+from kantaq_sync_engine.log import EventLogSink, EventSigner
 
 
 @dataclass(frozen=True)
 class ToolScope:
-    """The session-resolved read scope the gateway hands every tool.
+    """The session-resolved scope the gateway hands every tool.
 
     The gateway derives this from the session before dispatch so tools never
     touch session or permission state themselves (NFR-E10-1 — pure over the
     gateway). ``memory_policy`` is set only for an agent context session; a
     role-less *human* session reads memory unfiltered (its base role/RLS already
     governs that), while a role-less *agent* session is denied memory reads
-    (``is_agent`` with no policy — fail closed). The default :data:`UNSCOPED` is
-    the no-restriction scope used by direct handler calls in tests.
+    (``is_agent`` with no policy — fail closed). ``signer`` (E04-T4) is the
+    device signer the gateway resolves for **write** verbs so a tool's emitted
+    events are signed past the cutover (``None`` pre-cutover / for reads). The
+    default :data:`UNSCOPED` is the no-restriction scope used by direct handler
+    calls in tests.
     """
 
     agent_role: str | None = None
     memory_policy: MemoryPolicy | None = None
     is_agent: bool = False
+    signer: EventSigner | None = None
 
 
 UNSCOPED = ToolScope()
@@ -244,7 +248,7 @@ def agent_action_propose(
         after=audit.snapshot(proposal),
         now=ts,
     )
-    EventLogSink(session, actor_id).emit(
+    EventLogSink(session, actor_id, signer=scope.signer).emit(
         DomainEvent(
             collection="agent_proposals",
             entity_id=proposal.id,
@@ -618,7 +622,10 @@ def ticket_comment_create(
     body = args.get("body")
     if not isinstance(body, str) or not body.strip():
         raise ToolError("validation", "body (non-empty string) is required")
-    service = TrackerService(session, actor_id=actor_id, source="mcp", now=now)
+    # The comment is a syncable write: give the service a sink (signed past the
+    # cutover) so the comment reaches every member's replica.
+    sink = EventLogSink(session, actor_id, signer=scope.signer)
+    service = TrackerService(session, actor_id=actor_id, source="mcp", sink=sink, now=now)
     try:
         comment = service.add_comment(_ticket_id(args), body)
     except TrackerNotFoundError as exc:
@@ -656,7 +663,7 @@ def agent_action_approve(
         raise ToolError("validation", "proposal_id (string) is required")
     try:
         proposal, ticket = proposals.approve_proposal(
-            session, proposal_id, actor_id=actor_id, source="mcp", now=now
+            session, proposal_id, actor_id=actor_id, source="mcp", now=now, signer=scope.signer
         )
     except proposals.ProposalError as exc:
         raise ToolError(exc.code, exc.message) from exc

@@ -14,11 +14,18 @@ import pytest
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, select
 
-from kantaq_core.identity import TokenVerifier, VerifiedActor
+from kantaq_core.identity import (
+    TokenVerifier,
+    VerifiedActor,
+    device_private_key,
+    ensure_device,
+    ensure_member_grant,
+)
 from kantaq_core.memory.service import MemoryService
 from kantaq_core.memory_policy import policy_for
 from kantaq_core.tracker.service import TrackerService
-from kantaq_db.models import AuditEvent, Comment, Workspace
+from kantaq_db.models import AuditEvent, Comment, Member, Workspace
+from kantaq_db.models import EventLog as EventLogRow
 from kantaq_mcp import tools
 from kantaq_mcp.gateway import DENY_MEMORY_POLICY, Gateway, GatewayDenied
 from kantaq_mcp.session import (
@@ -27,7 +34,9 @@ from kantaq_mcp.session import (
     GatewaySession,
 )
 from kantaq_mcp.tools import PolicyDenied, ToolError, ToolScope
+from kantaq_sync_engine import EventSigner
 from kantaq_test_harness.clock import FakeClock
+from kantaq_test_harness.keychain import FakeKeychain
 
 ACTOR = "mbr_actor000001"
 
@@ -264,6 +273,44 @@ def test_ticket_comment_create_writes_and_fences(session: Session, seed: dict[st
     stored = session.exec(select(Comment)).all()
     assert len(stored) == 1 and stored[0].author_actor_id == ACTOR
     assert any(a.action == "comment.create" for a in session.exec(select(AuditEvent)).all())
+    # The comment is a syncable write: it emits a (pre-cutover, unsigned) event.
+    events = session.exec(select(EventLogRow).where(EventLogRow.collection == "comments")).all()
+    assert len(events) == 1 and events[0].entity_id == stored[0].id
+    assert events[0].sig is None  # no signer in scope -> unsigned (pre-cutover)
+
+
+def test_write_tools_sign_events_when_a_signer_is_in_scope(
+    session: Session, seed: dict[str, object], clock: FakeClock
+) -> None:
+    """E04-T4 integration: a write tool given a signer-carrying scope emits a
+    signed event (sig + policy_ref), like any runtime write past the cutover."""
+    keychain = FakeKeychain()
+    # The actor must be a real member with grantable capability so
+    # ensure_member_grant can mint its self-grant (an Owner holds every verb).
+    member = Member(id=ACTOR, email="owner@local", role="Owner", workspace_id="ws", status="active")
+    session.add(member)
+    session.commit()
+    ensure_device(session, keychain, member_id=ACTOR, now=clock.now().replace(tzinfo=None))
+    session.commit()
+    grant = ensure_member_grant(
+        session, keychain, ACTOR, now=lambda: clock.now().replace(tzinfo=None)
+    )
+    session.commit()
+    seed_hex = device_private_key(keychain)
+    assert seed_hex is not None
+    signer = EventSigner(private_key=seed_hex, policy_ref=grant.id)
+
+    ticket_id = seed["ticket"].id  # type: ignore[attr-defined]
+    tools.ticket_comment_create(
+        session,
+        actor_id=ACTOR,
+        args={"ticket_id": ticket_id, "body": "signed comment"},
+        now=_now(clock),
+        scope=ToolScope(signer=signer),
+    )
+    event = session.exec(select(EventLogRow).where(EventLogRow.collection == "comments")).one()
+    assert event.sig is not None  # signed at append
+    assert event.policy_ref == grant.id  # carries the member's grant
 
 
 def test_agent_action_approve_applies_through_the_one_path(

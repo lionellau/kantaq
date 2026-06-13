@@ -41,7 +41,7 @@ from kantaq_core.tracker.service import (
     TrackerValidationError,
 )
 from kantaq_db.models import AgentProposal, Ticket
-from kantaq_sync_engine.log import EventLogSink
+from kantaq_sync_engine.log import EventLogSink, EventSigner
 
 PROPOSAL_STATUSES = ("pending", "approved", "rejected")
 
@@ -121,8 +121,12 @@ def _flip_status(
     source: str,
     status: str,
     now: datetime,
+    signer: EventSigner | None = None,
 ) -> None:
-    """Stage the compare-and-swap status flip with its audit row and sync event."""
+    """Stage the compare-and-swap status flip with its audit row and sync event.
+
+    ``signer`` (E04-T4) signs the emitted ``agent_proposals`` event past the
+    signing cutover; ``None`` leaves it unsigned (pre-cutover / solo)."""
     before = audit.snapshot(proposal)
     claimed = cast(
         "CursorResult[Any]",
@@ -146,8 +150,9 @@ def _flip_status(
         after=audit.snapshot(proposal),
         now=now,
     )
-    # The decision syncs to every replica (FR-E20-1: one queue, synced).
-    EventLogSink(session, actor_id).emit(
+    # The decision syncs to every replica (FR-E20-1: one queue, synced), signed
+    # at append when the runtime is post-cutover (E04-T4).
+    EventLogSink(session, actor_id, signer=signer).emit(
         DomainEvent(
             collection="agent_proposals",
             entity_id=proposal.id,
@@ -169,17 +174,28 @@ def approve_proposal(
     actor_id: str,
     source: str,
     now: Callable[[], datetime] | None = None,
+    signer: EventSigner | None = None,
 ) -> tuple[AgentProposal, Ticket]:
     """Apply a pending proposal's diff to its ticket; returns (proposal, ticket).
 
     Raises ``ProposalError`` (``not_found`` / ``conflict`` / ``validation``) on
-    any failure, having applied nothing.
+    any failure, having applied nothing. ``signer`` (E04-T4) signs both the
+    ``agent_proposals`` decision event and the ``tickets`` patch event past the
+    cutover.
     """
     ts = (now or _now)()
     proposal = _get_pending(session, proposal_id)
     changes = coerce_changes(proposal.diff)
-    _flip_status(session, proposal, actor_id=actor_id, source=source, status="approved", now=ts)
-    sink = EventLogSink(session, actor_id)
+    _flip_status(
+        session,
+        proposal,
+        actor_id=actor_id,
+        source=source,
+        status="approved",
+        now=ts,
+        signer=signer,
+    )
+    sink = EventLogSink(session, actor_id, signer=signer)
     service = TrackerService(session, actor_id=actor_id, source=source, sink=sink, now=lambda: ts)
     try:
         ticket = service.update_ticket(proposal.ticket_id, changes)
@@ -200,11 +216,20 @@ def reject_proposal(
     actor_id: str,
     source: str,
     now: Callable[[], datetime] | None = None,
+    signer: EventSigner | None = None,
 ) -> AgentProposal:
     """Decline a pending proposal; the ticket is never touched."""
     ts = (now or _now)()
     proposal = _get_pending(session, proposal_id)
-    _flip_status(session, proposal, actor_id=actor_id, source=source, status="rejected", now=ts)
+    _flip_status(
+        session,
+        proposal,
+        actor_id=actor_id,
+        source=source,
+        status="rejected",
+        now=ts,
+        signer=signer,
+    )
     session.commit()
     session.refresh(proposal)
     return proposal

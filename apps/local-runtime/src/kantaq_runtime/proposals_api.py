@@ -33,14 +33,19 @@ from kantaq_core.identity import Action, VerifiedActor
 from kantaq_core.telemetry import TelemetryService
 from kantaq_core.tracker import TrackerService
 from kantaq_db.models import AgentProposal, Ticket
-from kantaq_runtime.auth import get_engine_dep, require_action
+from kantaq_runtime.auth import get_engine_dep, get_event_signer, require_action
 from kantaq_runtime.tracker_api import TicketOut
+from kantaq_sync_engine import EventSigner
 
 router = APIRouter(prefix="/v1/proposals", tags=["proposals"])
 
 EngineDep = Annotated[Engine, Depends(get_engine_dep)]
 ReaderActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_read))]
 WriterActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_write))]
+# A decision (approve/reject) is a ticket write, so it carries the device signer
+# (E04-T4): the agent_proposals + tickets events are signed by the approver past
+# the cutover, the same as any other runtime write.
+SignerDep = Annotated[EventSigner | None, Depends(get_event_signer)]
 
 PROPOSAL_STATUSES = proposals.PROPOSAL_STATUSES
 
@@ -115,13 +120,15 @@ def list_proposals(
 
 
 @router.post("/{proposal_id}/approve", response_model=ApproveOut)
-def approve_proposal(proposal_id: str, actor: WriterActor, engine: EngineDep) -> ApproveOut:
+def approve_proposal(
+    proposal_id: str, actor: WriterActor, engine: EngineDep, signer: SignerDep
+) -> ApproveOut:
     with Session(engine) as session:
         try:
             # The one apply path (kantaq_core.proposals): compare-and-swap flip,
             # then the diff through TrackerService — both in one transaction.
             proposal, ticket = proposals.approve_proposal(
-                session, proposal_id, actor_id=actor.member_id, source="app"
+                session, proposal_id, actor_id=actor.member_id, source="app", signer=signer
             )
         except proposals.ProposalError as exc:
             raise _http(exc) from exc
@@ -135,11 +142,13 @@ def approve_proposal(proposal_id: str, actor: WriterActor, engine: EngineDep) ->
 
 
 @router.post("/{proposal_id}/reject", response_model=ProposalOut)
-def reject_proposal(proposal_id: str, actor: WriterActor, engine: EngineDep) -> ProposalOut:
+def reject_proposal(
+    proposal_id: str, actor: WriterActor, engine: EngineDep, signer: SignerDep
+) -> ProposalOut:
     with Session(engine) as session:
         try:
             proposal = proposals.reject_proposal(
-                session, proposal_id, actor_id=actor.member_id, source="app"
+                session, proposal_id, actor_id=actor.member_id, source="app", signer=signer
             )
         except proposals.ProposalError as exc:
             raise _http(exc) from exc

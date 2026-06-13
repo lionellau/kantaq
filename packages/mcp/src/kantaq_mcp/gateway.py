@@ -70,6 +70,7 @@ from kantaq_mcp.session import (
 )
 from kantaq_mcp.tools import PolicyDenied, ToolScope
 from kantaq_protocol import GRANT_EXPIRED
+from kantaq_sync_engine.log import EventSigner
 
 # How often aggregated agent reads are flushed to one summary row per agent.
 DEFAULT_READ_FLUSH_INTERVAL = timedelta(seconds=60)
@@ -135,6 +136,7 @@ class Gateway:
         now: Callable[[], datetime] | None = None,
         session_ttl: timedelta = DEFAULT_SESSION_TTL,
         read_flush_interval: timedelta = DEFAULT_READ_FLUSH_INTERVAL,
+        signer_for: Callable[[str], EventSigner | None] | None = None,
     ) -> None:
         self._engine = engine
         self.verifier = verifier or TokenVerifier(engine)
@@ -143,6 +145,11 @@ class Gateway:
         self._read_log = audit.AgentReadLog()
         self._read_flush_interval = read_flush_interval
         self._last_read_flush = self._now()
+        # E04-T4: resolve the device signer for a member's write events. The
+        # runtime injects this (keychain seed + the member's live self-grant)
+        # only past the signing cutover; None here means events stay unsigned
+        # (pre-cutover / tests) — the same default as the runtime's own writes.
+        self._signer_for = signer_for
 
     def _now(self) -> datetime:
         return _naive_utc(self._raw_now())
@@ -268,20 +275,28 @@ class Gateway:
     def allowed_specs(self, session: GatewaySession) -> list[ToolSpec]:
         return [CATALOG_BY_NAME[name] for name in session.allowed_tools]
 
-    def _tool_scope(self, session: GatewaySession) -> ToolScope:
-        """The read scope handed to a tool: the agent role's memory policy, if any.
+    def _tool_scope(self, session: GatewaySession, *, for_write: bool) -> ToolScope:
+        """The scope handed to a tool: the agent role's memory policy + a signer.
 
         A role-less *agent* session carries ``is_agent`` with no policy, so the
         memory tools fail closed (an agent must declare a context role to read
-        memory); a human session reads memory unfiltered.
+        memory); a human session reads memory unfiltered. For a **write** verb,
+        the device signer is resolved for the session's member (E04-T4) so the
+        tool's emitted events are signed past the cutover; reads carry no signer.
         """
         is_agent = session.role == Role.agent.value
+        signer = (
+            self._signer_for(session.member_id)
+            if for_write and self._signer_for is not None
+            else None
+        )
         if session.agent_role is None:
-            return ToolScope(is_agent=is_agent)
+            return ToolScope(is_agent=is_agent, signer=signer)
         return ToolScope(
             agent_role=session.agent_role,
             memory_policy=policy_for(session.agent_role),
             is_agent=is_agent,
+            signer=signer,
         )
 
     def _grant_live(self, grant_id: str, now: datetime) -> bool:
@@ -389,7 +404,7 @@ class Gateway:
                 f"session audit policy {session.audit_policy!r} is unknown",
             )
 
-        scope = self._tool_scope(session)
+        scope = self._tool_scope(session, for_write=spec.verb != "read")
         try:
             with Session(self._engine) as db:
                 result = dispatch(
