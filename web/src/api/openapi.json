@@ -217,6 +217,83 @@
         "title": "CommentOut",
         "type": "object"
       },
+      "DeviceOut": {
+        "description": "A device row \u2014 verify key only, never the private seed.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_current": {
+            "title": "Is Current",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "member_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Email"
+          },
+          "member_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
+          },
+          "public_key": {
+            "title": "Public Key",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "public_key",
+          "member_id",
+          "member_email",
+          "created_at",
+          "revoked_at",
+          "active",
+          "is_current"
+        ],
+        "title": "DeviceOut",
+        "type": "object"
+      },
       "GrantIn": {
         "properties": {
           "member_id": {
@@ -450,6 +527,47 @@
           "entry"
         ],
         "title": "LinkedMemoryOut",
+        "type": "object"
+      },
+      "MeOut": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "member_id": {
+            "title": "Member Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          },
+          "workspace_name": {
+            "title": "Workspace Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "member_id",
+          "email",
+          "role",
+          "scopes",
+          "workspace_id",
+          "workspace_name"
+        ],
+        "title": "MeOut",
         "type": "object"
       },
       "MemberOut": {
@@ -1239,6 +1357,52 @@
         "title": "RotateOut",
         "type": "object"
       },
+      "SyncStatusOut": {
+        "properties": {
+          "backend_configured": {
+            "title": "Backend Configured",
+            "type": "boolean"
+          },
+          "committed_events": {
+            "title": "Committed Events",
+            "type": "integer"
+          },
+          "hub_mode": {
+            "title": "Hub Mode",
+            "type": "string"
+          },
+          "last_committed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Committed At"
+          },
+          "pending_events": {
+            "title": "Pending Events",
+            "type": "integer"
+          },
+          "total_events": {
+            "title": "Total Events",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hub_mode",
+          "backend_configured",
+          "pending_events",
+          "committed_events",
+          "total_events",
+          "last_committed_at"
+        ],
+        "title": "SyncStatusOut",
+        "type": "object"
+      },
       "TelemetryEventOut": {
         "properties": {
           "created_at": {
@@ -1811,6 +1975,73 @@
         "summary": "Healthz"
       }
     },
+    "/v1/devices": {
+      "get": {
+        "operationId": "list_devices_v1_devices_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeviceOut"
+                  },
+                  "title": "Response List Devices V1 Devices Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Devices",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/v1/devices/{device_id}/revoke": {
+      "post": {
+        "operationId": "revoke_device_route_v1_devices__device_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Device Route",
+        "tags": [
+          "devices"
+        ]
+      }
+    },
     "/v1/grants": {
       "get": {
         "operationId": "list_grants_v1_grants_get",
@@ -1968,6 +2199,28 @@
         "summary": "Lifecycle Stages",
         "tags": [
           "tracker"
+        ]
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "description": "The signed-in member's own identity (E20-T2, Settings \u2192 Identity).\n\nSelf-scoped by construction: the member id comes from the verified token,\nso there is no way to ask for someone else. ``scopes`` are the token's (a\nhuman token carries none \u2014 the role decides; an agent token carries its\npropose-first scopes).",
+        "operationId": "me_v1_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Me",
+        "tags": [
+          "me"
         ]
       }
     },
@@ -2849,6 +3102,27 @@
         "summary": "Reject Proposal",
         "tags": [
           "proposals"
+        ]
+      }
+    },
+    "/v1/sync/status": {
+      "get": {
+        "operationId": "sync_status_v1_sync_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Sync Status",
+        "tags": [
+          "sync"
         ]
       }
     },

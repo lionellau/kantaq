@@ -291,3 +291,41 @@ def revoke_grants_for_member(
             now=ts,
         )
     return len(rows)
+
+
+def revoke_grants_for_device(
+    session: Session,
+    device_id: str,
+    *,
+    actor_id: str,
+    now: datetime | None = None,
+) -> int:
+    """Revoke every live grant a device issued (device decommission, E20-T2).
+
+    A revoked device already leaves ``verification_roots``, so its grants fail
+    closed as ``unknown_root``; this makes that explicit and audited, mirroring
+    ``revoke_grants_for_member`` but keyed on the *issuing device* rather than
+    the subject member.
+    """
+    ts = now or _utcnow()
+    statement = select(CapabilityGrantRow).where(
+        CapabilityGrantRow.issuer == device_id,
+        col(CapabilityGrantRow.revoked_at).is_(None),
+    )
+    rows = list(session.exec(statement).all())
+    for row in rows:
+        before = audit.snapshot(row)
+        row.revoked_at = ts
+        row.updated_at = ts
+        session.add(row)
+        audit.write(
+            session,
+            actor_id=actor_id,
+            action="grant.revoke",
+            source="app",
+            object_ref=f"capability_grants/{row.id}",
+            before=before,
+            after=audit.snapshot(row),
+            now=ts,
+        )
+    return len(rows)

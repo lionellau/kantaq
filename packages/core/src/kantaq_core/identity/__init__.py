@@ -10,9 +10,11 @@ keeps revocation under 5 seconds (NFR-E06-2), and the member lifecycle
 
 from kantaq_core.identity.devices import (
     DEVICE_KEY_NAME,
+    DeviceNotFoundError,
     device_private_key,
     ensure_device,
     local_device,
+    revoke_device,
     verification_roots,
 )
 from kantaq_core.identity.grants import (
@@ -21,6 +23,7 @@ from kantaq_core.identity.grants import (
     GrantDeniedError,
     GrantNotFoundError,
     GrantService,
+    revoke_grants_for_device,
     revoke_grants_for_member,
 )
 from kantaq_core.identity.keychain import FileKeychain, Keychain
@@ -47,6 +50,7 @@ __all__ = [
     "MAX_GRANT_TTL_SECONDS",
     "ROLE_PERMISSIONS",
     "Action",
+    "DeviceNotFoundError",
     "FileKeychain",
     "GrantDeniedError",
     "GrantNotFoundError",
@@ -62,6 +66,8 @@ __all__ = [
     "device_private_key",
     "ensure_device",
     "local_device",
+    "revoke_device",
+    "revoke_grants_for_device",
     "revoke_grants_for_member",
     "verification_roots",
     "VerifiedActor",

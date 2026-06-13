@@ -21,11 +21,13 @@ from sqlalchemy.engine import Engine
 from kantaq_core.identity import TokenVerifier
 from kantaq_runtime import __version__
 from kantaq_runtime.config import Settings, get_settings
+from kantaq_runtime.devices_api import router as devices_router
 from kantaq_runtime.grants_api import router as grants_router
 from kantaq_runtime.me_api import router as me_router
 from kantaq_runtime.members_api import router as members_router
 from kantaq_runtime.memory_api import router as memory_router
 from kantaq_runtime.proposals_api import router as proposals_router
+from kantaq_runtime.sync_api import router as sync_router
 from kantaq_runtime.telemetry_api import router as telemetry_router
 from kantaq_runtime.tracker_api import router as tracker_router
 
@@ -70,6 +72,8 @@ def create_app(
     app.include_router(members_router)
     app.include_router(me_router)
     app.include_router(grants_router)
+    app.include_router(devices_router)
+    app.include_router(sync_router)
     app.include_router(proposals_router)
     app.include_router(telemetry_router)
     app.include_router(tracker_router)
