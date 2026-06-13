@@ -28,6 +28,7 @@ graded *baseline* in the eval set, not a resolver role, so it has no policy here
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -227,7 +228,7 @@ def decide(policy: MemoryPolicy, entry: MemoryReadable, *, now: datetime) -> Pol
 
 
 def filter(  # noqa: A001 — the domain verb; this is the MOD-21 interface name
-    entries: list[MemoryReadable],
+    entries: Sequence[MemoryReadable],
     policy: MemoryPolicy,
     *,
     now: datetime,
