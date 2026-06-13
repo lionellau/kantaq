@@ -8,8 +8,9 @@
  *
  * Recommendations are system-generated (keyed on the lifecycle stage + label
  * signals, MOD-22) — no user-authored markdown — so everything renders as plain
- * text. The full right rail that hosts this panel is E19-T4; here it ships behind
- * the `VITE_RECO_PANEL` flag (see lib/flags).
+ * text. The right rail that hosts this panel is E19-T4; with E16 (resolver +
+ * eval gate) and E17 green, it mounts ungated (the demo-only `VITE_RECO_PANEL`
+ * flag was retired when E19-T4 landed the full rail).
  */
 
 import { useCallback, useEffect, useState } from "react";
