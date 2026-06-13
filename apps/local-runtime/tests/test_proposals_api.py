@@ -298,10 +298,9 @@ def test_flip_loses_to_a_concurrent_decision(
     client: TestClient, engine: Engine, owner_token: str, agent: tuple[str, str]
 ) -> None:
     """The status flip is a compare-and-swap: a decision that raced and lost
-    409s instead of applying on top of the winner (double-apply guard)."""
-    from fastapi import HTTPException
-
-    from kantaq_runtime.proposals_api import _flip_status, _now
+    raises a conflict instead of applying on top of the winner (double-apply
+    guard). The flip lives in the one apply path (kantaq_core.proposals)."""
+    from kantaq_core.proposals import ProposalConflictError, _flip_status, _now
 
     ticket = _create_ticket(client, owner_token)
     proposal_id = _propose(engine, agent[0], ticket["id"], {"status": "doing"})
@@ -314,9 +313,10 @@ def test_flip_loses_to_a_concurrent_decision(
         winner = client.post(f"/v1/proposals/{proposal_id}/reject", headers=_bearer(owner_token))
         assert winner.status_code == 200
 
-        with pytest.raises(HTTPException) as denied:
-            _flip_status(stale, proposal, actor_id="someone", status="approved", ts=_now())
-        assert denied.value.status_code == 409
+        with pytest.raises(ProposalConflictError):
+            _flip_status(
+                stale, proposal, actor_id="someone", source="app", status="approved", now=_now()
+            )
 
     with Session(engine) as session:
         row = session.get(AgentProposal, proposal_id)

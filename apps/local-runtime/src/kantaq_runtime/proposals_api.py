@@ -5,15 +5,13 @@ through the MCP gateway (``agent_action_propose``, MOD-09) and syncs like any
 collection, so this surface never creates one — it lists the local replica's
 rows and lets a human commit or decline the proposed change.
 
-Approve applies the proposal's diff to the ticket **through TrackerService**
-(the one write path: validate → apply → audit → emit), so full value
-validation happens at apply time exactly like a human edit. The proposal's
-status flip and the ticket patch share one transaction: the status flip is
-staged first and ``TrackerService`` commits both, so a validation failure
-leaves the proposal pending and the ticket untouched. Audit then shows two
-distinct actors — the proposer on ``proposal.create`` (written at propose
-time) and the approver on ``proposal.approve`` + ``ticket.update`` (written
-here) — which is the sprint's dogfood-gate criterion #4.
+Approve and reject both route through the one apply path
+(``kantaq_core.proposals``): the compare-and-swap status flip + (for approve)
+the diff applied through ``TrackerService``, in one transaction. So the MCP
+``agent_action_approve`` tool and this human Inbox share exactly one validated,
+audited, CAS-guarded path (no drift). Audit shows two distinct actors — the
+proposer on ``proposal.create`` (propose time) and the approver on
+``proposal.approve`` + ``ticket.update`` — the dogfood-gate criterion.
 
 Permissions: reading the queue needs ``tickets.read``; approve and reject need
 ``tickets.write`` (a decision is a ticket write). Agent scopes carry only
@@ -22,41 +20,42 @@ Permissions: reading the queue needs ``tickets.read``; approve and reject need
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from typing import Annotated, Any, cast
+from datetime import datetime
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ValidationError
-from sqlalchemy import update as sa_update
-from sqlalchemy.engine import CursorResult, Engine
-from sqlmodel import Session, col, select
+from pydantic import BaseModel
+from sqlalchemy.engine import Engine
+from sqlmodel import Session, select
 
-from kantaq_core import audit
+from kantaq_core import proposals
 from kantaq_core.identity import Action, VerifiedActor
 from kantaq_core.telemetry import TelemetryService
-from kantaq_core.tracker import TrackerNotFoundError, TrackerService, TrackerValidationError
-from kantaq_core.tracker.events import DomainEvent
+from kantaq_core.tracker import TrackerService
 from kantaq_db.models import AgentProposal, Ticket
 from kantaq_runtime.auth import get_engine_dep, get_event_signer, require_action
-from kantaq_runtime.tracker_api import TicketOut, TicketPatch, _domain
-from kantaq_sync_engine import EventLogSink, EventSigner
+from kantaq_runtime.tracker_api import TicketOut
+from kantaq_sync_engine import EventSigner
 
 router = APIRouter(prefix="/v1/proposals", tags=["proposals"])
 
 EngineDep = Annotated[Engine, Depends(get_engine_dep)]
 ReaderActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_read))]
 WriterActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_write))]
-# A decision (approve/reject) is a write, so it carries the signer: the
-# agent_proposals event is signed by and attributed to the human approver (E04-T4).
+# A decision (approve/reject) is a ticket write, so it carries the device signer
+# (E04-T4): the agent_proposals + tickets events are signed by the approver past
+# the cutover, the same as any other runtime write.
 SignerDep = Annotated[EventSigner | None, Depends(get_event_signer)]
 
-PROPOSAL_STATUSES = ("pending", "approved", "rejected")
+PROPOSAL_STATUSES = proposals.PROPOSAL_STATUSES
+
+# A proposal decision is a ticket write through the one apply path
+# (``kantaq_core.proposals``); this surface maps its structured errors to HTTP.
+_ERROR_STATUS = {"not_found": 404, "conflict": 409, "validation": 422}
 
 
-def _now() -> datetime:
-    # Naive UTC — the one timestamp encoding the store holds (the MOD-03 rule:
-    # SQLite drops tzinfo, and events must fold back byte-identically).
-    return datetime.now(UTC).replace(tzinfo=None)
+def _http(exc: proposals.ProposalError) -> HTTPException:
+    return HTTPException(status_code=_ERROR_STATUS[exc.code], detail=exc.message)
 
 
 class ProposalOut(BaseModel):
@@ -88,80 +87,9 @@ class ApproveOut(BaseModel):
     ticket: TicketOut
 
 
-def _get_pending(session: Session, proposal_id: str) -> AgentProposal:
-    proposal = session.get(AgentProposal, proposal_id)
-    if proposal is None:
-        raise HTTPException(status_code=404, detail=f"no such proposal: {proposal_id}")
-    if proposal.status != "pending":
-        raise HTTPException(
-            status_code=409, detail=f"proposal is already {proposal.status}, not pending"
-        )
-    return proposal
-
-
 def _ticket_title(session: Session, ticket_id: str) -> str | None:
     ticket = session.get(Ticket, ticket_id)
     return ticket.title if ticket is not None else None
-
-
-def _flip_status(
-    session: Session,
-    proposal: AgentProposal,
-    *,
-    actor_id: str,
-    status: str,
-    ts: datetime,
-    signer: EventSigner | None = None,
-) -> None:
-    """Stage the status flip with its audit row and sync event — no commit.
-
-    The caller decides the transaction boundary: approve lets TrackerService
-    commit (one transaction with the ticket patch); reject commits itself.
-
-    The flip is a compare-and-swap: handlers run in a threadpool, so two
-    decisions can both read "pending" before either commits. The conditional
-    UPDATE takes the write lock and re-checks the status under it — the loser
-    matches zero rows and 409s instead of applying twice (SEC second review,
-    must-fix).
-    """
-    before = audit.snapshot(proposal)
-    claimed = cast(
-        "CursorResult[Any]",
-        session.execute(
-            sa_update(AgentProposal)
-            .where(col(AgentProposal.id) == proposal.id, col(AgentProposal.status) == "pending")
-            .values(status=status, updated_at=ts)
-        ),
-    )
-    if claimed.rowcount != 1:
-        session.rollback()
-        raise HTTPException(status_code=409, detail="proposal was decided concurrently")
-    session.refresh(proposal)
-    audit.write(
-        session,
-        actor_id=actor_id,
-        action=f"proposal.{'approve' if status == 'approved' else 'reject'}",
-        source="app",
-        object_ref=f"agent_proposals/{proposal.id}",
-        before=before,
-        after=audit.snapshot(proposal),
-        now=ts,
-    )
-    # The decision syncs to every replica (FR-E20-1: one queue, synced).
-    EventLogSink(session, actor_id, signer=signer).emit(
-        DomainEvent(
-            collection="agent_proposals",
-            entity_id=proposal.id,
-            op="patch",
-            payload=audit.snapshot(proposal),
-        )
-    )
-    # Telemetry (E28, opt-in no-op): the decision outcome and how long the
-    # proposal waited — numbers only, never the diff or ticket content.
-    TelemetryService(session).record(
-        f"proposal_{status}",
-        {"seconds_to_decision": (ts - proposal.created_at).total_seconds()},
-    )
 
 
 @router.get("", response_model=list[ProposalOut])
@@ -196,33 +124,15 @@ def approve_proposal(
     proposal_id: str, actor: WriterActor, engine: EngineDep, signer: SignerDep
 ) -> ApproveOut:
     with Session(engine) as session:
-        proposal = _get_pending(session, proposal_id)
-
-        changes_raw = proposal.diff.get("changes") if isinstance(proposal.diff, dict) else None
-        if not isinstance(changes_raw, dict) or not changes_raw:
-            raise HTTPException(status_code=422, detail="proposal carries no applicable changes")
         try:
-            # Coerce the JSON diff through the same shapes a human PATCH uses
-            # (ISO strings become datetimes); value validation happens next,
-            # inside TrackerService, at apply time.
-            patch = TicketPatch.model_validate(changes_raw)
-        except ValidationError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        changes = patch.model_dump(exclude_unset=True)
-
-        ts = _now()
-        _flip_status(
-            session, proposal, actor_id=actor.member_id, status="approved", ts=ts, signer=signer
-        )
-        sink = EventLogSink(session, actor.member_id, signer=signer)
-        service = TrackerService(session, actor_id=actor.member_id, source="app", sink=sink)
-        try:
-            # Commits the staged status flip and the ticket patch together.
-            ticket = service.update_ticket(proposal.ticket_id, changes)
-        except (TrackerNotFoundError, TrackerValidationError) as exc:
-            session.rollback()
-            raise _domain(exc) from exc
-        session.refresh(proposal)
+            # The one apply path (kantaq_core.proposals): compare-and-swap flip,
+            # then the diff through TrackerService — both in one transaction.
+            proposal, ticket = proposals.approve_proposal(
+                session, proposal_id, actor_id=actor.member_id, source="app", signer=signer
+            )
+        except proposals.ProposalError as exc:
+            raise _http(exc) from exc
+        service = TrackerService(session, actor_id=actor.member_id, source="app")
         return ApproveOut(
             proposal=ProposalOut.from_row(proposal, ticket_title=ticket.title),
             ticket=TicketOut.from_row(
@@ -236,17 +146,12 @@ def reject_proposal(
     proposal_id: str, actor: WriterActor, engine: EngineDep, signer: SignerDep
 ) -> ProposalOut:
     with Session(engine) as session:
-        proposal = _get_pending(session, proposal_id)
-        _flip_status(
-            session,
-            proposal,
-            actor_id=actor.member_id,
-            status="rejected",
-            ts=_now(),
-            signer=signer,
-        )
-        session.commit()
-        session.refresh(proposal)
+        try:
+            proposal = proposals.reject_proposal(
+                session, proposal_id, actor_id=actor.member_id, source="app", signer=signer
+            )
+        except proposals.ProposalError as exc:
+            raise _http(exc) from exc
         return ProposalOut.from_row(
             proposal, ticket_title=_ticket_title(session, proposal.ticket_id)
         )

@@ -347,10 +347,15 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     database (`mcp.json`, no secrets), and serves the v0.0.5 tool catalog.
     Agents authenticate with a member bearer token (`kantaq token show`).
     """
+    from sqlmodel import Session
+
+    from kantaq_core.identity import device_private_key, ensure_member_grant
     from kantaq_db.session import get_engine
     from kantaq_mcp.gateway import Gateway
     from kantaq_mcp.server import GatewayBindError, serve_gateway
+    from kantaq_runtime.auth import keychain_for
     from kantaq_runtime.config import get_settings
+    from kantaq_sync_engine import EventSigner
 
     settings = get_settings()
 
@@ -367,8 +372,34 @@ def cmd_mcp(args: argparse.Namespace) -> int:
 
     engine = get_engine(_db_url())
     discovery = Path(settings.local_db_path).parent / "mcp.json"
+
+    def signer_for(member_id: str) -> EventSigner | None:
+        """The device signer for an agent's MCP write events (E04-T4).
+
+        Mirrors the runtime's ``get_event_signer``: ``None`` until the signing
+        cutover (``sign_events`` off), then the device seed + the acting
+        member's live self-grant, so MCP-created proposals/comments are signed
+        like any runtime write and pass E24-T5 verified ingestion.
+        """
+        if not settings.sign_events:
+            return None
+        keychain = keychain_for(settings)
+        seed = device_private_key(keychain)
+        if seed is None:  # bootstrap guarantees a device key; fail-safe to unsigned
+            return None
+        with Session(engine) as session:
+            grant = ensure_member_grant(session, keychain, member_id)
+            session.commit()
+            policy_ref = grant.id
+        return EventSigner(private_key=seed, policy_ref=policy_ref)
+
     try:
-        serve_gateway(Gateway(engine), host=host, port=port, discovery_path=discovery)
+        serve_gateway(
+            Gateway(engine, signer_for=signer_for),
+            host=host,
+            port=port,
+            discovery_path=discovery,
+        )
     except GatewayBindError as exc:
         print(f"kantaq mcp dev: {exc}", file=sys.stderr)
         return 1
