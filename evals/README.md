@@ -10,8 +10,15 @@ with the resolver in Sprint 4.
 - **`fixtures/memory.json`** — the shared memory pool every ticket draws from, plus
   `baseline_owner` (the actor whose view the `human_teammate` column represents).
   Each entry carries the fields the resolver's policy reads: `space`, `visibility`,
-  `review_status`, `type`, `created_by`. Data is synthetic ("Harbor" product) — the
-  real JobWinAI Linear export is private and must not be copied into this public repo.
+  `review_status`, `type`, `created_by`. The pool and tickets are **derived from the
+  real JobWinAI V1 Linear export** (`docs/reference/JobWinAI_V1_Linear_Tickets.xlsx`
+  in the project-docs repo) — real, messy tickets surface resolver bugs that synthetic
+  data misses (PRD §17.3). The dataset's owner has cleared it for use in these public
+  fixtures; bodies summarise real ticket descriptions and comments (real authors and
+  PR/commit refs kept), with signed upload URLs dropped (they are auth tokens, not
+  content). `visibility` (local/team) and `review_status` (stale/rejected) are kantaq
+  concepts assigned from real signals — e.g. the superseded `jobwinai.com` domain is
+  `stale`, the closed-and-replaced PR #124 is `rejected`, personal working notes are `local`.
 - **`fixtures/tickets/<id>.json`** — one ticket, its `candidate_memory` (pool entries
   offered to the resolver, marked linked/unlinked with a reason), and the expected
   `bundles` per graded role.
@@ -37,5 +44,5 @@ its author.
 
 The decision procedure a grader follows for each (ticket, role) cell is documented in
 `docs/modules/MOD-21-context-resolver-evals.md` (project-docs repo) under "Grading
-rubric". This sprint (E16-T4a) grades the first 50 of 100 bundles (10 tickets × 5
-roles); the remaining 10 tickets land in Sprint 4 (E16-T4b) using the same format.
+rubric". E16-T4a grades the first 50 of 100 bundles (10 tickets × 5 roles) against the
+real export; the remaining 10 tickets land in Sprint 4 (E16-T4b) using the same format.

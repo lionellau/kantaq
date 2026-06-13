@@ -1,52 +1,136 @@
 {
   "ticket": {
     "id": "EVAL-08",
-    "title": "Refactor timezone handling across the app",
-    "description": "Centralize timezone conversion: store UTC, render in the user's timezone, fix the off-by-one near DST. Touches scheduling.",
-    "lifecycle_stage": "implementation",
-    "status": "in_progress",
-    "labels": ["Backend", "Bug"]
+    "title": "Bug: CSP nonce-based policy blocks all scripts \u2014 site non-functional (P0)",
+    "description": "Static pages can't receive nonces, so the strict CSP blocked every script. Restore (Phase 1) then re-harden sensitive routes (Phase 2).",
+    "lifecycle_stage": "qa",
+    "status": "Done",
+    "labels": [
+      "Security",
+      "Infrastructure",
+      "Frontend",
+      "Bug"
+    ]
   },
   "candidate_memory": [
-    {"id": "mem-dec-tz", "linked": true, "link_reason": "the decision this refactor enforces"},
-    {"id": "mem-tkt-sched-accept", "linked": true, "link_reason": "the feature most affected by timezones"},
-    {"id": "mem-code-arch", "linked": false},
-    {"id": "mem-code-perf-budget", "linked": false},
-    {"id": "mem-code-test-strategy", "linked": false},
-    {"id": "mem-agent-summary", "linked": false},
-    {"id": "mem-ws-conventions", "linked": false},
-    {"id": "mem-rel-rollback", "linked": false}
+    {
+      "id": "mem-conventions",
+      "linked": false
+    },
+    {
+      "id": "mem-csp-rootcause",
+      "linked": true,
+      "link_reason": "the root cause to verify against"
+    },
+    {
+      "id": "mem-dec-csp-phased",
+      "linked": true,
+      "link_reason": "the phased fix decision"
+    },
+    {
+      "id": "mem-input-validator",
+      "linked": false
+    },
+    {
+      "id": "mem-leo-local-spike",
+      "linked": false
+    },
+    {
+      "id": "mem-middleware-csp",
+      "linked": true,
+      "link_reason": "the CSP code under change"
+    },
+    {
+      "id": "mem-rel-ai7-shipped",
+      "linked": false
+    },
+    {
+      "id": "mem-security-policy",
+      "linked": false
+    }
   ],
   "bundles": {
     "code_agent": {
-      "must_include": ["mem-dec-tz", "mem-tkt-sched-accept", "mem-code-arch", "mem-code-perf-budget", "mem-code-test-strategy"],
-      "must_exclude": ["mem-agent-summary", "mem-ws-conventions", "mem-rel-rollback"],
-      "optional": [],
-      "rationale": "Code sees the timezone decision, the affected acceptance, and the codebase context; the agent_run summary, conventions (workspace), and rollback (release) are out of scope."
+      "must_include": [
+        "mem-csp-rootcause",
+        "mem-middleware-csp",
+        "mem-dec-csp-phased"
+      ],
+      "must_exclude": [
+        "mem-security-policy",
+        "mem-conventions",
+        "mem-leo-local-spike",
+        "mem-rel-ai7-shipped"
+      ],
+      "optional": [
+        "mem-input-validator"
+      ],
+      "rationale": "Code sees the root cause, the middleware CSP, and the phased decision; workspace policy/conventions are out of scope, the Cognito ship-note is release, Leo's spike is local. The validation services are in scope but unrelated to CSP \u2014 optional."
     },
     "qa_agent": {
-      "must_include": ["mem-dec-tz", "mem-tkt-sched-accept", "mem-code-arch", "mem-code-perf-budget", "mem-code-test-strategy", "mem-rel-rollback"],
-      "must_exclude": ["mem-agent-summary", "mem-ws-conventions"],
-      "optional": [],
-      "rationale": "QA additionally needs the rollback; the agent_run summary and conventions are out of scope."
+      "must_include": [
+        "mem-csp-rootcause",
+        "mem-middleware-csp",
+        "mem-dec-csp-phased",
+        "mem-rel-ai7-shipped"
+      ],
+      "must_exclude": [
+        "mem-security-policy",
+        "mem-conventions",
+        "mem-leo-local-spike"
+      ],
+      "optional": [
+        "mem-input-validator"
+      ],
+      "rationale": "QA additionally gets the auth ship-note (CSP affects auth pages); workspace entries out of scope, Leo's spike local, the validation services optional."
     },
     "design_agent": {
-      "must_include": ["mem-dec-tz", "mem-tkt-sched-accept", "mem-ws-conventions"],
-      "must_exclude": ["mem-code-arch", "mem-code-perf-budget", "mem-code-test-strategy", "mem-agent-summary", "mem-rel-rollback"],
+      "must_include": [
+        "mem-csp-rootcause",
+        "mem-dec-csp-phased",
+        "mem-security-policy",
+        "mem-conventions"
+      ],
+      "must_exclude": [
+        "mem-middleware-csp",
+        "mem-leo-local-spike",
+        "mem-rel-ai7-shipped",
+        "mem-input-validator"
+      ],
       "optional": [],
-      "rationale": "Design sees the decision, the affected ticket, and conventions; all codebase entries, the agent_run summary, and the rollback (release) are out of scope."
+      "rationale": "Design sees the root cause, the decision, the policy, and conventions; codebase internals and the release note are out of scope, Leo's spike is local."
     },
     "product_agent": {
-      "must_include": ["mem-dec-tz", "mem-tkt-sched-accept", "mem-ws-conventions", "mem-rel-rollback"],
-      "must_exclude": ["mem-code-arch", "mem-code-perf-budget", "mem-code-test-strategy", "mem-agent-summary"],
+      "must_include": [
+        "mem-csp-rootcause",
+        "mem-dec-csp-phased",
+        "mem-security-policy",
+        "mem-conventions",
+        "mem-rel-ai7-shipped"
+      ],
+      "must_exclude": [
+        "mem-middleware-csp",
+        "mem-leo-local-spike",
+        "mem-input-validator"
+      ],
       "optional": [],
-      "rationale": "Product sees the decision, the ticket, conventions, and the rollback; codebase entries and the agent_run summary are out of scope."
+      "rationale": "Product sees root cause/decision/policy/conventions/release; codebase internals out of scope, Leo's spike local."
     },
     "human_teammate": {
-      "must_include": ["mem-dec-tz", "mem-tkt-sched-accept", "mem-code-arch", "mem-code-perf-budget", "mem-code-test-strategy", "mem-agent-summary", "mem-ws-conventions", "mem-rel-rollback"],
-      "must_exclude": [],
+      "must_include": [
+        "mem-csp-rootcause",
+        "mem-middleware-csp",
+        "mem-dec-csp-phased",
+        "mem-security-policy",
+        "mem-conventions",
+        "mem-rel-ai7-shipped",
+        "mem-input-validator"
+      ],
+      "must_exclude": [
+        "mem-leo-local-spike"
+      ],
       "optional": [],
-      "rationale": "Every candidate here is team-visible and current, so Alice sees all of them — the human baseline is the full superset the agent bundles narrow from."
+      "rationale": "Vicky sees every team entry; only Leo's local spike is invisible."
     }
   }
 }

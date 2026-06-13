@@ -1,52 +1,129 @@
 {
   "ticket": {
     "id": "EVAL-10",
-    "title": "Triage incoming bug reports for the beta",
-    "description": "Sort and shape the beta bug reports: reproduce, label, and decide which block GA. Mostly scheduling and search issues.",
-    "lifecycle_stage": "intake",
-    "status": "in_progress",
-    "labels": ["Bug", "QA/Testing"]
+    "title": "Implement user-level memory (preferences, profile, AgentCore namespace)",
+    "description": "Persist stable user preferences/profile in DynamoDB; MemoryManager over SessionStore with Pydantic schemas.",
+    "lifecycle_stage": "implementation",
+    "status": "Done",
+    "labels": [
+      "Backend"
+    ]
   },
   "candidate_memory": [
-    {"id": "mem-tkt-sched-accept", "linked": true, "link_reason": "the scheduling acceptance bugs are judged against"},
-    {"id": "mem-tkt-search-edge", "linked": true, "link_reason": "the known search edge cases"},
-    {"id": "mem-code-test-strategy", "linked": false},
-    {"id": "mem-code-perf-budget", "linked": false},
-    {"id": "mem-proj-personas", "linked": false},
-    {"id": "mem-agent-scratch", "linked": false},
-    {"id": "mem-dec-rejected-vendor", "linked": false},
-    {"id": "mem-alice-local-todo", "linked": false}
+    {
+      "id": "mem-agent-summary",
+      "linked": false
+    },
+    {
+      "id": "mem-conventions",
+      "linked": false
+    },
+    {
+      "id": "mem-dec-user-memory",
+      "linked": true,
+      "link_reason": "the storage decision (DynamoDB, not AgentCore)"
+    },
+    {
+      "id": "mem-memory-arch",
+      "linked": true,
+      "link_reason": "the memory architecture this implements"
+    },
+    {
+      "id": "mem-prd-v52",
+      "linked": false
+    },
+    {
+      "id": "mem-rel-smoke-pass",
+      "linked": false
+    },
+    {
+      "id": "mem-security-policy",
+      "linked": false
+    },
+    {
+      "id": "mem-vicky-codex-local",
+      "linked": false
+    }
   ],
   "bundles": {
     "code_agent": {
-      "must_include": ["mem-tkt-sched-accept", "mem-tkt-search-edge", "mem-code-test-strategy", "mem-code-perf-budget"],
-      "must_exclude": ["mem-agent-scratch", "mem-dec-rejected-vendor", "mem-alice-local-todo"],
-      "optional": ["mem-proj-personas"],
-      "rationale": "Code sees the two ticket acceptance notes and the codebase context; the agent's local scratch and Alice's local todo are private, the rejected decision is withheld. Personas is in scope but loosely relevant to bug triage — optional."
+      "must_include": [
+        "mem-memory-arch",
+        "mem-dec-user-memory",
+        "mem-prd-v52"
+      ],
+      "must_exclude": [
+        "mem-conventions",
+        "mem-agent-summary",
+        "mem-vicky-codex-local",
+        "mem-rel-smoke-pass",
+        "mem-security-policy"
+      ],
+      "optional": [],
+      "rationale": "Code sees the architecture, the storage decision, and the PRD; conventions/policy are workspace, the agent_run summary and the smoke release note are out of scope, Vicky's Codex note is local."
     },
     "qa_agent": {
-      "must_include": ["mem-tkt-sched-accept", "mem-tkt-search-edge", "mem-code-test-strategy", "mem-code-perf-budget"],
-      "must_exclude": ["mem-proj-personas", "mem-agent-scratch", "mem-dec-rejected-vendor", "mem-alice-local-todo"],
+      "must_include": [
+        "mem-memory-arch",
+        "mem-dec-user-memory",
+        "mem-rel-smoke-pass"
+      ],
+      "must_exclude": [
+        "mem-conventions",
+        "mem-prd-v52",
+        "mem-agent-summary",
+        "mem-vicky-codex-local",
+        "mem-security-policy"
+      ],
       "optional": [],
-      "rationale": "QA needs the acceptance notes, the test strategy, and the perf budget; personas (project) is out of scope, the rejected decision is withheld, both local notes are private."
+      "rationale": "QA swaps the PRD for the smoke release note; workspace/project and agent_run entries are out of scope, Vicky's note is local."
     },
     "design_agent": {
-      "must_include": ["mem-tkt-sched-accept", "mem-tkt-search-edge", "mem-proj-personas"],
-      "must_exclude": ["mem-code-test-strategy", "mem-code-perf-budget", "mem-agent-scratch", "mem-dec-rejected-vendor", "mem-alice-local-todo"],
+      "must_include": [
+        "mem-dec-user-memory",
+        "mem-conventions",
+        "mem-prd-v52",
+        "mem-security-policy"
+      ],
+      "must_exclude": [
+        "mem-memory-arch",
+        "mem-agent-summary",
+        "mem-vicky-codex-local",
+        "mem-rel-smoke-pass"
+      ],
       "optional": [],
-      "rationale": "Design sees the ticket notes and personas; codebase entries are out of scope, the rejected decision is withheld, both local notes are private."
+      "rationale": "Design sees the decision/conventions/PRD/policy; codebase, agent_run, and release entries are out of scope, Vicky's note is local."
     },
     "product_agent": {
-      "must_include": ["mem-tkt-sched-accept", "mem-tkt-search-edge", "mem-proj-personas"],
-      "must_exclude": ["mem-code-test-strategy", "mem-code-perf-budget", "mem-agent-scratch", "mem-dec-rejected-vendor", "mem-alice-local-todo"],
+      "must_include": [
+        "mem-dec-user-memory",
+        "mem-conventions",
+        "mem-prd-v52",
+        "mem-rel-smoke-pass",
+        "mem-security-policy"
+      ],
+      "must_exclude": [
+        "mem-memory-arch",
+        "mem-agent-summary",
+        "mem-vicky-codex-local"
+      ],
       "optional": [],
-      "rationale": "Product sees the ticket notes and personas; codebase entries are out of scope, the rejected decision is withheld, both local notes are private."
+      "rationale": "Product sees the decision/conventions/PRD/release/policy; the codebase architecture and the agent_run summary are out of scope, Vicky's note is local."
     },
     "human_teammate": {
-      "must_include": ["mem-tkt-sched-accept", "mem-tkt-search-edge", "mem-code-test-strategy", "mem-code-perf-budget", "mem-proj-personas", "mem-dec-rejected-vendor", "mem-alice-local-todo"],
-      "must_exclude": ["mem-agent-scratch"],
+      "must_include": [
+        "mem-memory-arch",
+        "mem-dec-user-memory",
+        "mem-conventions",
+        "mem-prd-v52",
+        "mem-agent-summary",
+        "mem-vicky-codex-local",
+        "mem-rel-smoke-pass",
+        "mem-security-policy"
+      ],
+      "must_exclude": [],
       "optional": [],
-      "rationale": "Alice sees every team-visible entry, the rejected decision (flagged), AND her own local todo; only the agent's private scratch is invisible to her."
+      "rationale": "Every candidate is team-visible or Vicky's own local note, so she sees all of them \u2014 the human baseline as the full superset."
     }
   }
 }

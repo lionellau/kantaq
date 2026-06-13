@@ -1,52 +1,131 @@
 {
   "ticket": {
     "id": "EVAL-01",
-    "title": "Implement SAML SSO login",
-    "description": "Add SAML single sign-on so enterprise design partners can log in with their IdP. Support SP- and IdP-initiated flows.",
+    "title": "Set up Amazon Cognito auth (user pool, sign-up/login)",
+    "description": "Stand up a Cognito user pool with email/password and hosted UI; CDK construct, JWT settings. Deploy is deferred to AI-76.",
     "lifecycle_stage": "implementation",
-    "status": "in_progress",
-    "labels": ["Backend", "Security", "Auth"]
+    "status": "Done",
+    "labels": [
+      "Infrastructure"
+    ]
   },
   "candidate_memory": [
-    {"id": "mem-tkt-auth-notes", "linked": true, "link_reason": "captures the SAML SSO requirement for this ticket"},
-    {"id": "mem-dec-saml", "linked": true, "link_reason": "the decision this ticket implements"},
-    {"id": "mem-code-auth-module", "linked": true, "link_reason": "the auth module being changed"},
-    {"id": "mem-code-arch", "linked": false},
-    {"id": "mem-ws-security-policy", "linked": false},
-    {"id": "mem-rel-rollback", "linked": false},
-    {"id": "mem-bob-local-spike", "linked": false},
-    {"id": "mem-agent-scratch", "linked": false}
+    {
+      "id": "mem-auth-arch",
+      "linked": true,
+      "link_reason": "the AuthStack being built"
+    },
+    {
+      "id": "mem-cognito-reqs",
+      "linked": true,
+      "link_reason": "the acceptance for this ticket"
+    },
+    {
+      "id": "mem-conventions",
+      "linked": false
+    },
+    {
+      "id": "mem-domain-stale",
+      "linked": false
+    },
+    {
+      "id": "mem-leo-local-spike",
+      "linked": false
+    },
+    {
+      "id": "mem-prd-v52",
+      "linked": false
+    },
+    {
+      "id": "mem-rel-ai7-shipped",
+      "linked": false
+    },
+    {
+      "id": "mem-security-policy",
+      "linked": false
+    }
   ],
   "bundles": {
     "code_agent": {
-      "must_include": ["mem-tkt-auth-notes", "mem-code-auth-module", "mem-code-arch", "mem-dec-saml"],
-      "must_exclude": ["mem-ws-security-policy", "mem-rel-rollback", "mem-bob-local-spike", "mem-agent-scratch"],
-      "optional": [],
-      "rationale": "Implementation needs the ticket's SAML notes, the auth module, the architecture, and the SAML decision. Workspace policy and release rollback are out of code_agent scope; Bob's local note and the agent's local scratch are private (NFR-E16-1)."
+      "must_include": [
+        "mem-cognito-reqs",
+        "mem-auth-arch"
+      ],
+      "must_exclude": [
+        "mem-rel-ai7-shipped",
+        "mem-domain-stale",
+        "mem-conventions",
+        "mem-security-policy",
+        "mem-leo-local-spike"
+      ],
+      "optional": [
+        "mem-prd-v52"
+      ],
+      "rationale": "Code needs the ticket acceptance and the AuthStack architecture. The release ship-note is out of scope, the superseded jobwinai.com domain note is stale, workspace conventions/policy are out of scope, Leo's private spike is local. The async PRD is in scope but only loosely relevant \u2014 optional."
     },
     "qa_agent": {
-      "must_include": ["mem-tkt-auth-notes", "mem-code-auth-module", "mem-code-arch", "mem-dec-saml", "mem-rel-rollback"],
-      "must_exclude": ["mem-ws-security-policy", "mem-bob-local-spike", "mem-agent-scratch"],
+      "must_include": [
+        "mem-cognito-reqs",
+        "mem-auth-arch",
+        "mem-rel-ai7-shipped"
+      ],
+      "must_exclude": [
+        "mem-domain-stale",
+        "mem-conventions",
+        "mem-security-policy",
+        "mem-prd-v52",
+        "mem-leo-local-spike"
+      ],
       "optional": [],
-      "rationale": "QA additionally needs the release rollback plan; workspace policy is out of scope; the two local notes are private."
+      "rationale": "QA also needs the ship-note; the stale domain note is withheld, workspace/project entries are out of scope, Leo's note is local."
     },
     "design_agent": {
-      "must_include": ["mem-tkt-auth-notes", "mem-dec-saml", "mem-ws-security-policy"],
-      "must_exclude": ["mem-code-auth-module", "mem-code-arch", "mem-rel-rollback", "mem-bob-local-spike", "mem-agent-scratch"],
+      "must_include": [
+        "mem-cognito-reqs",
+        "mem-conventions",
+        "mem-security-policy",
+        "mem-prd-v52"
+      ],
+      "must_exclude": [
+        "mem-auth-arch",
+        "mem-rel-ai7-shipped",
+        "mem-domain-stale",
+        "mem-leo-local-spike"
+      ],
       "optional": [],
-      "rationale": "Design sees the ticket notes, the decision, and the workspace security policy, but not codebase internals or release ops; local notes are private."
+      "rationale": "Design sees the ticket, conventions, security policy, and the PRD; codebase/release are out of scope, the stale domain note is withheld, Leo's note is local."
     },
     "product_agent": {
-      "must_include": ["mem-tkt-auth-notes", "mem-dec-saml", "mem-ws-security-policy", "mem-rel-rollback"],
-      "must_exclude": ["mem-code-auth-module", "mem-code-arch", "mem-bob-local-spike", "mem-agent-scratch"],
+      "must_include": [
+        "mem-cognito-reqs",
+        "mem-rel-ai7-shipped",
+        "mem-conventions",
+        "mem-security-policy",
+        "mem-prd-v52"
+      ],
+      "must_exclude": [
+        "mem-auth-arch",
+        "mem-domain-stale",
+        "mem-leo-local-spike"
+      ],
       "optional": [],
-      "rationale": "Product sees ticket/decision/workspace/release context but not codebase internals; local notes are private."
+      "rationale": "Product sees ticket/release/workspace/project context; codebase is out of scope, the stale domain note is withheld, Leo's note is local."
     },
     "human_teammate": {
-      "must_include": ["mem-tkt-auth-notes", "mem-code-auth-module", "mem-code-arch", "mem-dec-saml", "mem-ws-security-policy", "mem-rel-rollback"],
-      "must_exclude": ["mem-bob-local-spike", "mem-agent-scratch"],
+      "must_include": [
+        "mem-cognito-reqs",
+        "mem-auth-arch",
+        "mem-rel-ai7-shipped",
+        "mem-domain-stale",
+        "mem-conventions",
+        "mem-security-policy",
+        "mem-prd-v52"
+      ],
+      "must_exclude": [
+        "mem-leo-local-spike"
+      ],
       "optional": [],
-      "rationale": "Alice (the assignee) sees every team-visible entry; Bob's and the agent's local notes never reached her device."
+      "rationale": "Vicky sees every team entry including the stale domain note (flagged, not hidden); only Leo's local spike is invisible to her."
     }
   }
 }

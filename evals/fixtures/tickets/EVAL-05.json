@@ -1,52 +1,132 @@
 {
   "ticket": {
     "id": "EVAL-05",
-    "title": "Write the product brief for applicant tracking GA",
-    "description": "Draft the GA brief: goal, target users, what ships, and the headline changes for design partners.",
-    "lifecycle_stage": "discovery",
-    "status": "in_progress",
-    "labels": ["Product", "Feature"]
+    "title": "Create beta launch plan \u2014 first 100 users, channels, launch sequence",
+    "description": "Define how we acquire the first 100 beta users, the channels, and the launch-week sequence.",
+    "lifecycle_stage": "planning",
+    "status": "In Review",
+    "labels": [
+      "Growth/GTM"
+    ]
   },
   "candidate_memory": [
-    {"id": "mem-proj-goal", "linked": true, "link_reason": "the GA goal the brief states"},
-    {"id": "mem-proj-personas", "linked": true, "link_reason": "the target users"},
-    {"id": "mem-rel-changelog", "linked": true, "link_reason": "what is shipping in v0.4"},
-    {"id": "mem-ws-brand", "linked": false},
-    {"id": "mem-rel-comms", "linked": false},
-    {"id": "mem-dec-saml", "linked": false},
-    {"id": "mem-code-arch", "linked": false},
-    {"id": "mem-carol-local-pricing", "linked": false}
+    {
+      "id": "mem-agent-stack",
+      "linked": false
+    },
+    {
+      "id": "mem-beta-goal",
+      "linked": true,
+      "link_reason": "the goal this plans for"
+    },
+    {
+      "id": "mem-conventions",
+      "linked": false
+    },
+    {
+      "id": "mem-credit-system",
+      "linked": false
+    },
+    {
+      "id": "mem-prd-v52",
+      "linked": false
+    },
+    {
+      "id": "mem-rel-comms-draft",
+      "linked": false
+    },
+    {
+      "id": "mem-rel-launch-plan",
+      "linked": true,
+      "link_reason": "the canonical launch plan"
+    },
+    {
+      "id": "mem-sam-local-legal",
+      "linked": false
+    }
   ],
   "bundles": {
     "code_agent": {
-      "must_include": ["mem-proj-goal", "mem-proj-personas", "mem-dec-saml", "mem-code-arch"],
-      "must_exclude": ["mem-ws-brand", "mem-rel-changelog", "mem-rel-comms", "mem-carol-local-pricing"],
-      "optional": [],
-      "rationale": "Code sees the goal, personas, the SAML decision, and architecture; brand (workspace) and release entries are out of scope; Carol's note is private."
+      "must_include": [
+        "mem-beta-goal",
+        "mem-prd-v52",
+        "mem-credit-system"
+      ],
+      "must_exclude": [
+        "mem-rel-launch-plan",
+        "mem-rel-comms-draft",
+        "mem-conventions",
+        "mem-sam-local-legal"
+      ],
+      "optional": [
+        "mem-agent-stack"
+      ],
+      "rationale": "Code's scope picks up the project goal/PRD/credit terms; release plans and conventions are out of scope and Sam's note is local. The agent build is in scope but irrelevant to a launch plan \u2014 optional."
     },
     "qa_agent": {
-      "must_include": ["mem-rel-changelog", "mem-dec-saml", "mem-code-arch"],
-      "must_exclude": ["mem-proj-goal", "mem-proj-personas", "mem-ws-brand", "mem-carol-local-pricing"],
-      "optional": ["mem-rel-comms"],
-      "rationale": "QA sees the changelog, the SAML decision, and architecture; goal/personas (project) and brand (workspace) are out of scope; Carol's note is private. The release comms note is in scope but not behavior to verify — optional."
+      "must_include": [
+        "mem-rel-launch-plan",
+        "mem-rel-comms-draft"
+      ],
+      "must_exclude": [
+        "mem-beta-goal",
+        "mem-prd-v52",
+        "mem-conventions",
+        "mem-credit-system",
+        "mem-sam-local-legal"
+      ],
+      "optional": [
+        "mem-agent-stack"
+      ],
+      "rationale": "QA's scope catches the two release entries; project/workspace entries are out of scope and Sam's note is local. The agent build is in scope but irrelevant \u2014 optional."
     },
     "design_agent": {
-      "must_include": ["mem-proj-goal", "mem-proj-personas", "mem-ws-brand", "mem-dec-saml"],
-      "must_exclude": ["mem-rel-changelog", "mem-rel-comms", "mem-code-arch", "mem-carol-local-pricing"],
+      "must_include": [
+        "mem-beta-goal",
+        "mem-prd-v52",
+        "mem-conventions",
+        "mem-credit-system"
+      ],
+      "must_exclude": [
+        "mem-rel-launch-plan",
+        "mem-rel-comms-draft",
+        "mem-sam-local-legal",
+        "mem-agent-stack"
+      ],
       "optional": [],
-      "rationale": "Design sees the goal, personas, brand, and the SAML decision; release and codebase entries are out of scope; Carol's note is private."
+      "rationale": "Design sees the goal/PRD/conventions/credit terms; release and codebase entries are out of scope, Sam's note is local."
     },
     "product_agent": {
-      "must_include": ["mem-proj-goal", "mem-proj-personas", "mem-ws-brand", "mem-rel-changelog", "mem-rel-comms", "mem-dec-saml"],
-      "must_exclude": ["mem-code-arch", "mem-carol-local-pricing"],
+      "must_include": [
+        "mem-beta-goal",
+        "mem-rel-launch-plan",
+        "mem-rel-comms-draft",
+        "mem-prd-v52",
+        "mem-conventions",
+        "mem-credit-system"
+      ],
+      "must_exclude": [
+        "mem-sam-local-legal",
+        "mem-agent-stack"
+      ],
       "optional": [],
-      "rationale": "Product needs the widest context — goal, personas, brand, both release entries, and the SAML decision; codebase architecture is out of scope; Carol's note is private."
+      "rationale": "Product is the strong role here: goal, both release plans, PRD, conventions, and credit terms; the agent build (codebase) is out of scope and Sam's note is local."
     },
     "human_teammate": {
-      "must_include": ["mem-proj-goal", "mem-proj-personas", "mem-ws-brand", "mem-rel-changelog", "mem-rel-comms", "mem-dec-saml", "mem-code-arch"],
-      "must_exclude": ["mem-carol-local-pricing"],
+      "must_include": [
+        "mem-beta-goal",
+        "mem-rel-launch-plan",
+        "mem-rel-comms-draft",
+        "mem-prd-v52",
+        "mem-conventions",
+        "mem-credit-system",
+        "mem-agent-stack"
+      ],
+      "must_exclude": [
+        "mem-sam-local-legal"
+      ],
       "optional": [],
-      "rationale": "Alice sees every team-visible entry; only Carol's local pricing note is invisible to her."
+      "rationale": "Vicky sees every team entry; only Sam's local legal note is invisible to her."
     }
   }
 }

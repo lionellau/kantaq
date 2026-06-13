@@ -1,52 +1,135 @@
 {
   "ticket": {
     "id": "EVAL-06",
-    "title": "Security review of auth token handling",
-    "description": "Review how access/refresh tokens are stored, rotated, and scoped before the SAML launch. Confirm no secrets leak to logs.",
+    "title": "Agent security: prompt injection prevention, data isolation & output sanitisation",
+    "description": "Review and harden agent prompt-injection defenses, per-user data isolation, and output sanitisation.",
     "lifecycle_stage": "review",
-    "status": "in_progress",
-    "labels": ["Security", "Backend"]
+    "status": "Done",
+    "labels": [
+      "Security",
+      "AI/Agents"
+    ]
   },
   "candidate_memory": [
-    {"id": "mem-ws-security-policy", "linked": true, "link_reason": "the policy this review checks against"},
-    {"id": "mem-code-auth-module", "linked": true, "link_reason": "the code under review"},
-    {"id": "mem-code-arch", "linked": false},
-    {"id": "mem-dec-saml", "linked": false},
-    {"id": "mem-tkt-auth-notes", "linked": false},
-    {"id": "mem-ws-conventions", "linked": false},
-    {"id": "mem-alice-local-todo", "linked": false},
-    {"id": "mem-agent-scratch", "linked": false}
+    {
+      "id": "mem-agent-stack",
+      "linked": false
+    },
+    {
+      "id": "mem-agent-trace",
+      "linked": false
+    },
+    {
+      "id": "mem-conventions",
+      "linked": false
+    },
+    {
+      "id": "mem-dec-async-jd",
+      "linked": false
+    },
+    {
+      "id": "mem-input-validator",
+      "linked": false
+    },
+    {
+      "id": "mem-pm-security-audit",
+      "linked": true,
+      "link_reason": "the audit of this work"
+    },
+    {
+      "id": "mem-security-policy",
+      "linked": true,
+      "link_reason": "the policy under review"
+    },
+    {
+      "id": "mem-vicky-codex-local",
+      "linked": false
+    }
   ],
   "bundles": {
     "code_agent": {
-      "must_include": ["mem-code-auth-module", "mem-code-arch", "mem-dec-saml", "mem-tkt-auth-notes"],
-      "must_exclude": ["mem-ws-security-policy", "mem-ws-conventions", "mem-alice-local-todo", "mem-agent-scratch"],
-      "optional": [],
-      "rationale": "Code sees the auth module, architecture, the SAML decision, and ticket notes; workspace policy and conventions are out of scope; both local notes are private — including Alice's own (an agent never reads a human's private note, NFR-E16-1)."
+      "must_include": [
+        "mem-pm-security-audit",
+        "mem-input-validator",
+        "mem-agent-stack"
+      ],
+      "must_exclude": [
+        "mem-security-policy",
+        "mem-conventions",
+        "mem-vicky-codex-local",
+        "mem-agent-trace"
+      ],
+      "optional": [
+        "mem-dec-async-jd"
+      ],
+      "rationale": "Code sees the audit, the validation services, and the agent build; the workspace policy/conventions are out of scope and the two local notes are private. The async decision is in scope but tangential \u2014 optional."
     },
     "qa_agent": {
-      "must_include": ["mem-code-auth-module", "mem-code-arch", "mem-dec-saml", "mem-tkt-auth-notes"],
-      "must_exclude": ["mem-ws-security-policy", "mem-ws-conventions", "mem-alice-local-todo", "mem-agent-scratch"],
-      "optional": [],
-      "rationale": "Same in-scope codebase/decision/ticket set for QA; workspace entries are out of scope; the local notes are private."
+      "must_include": [
+        "mem-pm-security-audit",
+        "mem-input-validator",
+        "mem-agent-stack"
+      ],
+      "must_exclude": [
+        "mem-security-policy",
+        "mem-conventions",
+        "mem-vicky-codex-local",
+        "mem-agent-trace"
+      ],
+      "optional": [
+        "mem-dec-async-jd"
+      ],
+      "rationale": "Same in-scope codebase/ticket set for QA; workspace entries out of scope, local notes private, the async decision optional."
     },
     "design_agent": {
-      "must_include": ["mem-ws-security-policy", "mem-dec-saml", "mem-tkt-auth-notes", "mem-ws-conventions"],
-      "must_exclude": ["mem-code-auth-module", "mem-code-arch", "mem-alice-local-todo", "mem-agent-scratch"],
-      "optional": [],
-      "rationale": "Design sees the workspace policy and conventions, the decision, and the ticket notes; codebase internals are out of scope; the local notes are private."
+      "must_include": [
+        "mem-security-policy",
+        "mem-pm-security-audit",
+        "mem-conventions"
+      ],
+      "must_exclude": [
+        "mem-input-validator",
+        "mem-agent-stack",
+        "mem-vicky-codex-local",
+        "mem-agent-trace"
+      ],
+      "optional": [
+        "mem-dec-async-jd"
+      ],
+      "rationale": "Design sees the workspace policy/conventions and the ticket audit; codebase internals are out of scope, the local notes private, the async decision optional."
     },
     "product_agent": {
-      "must_include": ["mem-ws-security-policy", "mem-dec-saml", "mem-tkt-auth-notes", "mem-ws-conventions"],
-      "must_exclude": ["mem-code-auth-module", "mem-code-arch", "mem-alice-local-todo", "mem-agent-scratch"],
-      "optional": [],
-      "rationale": "Product sees the workspace policy/conventions, the decision, and ticket notes; codebase internals are out of scope; the local notes are private."
+      "must_include": [
+        "mem-security-policy",
+        "mem-pm-security-audit",
+        "mem-conventions"
+      ],
+      "must_exclude": [
+        "mem-input-validator",
+        "mem-agent-stack",
+        "mem-vicky-codex-local",
+        "mem-agent-trace"
+      ],
+      "optional": [
+        "mem-dec-async-jd"
+      ],
+      "rationale": "Product sees policy/audit/conventions; codebase internals out of scope, local notes private, the async decision optional."
     },
     "human_teammate": {
-      "must_include": ["mem-ws-security-policy", "mem-code-auth-module", "mem-code-arch", "mem-dec-saml", "mem-tkt-auth-notes", "mem-ws-conventions", "mem-alice-local-todo"],
-      "must_exclude": ["mem-agent-scratch"],
+      "must_include": [
+        "mem-security-policy",
+        "mem-pm-security-audit",
+        "mem-input-validator",
+        "mem-agent-stack",
+        "mem-conventions",
+        "mem-dec-async-jd",
+        "mem-vicky-codex-local"
+      ],
+      "must_exclude": [
+        "mem-agent-trace"
+      ],
       "optional": [],
-      "rationale": "Alice sees every team-visible entry AND her own local todo; only the agent's private scratch is invisible to her. This is the baseline-owner asymmetry: her own local note is in, foreign local notes are out."
+      "rationale": "Vicky sees every team entry AND her own local Codex note; only Leo's local agent trace is invisible \u2014 the baseline-owner asymmetry."
     }
   }
 }
