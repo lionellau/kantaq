@@ -1,136 +1,136 @@
 {
-  "ticket": {
-    "id": "EVAL-08",
-    "title": "Bug: CSP nonce-based policy blocks all scripts \u2014 site non-functional (P0)",
-    "description": "Static pages can't receive nonces, so the strict CSP blocked every script. Restore (Phase 1) then re-harden sensitive routes (Phase 2).",
-    "lifecycle_stage": "qa",
-    "status": "Done",
-    "labels": [
-      "Security",
-      "Infrastructure",
-      "Frontend",
-      "Bug"
-    ]
-  },
-  "candidate_memory": [
-    {
-      "id": "mem-conventions",
-      "linked": false
-    },
-    {
-      "id": "mem-csp-rootcause",
-      "linked": true,
-      "link_reason": "the root cause to verify against"
-    },
-    {
-      "id": "mem-dec-csp-phased",
-      "linked": true,
-      "link_reason": "the phased fix decision"
-    },
-    {
-      "id": "mem-input-validator",
-      "linked": false
-    },
-    {
-      "id": "mem-leo-local-spike",
-      "linked": false
-    },
-    {
-      "id": "mem-middleware-csp",
-      "linked": true,
-      "link_reason": "the CSP code under change"
-    },
-    {
-      "id": "mem-rel-ai7-shipped",
-      "linked": false
-    },
-    {
-      "id": "mem-security-policy",
-      "linked": false
-    }
-  ],
-  "bundles": {
-    "code_agent": {
-      "must_include": [
-        "mem-csp-rootcause",
-        "mem-middleware-csp",
-        "mem-dec-csp-phased"
-      ],
-      "must_exclude": [
-        "mem-security-policy",
-        "mem-conventions",
-        "mem-leo-local-spike",
-        "mem-rel-ai7-shipped"
-      ],
-      "optional": [
-        "mem-input-validator"
-      ],
-      "rationale": "Code sees the root cause, the middleware CSP, and the phased decision; workspace policy/conventions are out of scope, the Cognito ship-note is release, Leo's spike is local. The validation services are in scope but unrelated to CSP \u2014 optional."
-    },
-    "qa_agent": {
-      "must_include": [
-        "mem-csp-rootcause",
-        "mem-middleware-csp",
-        "mem-dec-csp-phased",
-        "mem-rel-ai7-shipped"
-      ],
-      "must_exclude": [
-        "mem-security-policy",
-        "mem-conventions",
-        "mem-leo-local-spike"
-      ],
-      "optional": [
-        "mem-input-validator"
-      ],
-      "rationale": "QA additionally gets the auth ship-note (CSP affects auth pages); workspace entries out of scope, Leo's spike local, the validation services optional."
-    },
-    "design_agent": {
-      "must_include": [
-        "mem-csp-rootcause",
-        "mem-dec-csp-phased",
-        "mem-security-policy",
-        "mem-conventions"
-      ],
-      "must_exclude": [
-        "mem-middleware-csp",
-        "mem-leo-local-spike",
-        "mem-rel-ai7-shipped",
-        "mem-input-validator"
-      ],
-      "optional": [],
-      "rationale": "Design sees the root cause, the decision, the policy, and conventions; codebase internals and the release note are out of scope, Leo's spike is local."
-    },
-    "product_agent": {
-      "must_include": [
-        "mem-csp-rootcause",
-        "mem-dec-csp-phased",
-        "mem-security-policy",
-        "mem-conventions",
-        "mem-rel-ai7-shipped"
-      ],
-      "must_exclude": [
-        "mem-middleware-csp",
-        "mem-leo-local-spike",
-        "mem-input-validator"
-      ],
-      "optional": [],
-      "rationale": "Product sees root cause/decision/policy/conventions/release; codebase internals out of scope, Leo's spike local."
-    },
-    "human_teammate": {
-      "must_include": [
-        "mem-csp-rootcause",
-        "mem-middleware-csp",
-        "mem-dec-csp-phased",
-        "mem-security-policy",
-        "mem-conventions",
-        "mem-rel-ai7-shipped",
-        "mem-input-validator"
-      ],
-      "must_exclude": [
-        "mem-leo-local-spike"
-      ],
-      "optional": [],
-      "rationale": "Vicky sees every team entry; only Leo's local spike is invisible."
-    }
-  }
+ "ticket": {
+ "id": "EVAL-08",
+ "title": "Bug: CSP nonce-based policy blocks all scripts \u2014 site non-functional (P0)",
+ "description": "Static pages can't receive nonces, so the strict CSP blocked every script. Restore (Phase 1) then re-harden sensitive routes (Phase 2).",
+ "lifecycle_stage": "qa",
+ "status": "Done",
+ "labels": [
+ "Security",
+ "Infrastructure",
+ "Frontend",
+ "Bug"
+ ]
+ },
+ "candidate_memory": [
+ {
+ "id": "mem-conventions",
+ "linked": false
+ },
+ {
+ "id": "mem-csp-rootcause",
+ "linked": true,
+ "link_reason": "the root cause to verify against"
+ },
+ {
+ "id": "mem-dec-csp-phased",
+ "linked": true,
+ "link_reason": "the phased fix decision"
+ },
+ {
+ "id": "mem-input-validator",
+ "linked": false
+ },
+ {
+ "id": "mem-alex-local-spike",
+ "linked": false
+ },
+ {
+ "id": "mem-middleware-csp",
+ "linked": true,
+ "link_reason": "the CSP code under change"
+ },
+ {
+ "id": "mem-rel-auth-shipped",
+ "linked": false
+ },
+ {
+ "id": "mem-security-policy",
+ "linked": false
+ }
+ ],
+ "bundles": {
+ "code_agent": {
+ "must_include": [
+ "mem-csp-rootcause",
+ "mem-middleware-csp",
+ "mem-dec-csp-phased"
+ ],
+ "must_exclude": [
+ "mem-security-policy",
+ "mem-conventions",
+ "mem-alex-local-spike",
+ "mem-rel-auth-shipped"
+ ],
+ "optional": [
+ "mem-input-validator"
+ ],
+ "rationale": "Code sees the root cause, the middleware CSP, and the phased decision; workspace policy/conventions are out of scope, the Cognito ship-note is release, Alex's spike is local. The validation services are in scope but unrelated to CSP \u2014 optional."
+ },
+ "qa_agent": {
+ "must_include": [
+ "mem-csp-rootcause",
+ "mem-middleware-csp",
+ "mem-dec-csp-phased",
+ "mem-rel-auth-shipped"
+ ],
+ "must_exclude": [
+ "mem-security-policy",
+ "mem-conventions",
+ "mem-alex-local-spike"
+ ],
+ "optional": [
+ "mem-input-validator"
+ ],
+ "rationale": "QA additionally gets the auth ship-note (CSP affects auth pages); workspace entries out of scope, Alex's spike local, the validation services optional."
+ },
+ "design_agent": {
+ "must_include": [
+ "mem-csp-rootcause",
+ "mem-dec-csp-phased",
+ "mem-security-policy",
+ "mem-conventions"
+ ],
+ "must_exclude": [
+ "mem-middleware-csp",
+ "mem-alex-local-spike",
+ "mem-rel-auth-shipped",
+ "mem-input-validator"
+ ],
+ "optional": [],
+ "rationale": "Design sees the root cause, the decision, the policy, and conventions; codebase internals and the release note are out of scope, Alex's spike is local."
+ },
+ "product_agent": {
+ "must_include": [
+ "mem-csp-rootcause",
+ "mem-dec-csp-phased",
+ "mem-security-policy",
+ "mem-conventions",
+ "mem-rel-auth-shipped"
+ ],
+ "must_exclude": [
+ "mem-middleware-csp",
+ "mem-alex-local-spike",
+ "mem-input-validator"
+ ],
+ "optional": [],
+ "rationale": "Product sees root cause/decision/policy/conventions/release; codebase internals out of scope, Alex's spike local."
+ },
+ "human_teammate": {
+ "must_include": [
+ "mem-csp-rootcause",
+ "mem-middleware-csp",
+ "mem-dec-csp-phased",
+ "mem-security-policy",
+ "mem-conventions",
+ "mem-rel-auth-shipped",
+ "mem-input-validator"
+ ],
+ "must_exclude": [
+ "mem-alex-local-spike"
+ ],
+ "optional": [],
+ "rationale": "Robin sees every team entry; only Alex's local spike is invisible."
+ }
+ }
 }

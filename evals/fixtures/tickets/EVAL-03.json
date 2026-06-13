@@ -1,132 +1,132 @@
 {
-  "ticket": {
-    "id": "EVAL-03",
-    "title": "Implement Company Research Agent (Strands SDK + tools)",
-    "description": "Build the company_research agent on Strands + Sonnet 4 with web tools and a company cache; application-level memory scope.",
-    "lifecycle_stage": "implementation",
-    "status": "Done",
-    "labels": [
-      "Security",
-      "AI/Agents",
-      "Backend"
-    ]
-  },
-  "candidate_memory": [
-    {
-      "id": "mem-agent-stack",
-      "linked": true,
-      "link_reason": "the agent being built"
-    },
-    {
-      "id": "mem-agent-summary",
-      "linked": false
-    },
-    {
-      "id": "mem-agent-trace",
-      "linked": false
-    },
-    {
-      "id": "mem-dec-browser-rejected",
-      "linked": false
-    },
-    {
-      "id": "mem-memory-arch",
-      "linked": false
-    },
-    {
-      "id": "mem-prd-v52",
-      "linked": false
-    },
-    {
-      "id": "mem-rel-smoke-pass",
-      "linked": false
-    },
-    {
-      "id": "mem-security-policy",
-      "linked": true,
-      "link_reason": "the injection/isolation rules it must follow"
-    }
-  ],
-  "bundles": {
-    "code_agent": {
-      "must_include": [
-        "mem-agent-stack",
-        "mem-memory-arch",
-        "mem-prd-v52"
-      ],
-      "must_exclude": [
-        "mem-security-policy",
-        "mem-dec-browser-rejected",
-        "mem-agent-summary",
-        "mem-agent-trace",
-        "mem-rel-smoke-pass"
-      ],
-      "optional": [],
-      "rationale": "Code needs the agent build, the memory architecture, and the PRD; the security policy is workspace (out of scope), the rejected browser decision is withheld, the agent_run summary/trace and the smoke-test release note are out of scope (and the trace is local)."
-    },
-    "qa_agent": {
-      "must_include": [
-        "mem-agent-stack",
-        "mem-memory-arch",
-        "mem-rel-smoke-pass"
-      ],
-      "must_exclude": [
-        "mem-security-policy",
-        "mem-dec-browser-rejected",
-        "mem-agent-summary",
-        "mem-agent-trace",
-        "mem-prd-v52"
-      ],
-      "optional": [],
-      "rationale": "QA swaps the PRD for the smoke-test release note; the rejected decision is withheld, agent_run entries and the workspace policy are out of scope, the trace is local."
-    },
-    "design_agent": {
-      "must_include": [
-        "mem-security-policy",
-        "mem-prd-v52"
-      ],
-      "must_exclude": [
-        "mem-agent-stack",
-        "mem-memory-arch",
-        "mem-dec-browser-rejected",
-        "mem-agent-summary",
-        "mem-agent-trace",
-        "mem-rel-smoke-pass"
-      ],
-      "optional": [],
-      "rationale": "Design sees the workspace policy and the PRD; codebase, release, and agent_run entries are out of scope, the rejected decision is withheld, the trace is local."
-    },
-    "product_agent": {
-      "must_include": [
-        "mem-security-policy",
-        "mem-prd-v52",
-        "mem-rel-smoke-pass"
-      ],
-      "must_exclude": [
-        "mem-agent-stack",
-        "mem-memory-arch",
-        "mem-dec-browser-rejected",
-        "mem-agent-summary",
-        "mem-agent-trace"
-      ],
-      "optional": [],
-      "rationale": "Product sees policy/PRD/release; codebase and agent_run entries are out of scope, the rejected decision is withheld, the trace is local."
-    },
-    "human_teammate": {
-      "must_include": [
-        "mem-agent-stack",
-        "mem-security-policy",
-        "mem-memory-arch",
-        "mem-dec-browser-rejected",
-        "mem-agent-summary",
-        "mem-prd-v52",
-        "mem-rel-smoke-pass"
-      ],
-      "must_exclude": [
-        "mem-agent-trace"
-      ],
-      "optional": [],
-      "rationale": "Vicky sees every team entry \u2014 including the rejected browser decision and the team-shared agent run summary; only Leo's local agent trace is invisible to her."
-    }
-  }
+ "ticket": {
+ "id": "EVAL-03",
+ "title": "Implement Company Research Agent (Strands SDK + tools)",
+ "description": "Build the company_research agent on Strands + Sonnet 4 with web tools and a company cache; application-level memory scope.",
+ "lifecycle_stage": "implementation",
+ "status": "Done",
+ "labels": [
+ "Security",
+ "AI/Agents",
+ "Backend"
+ ]
+ },
+ "candidate_memory": [
+ {
+ "id": "mem-agent-stack",
+ "linked": true,
+ "link_reason": "the agent being built"
+ },
+ {
+ "id": "mem-agent-summary",
+ "linked": false
+ },
+ {
+ "id": "mem-agent-trace",
+ "linked": false
+ },
+ {
+ "id": "mem-dec-browser-rejected",
+ "linked": false
+ },
+ {
+ "id": "mem-memory-arch",
+ "linked": false
+ },
+ {
+ "id": "mem-prd-v52",
+ "linked": false
+ },
+ {
+ "id": "mem-rel-smoke-pass",
+ "linked": false
+ },
+ {
+ "id": "mem-security-policy",
+ "linked": true,
+ "link_reason": "the injection/isolation rules it must follow"
+ }
+ ],
+ "bundles": {
+ "code_agent": {
+ "must_include": [
+ "mem-agent-stack",
+ "mem-memory-arch",
+ "mem-prd-v52"
+ ],
+ "must_exclude": [
+ "mem-security-policy",
+ "mem-dec-browser-rejected",
+ "mem-agent-summary",
+ "mem-agent-trace",
+ "mem-rel-smoke-pass"
+ ],
+ "optional": [],
+ "rationale": "Code needs the agent build, the memory architecture, and the PRD; the security policy is workspace (out of scope), the rejected browser decision is withheld, the agent_run summary/trace and the smoke-test release note are out of scope (and the trace is local)."
+ },
+ "qa_agent": {
+ "must_include": [
+ "mem-agent-stack",
+ "mem-memory-arch",
+ "mem-rel-smoke-pass"
+ ],
+ "must_exclude": [
+ "mem-security-policy",
+ "mem-dec-browser-rejected",
+ "mem-agent-summary",
+ "mem-agent-trace",
+ "mem-prd-v52"
+ ],
+ "optional": [],
+ "rationale": "QA swaps the PRD for the smoke-test release note; the rejected decision is withheld, agent_run entries and the workspace policy are out of scope, the trace is local."
+ },
+ "design_agent": {
+ "must_include": [
+ "mem-security-policy",
+ "mem-prd-v52"
+ ],
+ "must_exclude": [
+ "mem-agent-stack",
+ "mem-memory-arch",
+ "mem-dec-browser-rejected",
+ "mem-agent-summary",
+ "mem-agent-trace",
+ "mem-rel-smoke-pass"
+ ],
+ "optional": [],
+ "rationale": "Design sees the workspace policy and the PRD; codebase, release, and agent_run entries are out of scope, the rejected decision is withheld, the trace is local."
+ },
+ "product_agent": {
+ "must_include": [
+ "mem-security-policy",
+ "mem-prd-v52",
+ "mem-rel-smoke-pass"
+ ],
+ "must_exclude": [
+ "mem-agent-stack",
+ "mem-memory-arch",
+ "mem-dec-browser-rejected",
+ "mem-agent-summary",
+ "mem-agent-trace"
+ ],
+ "optional": [],
+ "rationale": "Product sees policy/PRD/release; codebase and agent_run entries are out of scope, the rejected decision is withheld, the trace is local."
+ },
+ "human_teammate": {
+ "must_include": [
+ "mem-agent-stack",
+ "mem-security-policy",
+ "mem-memory-arch",
+ "mem-dec-browser-rejected",
+ "mem-agent-summary",
+ "mem-prd-v52",
+ "mem-rel-smoke-pass"
+ ],
+ "must_exclude": [
+ "mem-agent-trace"
+ ],
+ "optional": [],
+ "rationale": "Robin sees every team entry \u2014 including the rejected browser decision and the team-shared agent run summary; only Alex's local agent trace is invisible to her."
+ }
+ }
 }

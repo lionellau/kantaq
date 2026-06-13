@@ -1,131 +1,131 @@
 {
-  "ticket": {
-    "id": "EVAL-01",
-    "title": "Set up Amazon Cognito auth (user pool, sign-up/login)",
-    "description": "Stand up a Cognito user pool with email/password and hosted UI; CDK construct, JWT settings. Deploy is deferred to AI-76.",
-    "lifecycle_stage": "implementation",
-    "status": "Done",
-    "labels": [
-      "Infrastructure"
-    ]
-  },
-  "candidate_memory": [
-    {
-      "id": "mem-auth-arch",
-      "linked": true,
-      "link_reason": "the AuthStack being built"
-    },
-    {
-      "id": "mem-cognito-reqs",
-      "linked": true,
-      "link_reason": "the acceptance for this ticket"
-    },
-    {
-      "id": "mem-conventions",
-      "linked": false
-    },
-    {
-      "id": "mem-domain-stale",
-      "linked": false
-    },
-    {
-      "id": "mem-leo-local-spike",
-      "linked": false
-    },
-    {
-      "id": "mem-prd-v52",
-      "linked": false
-    },
-    {
-      "id": "mem-rel-ai7-shipped",
-      "linked": false
-    },
-    {
-      "id": "mem-security-policy",
-      "linked": false
-    }
-  ],
-  "bundles": {
-    "code_agent": {
-      "must_include": [
-        "mem-cognito-reqs",
-        "mem-auth-arch"
-      ],
-      "must_exclude": [
-        "mem-rel-ai7-shipped",
-        "mem-domain-stale",
-        "mem-conventions",
-        "mem-security-policy",
-        "mem-leo-local-spike"
-      ],
-      "optional": [
-        "mem-prd-v52"
-      ],
-      "rationale": "Code needs the ticket acceptance and the AuthStack architecture. The release ship-note is out of scope, the superseded jobwinai.com domain note is stale, workspace conventions/policy are out of scope, Leo's private spike is local. The async PRD is in scope but only loosely relevant \u2014 optional."
-    },
-    "qa_agent": {
-      "must_include": [
-        "mem-cognito-reqs",
-        "mem-auth-arch",
-        "mem-rel-ai7-shipped"
-      ],
-      "must_exclude": [
-        "mem-domain-stale",
-        "mem-conventions",
-        "mem-security-policy",
-        "mem-prd-v52",
-        "mem-leo-local-spike"
-      ],
-      "optional": [],
-      "rationale": "QA also needs the ship-note; the stale domain note is withheld, workspace/project entries are out of scope, Leo's note is local."
-    },
-    "design_agent": {
-      "must_include": [
-        "mem-cognito-reqs",
-        "mem-conventions",
-        "mem-security-policy",
-        "mem-prd-v52"
-      ],
-      "must_exclude": [
-        "mem-auth-arch",
-        "mem-rel-ai7-shipped",
-        "mem-domain-stale",
-        "mem-leo-local-spike"
-      ],
-      "optional": [],
-      "rationale": "Design sees the ticket, conventions, security policy, and the PRD; codebase/release are out of scope, the stale domain note is withheld, Leo's note is local."
-    },
-    "product_agent": {
-      "must_include": [
-        "mem-cognito-reqs",
-        "mem-rel-ai7-shipped",
-        "mem-conventions",
-        "mem-security-policy",
-        "mem-prd-v52"
-      ],
-      "must_exclude": [
-        "mem-auth-arch",
-        "mem-domain-stale",
-        "mem-leo-local-spike"
-      ],
-      "optional": [],
-      "rationale": "Product sees ticket/release/workspace/project context; codebase is out of scope, the stale domain note is withheld, Leo's note is local."
-    },
-    "human_teammate": {
-      "must_include": [
-        "mem-cognito-reqs",
-        "mem-auth-arch",
-        "mem-rel-ai7-shipped",
-        "mem-domain-stale",
-        "mem-conventions",
-        "mem-security-policy",
-        "mem-prd-v52"
-      ],
-      "must_exclude": [
-        "mem-leo-local-spike"
-      ],
-      "optional": [],
-      "rationale": "Vicky sees every team entry including the stale domain note (flagged, not hidden); only Leo's local spike is invisible to her."
-    }
-  }
+ "ticket": {
+ "id": "EVAL-01",
+ "title": "Set up Amazon Cognito auth (user pool, sign-up/login)",
+ "description": "Stand up a Cognito user pool with email/password and hosted UI; CDK construct, JWT settings. Deploy is deferred to a linked ticket.",
+ "lifecycle_stage": "implementation",
+ "status": "Done",
+ "labels": [
+ "Infrastructure"
+ ]
+ },
+ "candidate_memory": [
+ {
+ "id": "mem-auth-arch",
+ "linked": true,
+ "link_reason": "the AuthStack being built"
+ },
+ {
+ "id": "mem-cognito-reqs",
+ "linked": true,
+ "link_reason": "the acceptance for this ticket"
+ },
+ {
+ "id": "mem-conventions",
+ "linked": false
+ },
+ {
+ "id": "mem-domain-stale",
+ "linked": false
+ },
+ {
+ "id": "mem-alex-local-spike",
+ "linked": false
+ },
+ {
+ "id": "mem-prd-v52",
+ "linked": false
+ },
+ {
+ "id": "mem-rel-auth-shipped",
+ "linked": false
+ },
+ {
+ "id": "mem-security-policy",
+ "linked": false
+ }
+ ],
+ "bundles": {
+ "code_agent": {
+ "must_include": [
+ "mem-cognito-reqs",
+ "mem-auth-arch"
+ ],
+ "must_exclude": [
+ "mem-rel-auth-shipped",
+ "mem-domain-stale",
+ "mem-conventions",
+ "mem-security-policy",
+ "mem-alex-local-spike"
+ ],
+ "optional": [
+ "mem-prd-v52"
+ ],
+ "rationale": "Code needs the ticket acceptance and the AuthStack architecture. The release ship-note is out of scope, the superseded old.example.com domain note is stale, workspace conventions/policy are out of scope, Alex's private spike is local. The async PRD is in scope but only loosely relevant \u2014 optional."
+ },
+ "qa_agent": {
+ "must_include": [
+ "mem-cognito-reqs",
+ "mem-auth-arch",
+ "mem-rel-auth-shipped"
+ ],
+ "must_exclude": [
+ "mem-domain-stale",
+ "mem-conventions",
+ "mem-security-policy",
+ "mem-prd-v52",
+ "mem-alex-local-spike"
+ ],
+ "optional": [],
+ "rationale": "QA also needs the ship-note; the stale domain note is withheld, workspace/project entries are out of scope, Alex's note is local."
+ },
+ "design_agent": {
+ "must_include": [
+ "mem-cognito-reqs",
+ "mem-conventions",
+ "mem-security-policy",
+ "mem-prd-v52"
+ ],
+ "must_exclude": [
+ "mem-auth-arch",
+ "mem-rel-auth-shipped",
+ "mem-domain-stale",
+ "mem-alex-local-spike"
+ ],
+ "optional": [],
+ "rationale": "Design sees the ticket, conventions, security policy, and the PRD; codebase/release are out of scope, the stale domain note is withheld, Alex's note is local."
+ },
+ "product_agent": {
+ "must_include": [
+ "mem-cognito-reqs",
+ "mem-rel-auth-shipped",
+ "mem-conventions",
+ "mem-security-policy",
+ "mem-prd-v52"
+ ],
+ "must_exclude": [
+ "mem-auth-arch",
+ "mem-domain-stale",
+ "mem-alex-local-spike"
+ ],
+ "optional": [],
+ "rationale": "Product sees ticket/release/workspace/project context; codebase is out of scope, the stale domain note is withheld, Alex's note is local."
+ },
+ "human_teammate": {
+ "must_include": [
+ "mem-cognito-reqs",
+ "mem-auth-arch",
+ "mem-rel-auth-shipped",
+ "mem-domain-stale",
+ "mem-conventions",
+ "mem-security-policy",
+ "mem-prd-v52"
+ ],
+ "must_exclude": [
+ "mem-alex-local-spike"
+ ],
+ "optional": [],
+ "rationale": "Robin sees every team entry including the stale domain note (flagged, not hidden); only Alex's local spike is invisible to her."
+ }
+ }
 }

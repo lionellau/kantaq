@@ -1,132 +1,132 @@
 {
-  "ticket": {
-    "id": "EVAL-02",
-    "title": "Colour pass: replace navy/amber with forest/yellow in feature components",
-    "description": "1:1 token substitutions across four feature components; remove retired navy/amber and hardcoded colours.",
-    "lifecycle_stage": "design",
-    "status": "Done",
-    "labels": [
-      "Frontend",
-      "Design"
-    ]
-  },
-  "candidate_memory": [
-    {
-      "id": "mem-agent-trace",
-      "linked": false
-    },
-    {
-      "id": "mem-beta-goal",
-      "linked": false
-    },
-    {
-      "id": "mem-color-tokens",
-      "linked": true,
-      "link_reason": "the token palette this enforces"
-    },
-    {
-      "id": "mem-conventions",
-      "linked": false
-    },
-    {
-      "id": "mem-prd-v52",
-      "linked": false
-    },
-    {
-      "id": "mem-sam-local-legal",
-      "linked": false
-    },
-    {
-      "id": "mem-security-policy",
-      "linked": false
-    },
-    {
-      "id": "mem-vicky-codex-local",
-      "linked": true,
-      "link_reason": "Vicky's own Codex prompt for this ticket"
-    }
-  ],
-  "bundles": {
-    "code_agent": {
-      "must_include": [
-        "mem-beta-goal",
-        "mem-prd-v52"
-      ],
-      "must_exclude": [
-        "mem-color-tokens",
-        "mem-conventions",
-        "mem-security-policy",
-        "mem-vicky-codex-local",
-        "mem-agent-trace",
-        "mem-sam-local-legal"
-      ],
-      "optional": [],
-      "rationale": "A colour pass gives code little in scope: the design tokens it would need are workspace (out of scope), as are conventions/policy; the three local notes are private. Only the project goal/PRD remain."
-    },
-    "qa_agent": {
-      "must_include": [],
-      "must_exclude": [
-        "mem-color-tokens",
-        "mem-conventions",
-        "mem-security-policy",
-        "mem-beta-goal",
-        "mem-prd-v52",
-        "mem-vicky-codex-local",
-        "mem-agent-trace",
-        "mem-sam-local-legal"
-      ],
-      "optional": [],
-      "rationale": "QA's scope (ticket/release/codebase/decision) matches nothing in this design-only candidate set; workspace/project entries are out of scope and the local notes are private \u2014 a deliberate negative case."
-    },
-    "design_agent": {
-      "must_include": [
-        "mem-color-tokens",
-        "mem-conventions",
-        "mem-beta-goal"
-      ],
-      "must_exclude": [
-        "mem-vicky-codex-local",
-        "mem-agent-trace",
-        "mem-sam-local-legal"
-      ],
-      "optional": [
-        "mem-security-policy",
-        "mem-prd-v52"
-      ],
-      "rationale": "Design needs the colour tokens, the conventions, and who it serves (beta goal); security policy and the async PRD are in scope but tangential to a colour pass \u2014 optional. The local notes are private."
-    },
-    "product_agent": {
-      "must_include": [
-        "mem-color-tokens",
-        "mem-conventions",
-        "mem-beta-goal",
-        "mem-prd-v52"
-      ],
-      "must_exclude": [
-        "mem-vicky-codex-local",
-        "mem-agent-trace",
-        "mem-sam-local-legal"
-      ],
-      "optional": [
-        "mem-security-policy"
-      ],
-      "rationale": "Product sees tokens/conventions/goal/PRD; security policy is tangential here (optional); the three local notes are private."
-    },
-    "human_teammate": {
-      "must_include": [
-        "mem-color-tokens",
-        "mem-conventions",
-        "mem-security-policy",
-        "mem-beta-goal",
-        "mem-prd-v52",
-        "mem-vicky-codex-local"
-      ],
-      "must_exclude": [
-        "mem-agent-trace",
-        "mem-sam-local-legal"
-      ],
-      "optional": [],
-      "rationale": "Vicky sees every team entry AND her own local Codex note; Leo's agent scratch and Sam's local note never reached her \u2014 the baseline-owner asymmetry."
-    }
-  }
+ "ticket": {
+ "id": "EVAL-02",
+ "title": "Colour pass: replace navy/amber with forest/yellow in feature components",
+ "description": "1:1 token substitutions across four feature components; remove retired navy/amber and hardcoded colours.",
+ "lifecycle_stage": "design",
+ "status": "Done",
+ "labels": [
+ "Frontend",
+ "Design"
+ ]
+ },
+ "candidate_memory": [
+ {
+ "id": "mem-agent-trace",
+ "linked": false
+ },
+ {
+ "id": "mem-beta-goal",
+ "linked": false
+ },
+ {
+ "id": "mem-color-tokens",
+ "linked": true,
+ "link_reason": "the token palette this enforces"
+ },
+ {
+ "id": "mem-conventions",
+ "linked": false
+ },
+ {
+ "id": "mem-prd-v52",
+ "linked": false
+ },
+ {
+ "id": "mem-jordan-local-legal",
+ "linked": false
+ },
+ {
+ "id": "mem-security-policy",
+ "linked": false
+ },
+ {
+ "id": "mem-robin-codex-local",
+ "linked": true,
+ "link_reason": "Robin's own Codex prompt for this ticket"
+ }
+ ],
+ "bundles": {
+ "code_agent": {
+ "must_include": [
+ "mem-beta-goal",
+ "mem-prd-v52"
+ ],
+ "must_exclude": [
+ "mem-color-tokens",
+ "mem-conventions",
+ "mem-security-policy",
+ "mem-robin-codex-local",
+ "mem-agent-trace",
+ "mem-jordan-local-legal"
+ ],
+ "optional": [],
+ "rationale": "A colour pass gives code little in scope: the design tokens it would need are workspace (out of scope), as are conventions/policy; the three local notes are private. Only the project goal/PRD remain."
+ },
+ "qa_agent": {
+ "must_include": [],
+ "must_exclude": [
+ "mem-color-tokens",
+ "mem-conventions",
+ "mem-security-policy",
+ "mem-beta-goal",
+ "mem-prd-v52",
+ "mem-robin-codex-local",
+ "mem-agent-trace",
+ "mem-jordan-local-legal"
+ ],
+ "optional": [],
+ "rationale": "QA's scope (ticket/release/codebase/decision) matches nothing in this design-only candidate set; workspace/project entries are out of scope and the local notes are private \u2014 a deliberate negative case."
+ },
+ "design_agent": {
+ "must_include": [
+ "mem-color-tokens",
+ "mem-conventions",
+ "mem-beta-goal"
+ ],
+ "must_exclude": [
+ "mem-robin-codex-local",
+ "mem-agent-trace",
+ "mem-jordan-local-legal"
+ ],
+ "optional": [
+ "mem-security-policy",
+ "mem-prd-v52"
+ ],
+ "rationale": "Design needs the colour tokens, the conventions, and who it serves (beta goal); security policy and the async PRD are in scope but tangential to a colour pass \u2014 optional. The local notes are private."
+ },
+ "product_agent": {
+ "must_include": [
+ "mem-color-tokens",
+ "mem-conventions",
+ "mem-beta-goal",
+ "mem-prd-v52"
+ ],
+ "must_exclude": [
+ "mem-robin-codex-local",
+ "mem-agent-trace",
+ "mem-jordan-local-legal"
+ ],
+ "optional": [
+ "mem-security-policy"
+ ],
+ "rationale": "Product sees tokens/conventions/goal/PRD; security policy is tangential here (optional); the three local notes are private."
+ },
+ "human_teammate": {
+ "must_include": [
+ "mem-color-tokens",
+ "mem-conventions",
+ "mem-security-policy",
+ "mem-beta-goal",
+ "mem-prd-v52",
+ "mem-robin-codex-local"
+ ],
+ "must_exclude": [
+ "mem-agent-trace",
+ "mem-jordan-local-legal"
+ ],
+ "optional": [],
+ "rationale": "Robin sees every team entry AND her own local Codex note; Alex's agent scratch and Jordan's local note never reached her \u2014 the baseline-owner asymmetry."
+ }
+ }
 }

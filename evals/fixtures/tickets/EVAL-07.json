@@ -1,132 +1,132 @@
 {
-  "ticket": {
-    "id": "EVAL-07",
-    "title": "[Decision] Async JD Parse v3 \u2014 pre-requisites & decisions before implementation",
-    "description": "Capture the decisions/verifications that must resolve before async JD parse implementation tickets start.",
-    "lifecycle_stage": "planning",
-    "status": "Done",
-    "labels": [
-      "Infrastructure",
-      "AI/Agents",
-      "Backend"
-    ]
-  },
-  "candidate_memory": [
-    {
-      "id": "mem-conventions",
-      "linked": false
-    },
-    {
-      "id": "mem-credit-system",
-      "linked": false
-    },
-    {
-      "id": "mem-dec-async-jd",
-      "linked": true,
-      "link_reason": "the decision this ticket records"
-    },
-    {
-      "id": "mem-dec-browser-rejected",
-      "linked": false
-    },
-    {
-      "id": "mem-leo-local-spike",
-      "linked": false
-    },
-    {
-      "id": "mem-memory-arch",
-      "linked": false
-    },
-    {
-      "id": "mem-prd-v52",
-      "linked": true,
-      "link_reason": "the PRD it scores against"
-    },
-    {
-      "id": "mem-rel-smoke-pass",
-      "linked": false
-    }
-  ],
-  "bundles": {
-    "code_agent": {
-      "must_include": [
-        "mem-dec-async-jd",
-        "mem-prd-v52",
-        "mem-credit-system",
-        "mem-memory-arch"
-      ],
-      "must_exclude": [
-        "mem-conventions",
-        "mem-dec-browser-rejected",
-        "mem-rel-smoke-pass",
-        "mem-leo-local-spike"
-      ],
-      "optional": [],
-      "rationale": "Code sees the decision, the PRD, the credit terms, and the memory architecture; conventions/release are out of scope, the rejected browser decision is withheld, Leo's spike is local."
-    },
-    "qa_agent": {
-      "must_include": [
-        "mem-dec-async-jd",
-        "mem-memory-arch",
-        "mem-rel-smoke-pass"
-      ],
-      "must_exclude": [
-        "mem-prd-v52",
-        "mem-credit-system",
-        "mem-conventions",
-        "mem-dec-browser-rejected",
-        "mem-leo-local-spike"
-      ],
-      "optional": [],
-      "rationale": "QA sees the decision, the architecture, and the smoke-test release note; project/workspace entries out of scope, the rejected decision withheld, Leo's spike local."
-    },
-    "design_agent": {
-      "must_include": [
-        "mem-dec-async-jd",
-        "mem-prd-v52",
-        "mem-credit-system",
-        "mem-conventions"
-      ],
-      "must_exclude": [
-        "mem-memory-arch",
-        "mem-dec-browser-rejected",
-        "mem-rel-smoke-pass",
-        "mem-leo-local-spike"
-      ],
-      "optional": [],
-      "rationale": "Design sees the decision/PRD/credit/conventions; codebase/release are out of scope, the rejected decision withheld, Leo's spike local."
-    },
-    "product_agent": {
-      "must_include": [
-        "mem-dec-async-jd",
-        "mem-prd-v52",
-        "mem-credit-system",
-        "mem-conventions",
-        "mem-rel-smoke-pass"
-      ],
-      "must_exclude": [
-        "mem-memory-arch",
-        "mem-dec-browser-rejected",
-        "mem-leo-local-spike"
-      ],
-      "optional": [],
-      "rationale": "Product sees decision/PRD/credit/conventions/release; codebase out of scope, the rejected decision withheld, Leo's spike local."
-    },
-    "human_teammate": {
-      "must_include": [
-        "mem-dec-async-jd",
-        "mem-prd-v52",
-        "mem-credit-system",
-        "mem-memory-arch",
-        "mem-conventions",
-        "mem-dec-browser-rejected",
-        "mem-rel-smoke-pass"
-      ],
-      "must_exclude": [
-        "mem-leo-local-spike"
-      ],
-      "optional": [],
-      "rationale": "Vicky sees every team entry including the rejected browser decision; only Leo's local spike is invisible."
-    }
-  }
+ "ticket": {
+ "id": "EVAL-07",
+ "title": "[Decision] Async JD Parse v3 \u2014 pre-requisites & decisions before implementation",
+ "description": "Capture the decisions/verifications that must resolve before async JD parse implementation tickets start.",
+ "lifecycle_stage": "planning",
+ "status": "Done",
+ "labels": [
+ "Infrastructure",
+ "AI/Agents",
+ "Backend"
+ ]
+ },
+ "candidate_memory": [
+ {
+ "id": "mem-conventions",
+ "linked": false
+ },
+ {
+ "id": "mem-credit-system",
+ "linked": false
+ },
+ {
+ "id": "mem-dec-async-jd",
+ "linked": true,
+ "link_reason": "the decision this ticket records"
+ },
+ {
+ "id": "mem-dec-browser-rejected",
+ "linked": false
+ },
+ {
+ "id": "mem-alex-local-spike",
+ "linked": false
+ },
+ {
+ "id": "mem-memory-arch",
+ "linked": false
+ },
+ {
+ "id": "mem-prd-v52",
+ "linked": true,
+ "link_reason": "the PRD it scores against"
+ },
+ {
+ "id": "mem-rel-smoke-pass",
+ "linked": false
+ }
+ ],
+ "bundles": {
+ "code_agent": {
+ "must_include": [
+ "mem-dec-async-jd",
+ "mem-prd-v52",
+ "mem-credit-system",
+ "mem-memory-arch"
+ ],
+ "must_exclude": [
+ "mem-conventions",
+ "mem-dec-browser-rejected",
+ "mem-rel-smoke-pass",
+ "mem-alex-local-spike"
+ ],
+ "optional": [],
+ "rationale": "Code sees the decision, the PRD, the credit terms, and the memory architecture; conventions/release are out of scope, the rejected browser decision is withheld, Alex's spike is local."
+ },
+ "qa_agent": {
+ "must_include": [
+ "mem-dec-async-jd",
+ "mem-memory-arch",
+ "mem-rel-smoke-pass"
+ ],
+ "must_exclude": [
+ "mem-prd-v52",
+ "mem-credit-system",
+ "mem-conventions",
+ "mem-dec-browser-rejected",
+ "mem-alex-local-spike"
+ ],
+ "optional": [],
+ "rationale": "QA sees the decision, the architecture, and the smoke-test release note; project/workspace entries out of scope, the rejected decision withheld, Alex's spike local."
+ },
+ "design_agent": {
+ "must_include": [
+ "mem-dec-async-jd",
+ "mem-prd-v52",
+ "mem-credit-system",
+ "mem-conventions"
+ ],
+ "must_exclude": [
+ "mem-memory-arch",
+ "mem-dec-browser-rejected",
+ "mem-rel-smoke-pass",
+ "mem-alex-local-spike"
+ ],
+ "optional": [],
+ "rationale": "Design sees the decision/PRD/credit/conventions; codebase/release are out of scope, the rejected decision withheld, Alex's spike local."
+ },
+ "product_agent": {
+ "must_include": [
+ "mem-dec-async-jd",
+ "mem-prd-v52",
+ "mem-credit-system",
+ "mem-conventions",
+ "mem-rel-smoke-pass"
+ ],
+ "must_exclude": [
+ "mem-memory-arch",
+ "mem-dec-browser-rejected",
+ "mem-alex-local-spike"
+ ],
+ "optional": [],
+ "rationale": "Product sees decision/PRD/credit/conventions/release; codebase out of scope, the rejected decision withheld, Alex's spike local."
+ },
+ "human_teammate": {
+ "must_include": [
+ "mem-dec-async-jd",
+ "mem-prd-v52",
+ "mem-credit-system",
+ "mem-memory-arch",
+ "mem-conventions",
+ "mem-dec-browser-rejected",
+ "mem-rel-smoke-pass"
+ ],
+ "must_exclude": [
+ "mem-alex-local-spike"
+ ],
+ "optional": [],
+ "rationale": "Robin sees every team entry including the rejected browser decision; only Alex's local spike is invisible."
+ }
+ }
 }
