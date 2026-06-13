@@ -1,0 +1,52 @@
+{
+  "ticket": {
+    "id": "EVAL-04",
+    "title": "QA the scheduling beta before GA",
+    "description": "Run a regression and acceptance pass on interview scheduling: timezones, double-booking, the 14-day window, and the rollback path.",
+    "lifecycle_stage": "qa",
+    "status": "in_progress",
+    "labels": ["QA/Testing", "Scheduling"]
+  },
+  "candidate_memory": [
+    {"id": "mem-tkt-sched-accept", "linked": true, "link_reason": "the acceptance criteria to verify"},
+    {"id": "mem-rel-rollback", "linked": true, "link_reason": "the rollback path to exercise"},
+    {"id": "mem-dec-tz", "linked": false},
+    {"id": "mem-rel-changelog", "linked": false},
+    {"id": "mem-code-test-strategy", "linked": false},
+    {"id": "mem-proj-goal", "linked": false},
+    {"id": "mem-dec-rejected-vendor", "linked": false},
+    {"id": "mem-bob-local-spike", "linked": false}
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": ["mem-tkt-sched-accept", "mem-dec-tz", "mem-code-test-strategy", "mem-proj-goal"],
+      "must_exclude": ["mem-rel-rollback", "mem-rel-changelog", "mem-dec-rejected-vendor", "mem-bob-local-spike"],
+      "optional": [],
+      "rationale": "Code sees acceptance, the timezone decision, the test strategy, and the project goal; release entries are out of scope, the rejected decision is withheld, Bob's note is private."
+    },
+    "qa_agent": {
+      "must_include": ["mem-tkt-sched-accept", "mem-dec-tz", "mem-rel-rollback", "mem-rel-changelog", "mem-code-test-strategy"],
+      "must_exclude": ["mem-proj-goal", "mem-dec-rejected-vendor", "mem-bob-local-spike"],
+      "optional": [],
+      "rationale": "QA needs acceptance, timezone, both release entries, and the test strategy; the project goal is out of scope, the rejected decision is withheld, Bob's note is private."
+    },
+    "design_agent": {
+      "must_include": ["mem-tkt-sched-accept", "mem-dec-tz", "mem-proj-goal"],
+      "must_exclude": ["mem-rel-rollback", "mem-rel-changelog", "mem-code-test-strategy", "mem-dec-rejected-vendor", "mem-bob-local-spike"],
+      "optional": [],
+      "rationale": "Design sees acceptance, the timezone decision, and the goal; release/codebase entries are out of scope, the rejected decision is withheld, Bob's note is private."
+    },
+    "product_agent": {
+      "must_include": ["mem-tkt-sched-accept", "mem-dec-tz", "mem-rel-rollback", "mem-rel-changelog", "mem-proj-goal"],
+      "must_exclude": ["mem-code-test-strategy", "mem-dec-rejected-vendor", "mem-bob-local-spike"],
+      "optional": [],
+      "rationale": "Product sees acceptance, timezone, both release entries, and the goal; the test strategy (codebase) is out of scope, the rejected decision is withheld, Bob's note is private."
+    },
+    "human_teammate": {
+      "must_include": ["mem-tkt-sched-accept", "mem-dec-tz", "mem-rel-rollback", "mem-rel-changelog", "mem-code-test-strategy", "mem-proj-goal", "mem-dec-rejected-vendor"],
+      "must_exclude": ["mem-bob-local-spike"],
+      "optional": [],
+      "rationale": "Alice sees every team-visible entry including the rejected decision; only Bob's local note is invisible to her."
+    }
+  }
+}

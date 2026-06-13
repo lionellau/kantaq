@@ -64,3 +64,8 @@ jobs:
         env:
           KANTAQ_TEST_POSTGRES_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
         run: uv run pytest --cov --cov-fail-under=90
+
+      # Context-eval gate (MOD-21 / E16): the fixture validator exits non-zero on
+      # any inconsistency. Precision/recall scoring joins this step in Sprint 4.
+      - name: Eval fixtures (kantaq eval)
+        run: uv run kantaq eval

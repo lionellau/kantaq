@@ -1,0 +1,52 @@
+{
+  "ticket": {
+    "id": "EVAL-07",
+    "title": "Plan the Q3 milestone breakdown",
+    "description": "Break the Q3 goal into milestones and tickets, with rough sequencing and the committed decisions that constrain them.",
+    "lifecycle_stage": "planning",
+    "status": "in_progress",
+    "labels": ["Product", "Planning"]
+  },
+  "candidate_memory": [
+    {"id": "mem-proj-goal", "linked": true, "link_reason": "the goal being broken down"},
+    {"id": "mem-dec-saml", "linked": true, "link_reason": "a committed decision that shapes sequencing"},
+    {"id": "mem-proj-personas", "linked": false},
+    {"id": "mem-proj-stale-roadmap", "linked": false},
+    {"id": "mem-ws-conventions", "linked": false},
+    {"id": "mem-code-arch", "linked": false},
+    {"id": "mem-rel-changelog", "linked": false},
+    {"id": "mem-carol-local-pricing", "linked": false}
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": ["mem-proj-goal", "mem-proj-personas", "mem-dec-saml", "mem-code-arch"],
+      "must_exclude": ["mem-proj-stale-roadmap", "mem-ws-conventions", "mem-rel-changelog", "mem-carol-local-pricing"],
+      "optional": [],
+      "rationale": "Code sees the goal, personas, the SAML decision, and architecture; the stale roadmap is withheld (review_status), conventions (workspace) and changelog (release) are out of scope, Carol's note is private."
+    },
+    "qa_agent": {
+      "must_include": ["mem-dec-saml", "mem-code-arch", "mem-rel-changelog"],
+      "must_exclude": ["mem-proj-goal", "mem-proj-personas", "mem-proj-stale-roadmap", "mem-ws-conventions", "mem-carol-local-pricing"],
+      "optional": [],
+      "rationale": "QA sees the decision, architecture, and changelog; project entries and conventions are out of scope; the stale roadmap is withheld; Carol's note is private."
+    },
+    "design_agent": {
+      "must_include": ["mem-proj-goal", "mem-proj-personas", "mem-dec-saml", "mem-ws-conventions"],
+      "must_exclude": ["mem-proj-stale-roadmap", "mem-code-arch", "mem-rel-changelog", "mem-carol-local-pricing"],
+      "optional": [],
+      "rationale": "Design sees the goal, personas, the decision, and conventions; the stale roadmap is withheld, codebase and release entries are out of scope, Carol's note is private."
+    },
+    "product_agent": {
+      "must_include": ["mem-proj-goal", "mem-proj-personas", "mem-dec-saml", "mem-ws-conventions", "mem-rel-changelog"],
+      "must_exclude": ["mem-proj-stale-roadmap", "mem-code-arch", "mem-carol-local-pricing"],
+      "optional": [],
+      "rationale": "Product sees goal, personas, decision, conventions, and changelog; the stale roadmap is withheld, codebase is out of scope, Carol's note is private."
+    },
+    "human_teammate": {
+      "must_include": ["mem-proj-goal", "mem-proj-personas", "mem-proj-stale-roadmap", "mem-dec-saml", "mem-ws-conventions", "mem-code-arch", "mem-rel-changelog"],
+      "must_exclude": ["mem-carol-local-pricing"],
+      "optional": [],
+      "rationale": "Alice sees every team-visible entry including the stale roadmap (flagged, not hidden from people); only Carol's local note is invisible to her."
+    }
+  }
+}

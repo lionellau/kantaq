@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "_comment": "Shared memory pool for the MOD-21 context-eval set (E16). Synthetic 'Harbor' product data — no real names/URLs (the JobWinAI export is private). baseline_owner is the actor whose view the human_teammate column represents: they see team memory and their OWN local notes; nobody sees another actor's local notes. Spaces/visibilities/review_status mirror MOD-19's vocabularies. See docs/modules/MOD-21 'Grading rubric'.",
+  "baseline_owner": "alice",
+  "actors": {
+    "alice": "device owner / ticket assignee (the human_teammate baseline)",
+    "bob": "backend teammate",
+    "carol": "product/design teammate",
+    "agent": "an agent run"
+  },
+  "entries": [
+    {"id": "mem-ws-conventions", "space": "workspace", "visibility": "team", "review_status": "approved", "type": "reference", "created_by": "bob", "title": "Harbor engineering conventions", "body": "Trunk-based development, Conventional Commits, 90% coverage gate, no secrets in code."},
+    {"id": "mem-ws-brand", "space": "workspace", "visibility": "team", "review_status": "approved", "type": "reference", "created_by": "carol", "title": "Harbor brand & voice guide", "body": "Tone is concise and professional; primary color teal; sentence-case headings."},
+    {"id": "mem-ws-security-policy", "space": "workspace", "visibility": "team", "review_status": "approved", "type": "constraint", "created_by": "bob", "title": "Security policy", "body": "All PII encrypted at rest; least-privilege tokens; no customer data in logs."},
+    {"id": "mem-ws-onboarding", "space": "workspace", "visibility": "team", "review_status": "draft", "type": "reference", "created_by": "bob", "title": "New-hire onboarding checklist (draft)", "body": "Laptop setup, repo access, first-week buddy. Still being edited."},
+    {"id": "mem-proj-goal", "space": "project", "visibility": "team", "review_status": "approved", "type": "decision", "created_by": "carol", "title": "Q3 product goal", "body": "Ship applicant tracking + interview scheduling to the first 50 design partners."},
+    {"id": "mem-proj-personas", "space": "project", "visibility": "team", "review_status": "approved", "type": "reference", "created_by": "carol", "title": "Primary personas", "body": "Recruiter Rachel (power user); Hiring Manager Mark (occasional reviewer)."},
+    {"id": "mem-proj-stale-roadmap", "space": "project", "visibility": "team", "review_status": "stale", "type": "note", "created_by": "bob", "title": "Old roadmap draft", "body": "Superseded Q2 roadmap; kept for history, no longer authoritative."},
+    {"id": "mem-tkt-auth-notes", "space": "ticket", "visibility": "team", "review_status": "approved", "type": "note", "created_by": "alice", "title": "Auth ticket notes", "body": "Enterprise partners require SSO via SAML; support IdP-initiated and SP-initiated."},
+    {"id": "mem-tkt-sched-accept", "space": "ticket", "visibility": "team", "review_status": "approved", "type": "constraint", "created_by": "bob", "title": "Scheduling acceptance criteria", "body": "No double-booking; timezone-correct; bookings only inside a 14-day window."},
+    {"id": "mem-tkt-search-edge", "space": "ticket", "visibility": "team", "review_status": "draft", "type": "note", "created_by": "alice", "title": "Search edge cases", "body": "Handle empty query, 10k-result pagination, and accent-insensitive matching."},
+    {"id": "mem-code-arch", "space": "codebase", "visibility": "team", "review_status": "approved", "type": "decision", "created_by": "bob", "title": "Harbor architecture", "body": "React SPA + FastAPI + Postgres; REST under /v1; row-level security per org."},
+    {"id": "mem-code-auth-module", "space": "codebase", "visibility": "team", "review_status": "approved", "type": "reference", "created_by": "alice", "title": "Auth module layout", "body": "Tokens in the OS keychain; session middleware in api/deps.py; refresh in auth/rotate.py."},
+    {"id": "mem-code-search-impl", "space": "codebase", "visibility": "team", "review_status": "approved", "type": "reference", "created_by": "bob", "title": "Search implementation", "body": "Postgres FTS (tsvector + GIN); no vector search in v1; ranked by ts_rank."},
+    {"id": "mem-code-perf-budget", "space": "codebase", "visibility": "team", "review_status": "approved", "type": "constraint", "created_by": "alice", "title": "Performance budget", "body": "List endpoints under 200ms p95; batch related reads to avoid N+1 queries."},
+    {"id": "mem-code-test-strategy", "space": "codebase", "visibility": "team", "review_status": "approved", "type": "reference", "created_by": "alice", "title": "Test strategy", "body": "pytest + Vitest; Playwright hero flow; live-Postgres RLS parity in CI."},
+    {"id": "mem-dec-saml", "space": "decision", "visibility": "team", "review_status": "approved", "type": "decision", "created_by": "carol", "title": "Decision: SAML before OIDC", "body": "Ship SSO via SAML first (enterprise demand); add OIDC once self-serve grows."},
+    {"id": "mem-dec-tz", "space": "decision", "visibility": "team", "review_status": "approved", "type": "decision", "created_by": "bob", "title": "Decision: UTC storage", "body": "Store all timestamps in UTC; render in the user's timezone client-side."},
+    {"id": "mem-dec-design-tokens", "space": "decision", "visibility": "team", "review_status": "approved", "type": "decision", "created_by": "carol", "title": "Decision: shared design tokens", "body": "Colors/spacing/type live in a shared tokens package; no hardcoded values in components."},
+    {"id": "mem-dec-rejected-vendor", "space": "decision", "visibility": "team", "review_status": "rejected", "type": "decision", "created_by": "bob", "title": "Rejected: third-party scheduling SDK", "body": "Rejected on license cost and data-residency; build scheduling in-house."},
+    {"id": "mem-rel-rollback", "space": "release", "visibility": "team", "review_status": "approved", "type": "constraint", "created_by": "alice", "title": "Release rollback plan", "body": "Feature-flag new scheduling; rollback is flip the flag then revert migration 0012."},
+    {"id": "mem-rel-changelog", "space": "release", "visibility": "team", "review_status": "approved", "type": "note", "created_by": "carol", "title": "v0.4 changelog draft", "body": "Applicant tracking GA; interview scheduling beta; SAML SSO for enterprise."},
+    {"id": "mem-rel-comms", "space": "release", "visibility": "team", "review_status": "draft", "type": "note", "created_by": "carol", "title": "Release comms plan", "body": "Email design partners two days before GA; in-app banner on launch day."},
+    {"id": "mem-agent-scratch", "space": "agent_run", "visibility": "local", "review_status": "draft", "type": "note", "created_by": "agent", "title": "Agent run scratch", "body": "Tried approach A (regex parse) — failed on edge cases; approach B (FTS) works."},
+    {"id": "mem-agent-summary", "space": "agent_run", "visibility": "team", "review_status": "approved", "type": "learning", "created_by": "agent", "title": "Agent run summary", "body": "Refactored search to Postgres FTS; 12 files touched; all tests green."},
+    {"id": "mem-alice-local-todo", "space": "workspace", "visibility": "local", "review_status": "draft", "type": "note", "created_by": "alice", "title": "Alice's personal todo", "body": "Ask bob for the staging credentials; review the SAML library license myself."},
+    {"id": "mem-bob-local-spike", "space": "ticket", "visibility": "local", "review_status": "draft", "type": "note", "created_by": "bob", "title": "Bob's private spike note", "body": "Spike the SAML library over the weekend before committing to it."},
+    {"id": "mem-carol-local-pricing", "space": "project", "visibility": "local", "review_status": "draft", "type": "note", "created_by": "carol", "title": "Carol's private pricing note", "body": "Revisit enterprise pricing with the CEO before the partner calls."}
+  ]
+}

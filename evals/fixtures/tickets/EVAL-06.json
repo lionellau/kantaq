@@ -1,0 +1,52 @@
+{
+  "ticket": {
+    "id": "EVAL-06",
+    "title": "Security review of auth token handling",
+    "description": "Review how access/refresh tokens are stored, rotated, and scoped before the SAML launch. Confirm no secrets leak to logs.",
+    "lifecycle_stage": "review",
+    "status": "in_progress",
+    "labels": ["Security", "Backend"]
+  },
+  "candidate_memory": [
+    {"id": "mem-ws-security-policy", "linked": true, "link_reason": "the policy this review checks against"},
+    {"id": "mem-code-auth-module", "linked": true, "link_reason": "the code under review"},
+    {"id": "mem-code-arch", "linked": false},
+    {"id": "mem-dec-saml", "linked": false},
+    {"id": "mem-tkt-auth-notes", "linked": false},
+    {"id": "mem-ws-conventions", "linked": false},
+    {"id": "mem-alice-local-todo", "linked": false},
+    {"id": "mem-agent-scratch", "linked": false}
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": ["mem-code-auth-module", "mem-code-arch", "mem-dec-saml", "mem-tkt-auth-notes"],
+      "must_exclude": ["mem-ws-security-policy", "mem-ws-conventions", "mem-alice-local-todo", "mem-agent-scratch"],
+      "optional": [],
+      "rationale": "Code sees the auth module, architecture, the SAML decision, and ticket notes; workspace policy and conventions are out of scope; both local notes are private — including Alice's own (an agent never reads a human's private note, NFR-E16-1)."
+    },
+    "qa_agent": {
+      "must_include": ["mem-code-auth-module", "mem-code-arch", "mem-dec-saml", "mem-tkt-auth-notes"],
+      "must_exclude": ["mem-ws-security-policy", "mem-ws-conventions", "mem-alice-local-todo", "mem-agent-scratch"],
+      "optional": [],
+      "rationale": "Same in-scope codebase/decision/ticket set for QA; workspace entries are out of scope; the local notes are private."
+    },
+    "design_agent": {
+      "must_include": ["mem-ws-security-policy", "mem-dec-saml", "mem-tkt-auth-notes", "mem-ws-conventions"],
+      "must_exclude": ["mem-code-auth-module", "mem-code-arch", "mem-alice-local-todo", "mem-agent-scratch"],
+      "optional": [],
+      "rationale": "Design sees the workspace policy and conventions, the decision, and the ticket notes; codebase internals are out of scope; the local notes are private."
+    },
+    "product_agent": {
+      "must_include": ["mem-ws-security-policy", "mem-dec-saml", "mem-tkt-auth-notes", "mem-ws-conventions"],
+      "must_exclude": ["mem-code-auth-module", "mem-code-arch", "mem-alice-local-todo", "mem-agent-scratch"],
+      "optional": [],
+      "rationale": "Product sees the workspace policy/conventions, the decision, and ticket notes; codebase internals are out of scope; the local notes are private."
+    },
+    "human_teammate": {
+      "must_include": ["mem-ws-security-policy", "mem-code-auth-module", "mem-code-arch", "mem-dec-saml", "mem-tkt-auth-notes", "mem-ws-conventions", "mem-alice-local-todo"],
+      "must_exclude": ["mem-agent-scratch"],
+      "optional": [],
+      "rationale": "Alice sees every team-visible entry AND her own local todo; only the agent's private scratch is invisible to her. This is the baseline-owner asymmetry: her own local note is in, foreign local notes are out."
+    }
+  }
+}

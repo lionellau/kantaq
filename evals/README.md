@@ -1,7 +1,41 @@
 # evals/
 
-Context-quality evaluation set (MOD-21, Epic E16). `evals/fixtures/` will hold the
-20 tickets × 5 roles = 100 hand-graded context bundles; `kantaq eval` reports
-precision/recall and CI fails on a > 5-point drop.
+Context-quality evaluation set (MOD-21, Epic E16) — the hand-graded guard on the
+role-aware context resolver (PRD §17.3). `kantaq eval` (also `make eval`) loads
+and validates these fixtures; the precision/recall run against the resolver lands
+with the resolver in Sprint 4.
 
-Scaffolded empty in Epic E01; populated in v0.1.
+## Layout
+
+- **`fixtures/memory.json`** — the shared memory pool every ticket draws from, plus
+  `baseline_owner` (the actor whose view the `human_teammate` column represents).
+  Each entry carries the fields the resolver's policy reads: `space`, `visibility`,
+  `review_status`, `type`, `created_by`. Data is synthetic ("Harbor" product) — the
+  real JobWinAI Linear export is private and must not be copied into this public repo.
+- **`fixtures/tickets/<id>.json`** — one ticket, its `candidate_memory` (pool entries
+  offered to the resolver, marked linked/unlinked with a reason), and the expected
+  `bundles` per graded role.
+
+## The five roles
+
+The four locked agent roles — `code_agent`, `qa_agent`, `design_agent`,
+`product_agent` (FR-E16-1) — plus `human_teammate`, the precision/recall **baseline**
+the agent bundles narrow from. `human_teammate` is graded but is **not** a resolver
+policy: it is the device-owner's full view (team memory + their *own* local notes;
+never another actor's local notes).
+
+## Expected bundle = a complete partition
+
+Every candidate is graded into exactly one of `must_include` / `must_exclude` /
+`optional` (disjoint, and their union is the candidate set), with a one-line
+`rationale`. `optional` entries are not scored. The validator enforces the partition
+and the **NFR-E16-1** invariant: no agent bundle may include a `local` entry, and the
+`human_teammate` baseline may include a `local` entry only if the baseline owner is
+its author.
+
+## Grading rubric
+
+The decision procedure a grader follows for each (ticket, role) cell is documented in
+`docs/modules/MOD-21-context-resolver-evals.md` (project-docs repo) under "Grading
+rubric". This sprint (E16-T4a) grades the first 50 of 100 bundles (10 tickets × 5
+roles); the remaining 10 tickets land in Sprint 4 (E16-T4b) using the same format.
