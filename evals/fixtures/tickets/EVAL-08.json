@@ -1,0 +1,52 @@
+{
+  "ticket": {
+    "id": "EVAL-08",
+    "title": "Refactor timezone handling across the app",
+    "description": "Centralize timezone conversion: store UTC, render in the user's timezone, fix the off-by-one near DST. Touches scheduling.",
+    "lifecycle_stage": "implementation",
+    "status": "in_progress",
+    "labels": ["Backend", "Bug"]
+  },
+  "candidate_memory": [
+    {"id": "mem-dec-tz", "linked": true, "link_reason": "the decision this refactor enforces"},
+    {"id": "mem-tkt-sched-accept", "linked": true, "link_reason": "the feature most affected by timezones"},
+    {"id": "mem-code-arch", "linked": false},
+    {"id": "mem-code-perf-budget", "linked": false},
+    {"id": "mem-code-test-strategy", "linked": false},
+    {"id": "mem-agent-summary", "linked": false},
+    {"id": "mem-ws-conventions", "linked": false},
+    {"id": "mem-rel-rollback", "linked": false}
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": ["mem-dec-tz", "mem-tkt-sched-accept", "mem-code-arch", "mem-code-perf-budget", "mem-code-test-strategy"],
+      "must_exclude": ["mem-agent-summary", "mem-ws-conventions", "mem-rel-rollback"],
+      "optional": [],
+      "rationale": "Code sees the timezone decision, the affected acceptance, and the codebase context; the agent_run summary, conventions (workspace), and rollback (release) are out of scope."
+    },
+    "qa_agent": {
+      "must_include": ["mem-dec-tz", "mem-tkt-sched-accept", "mem-code-arch", "mem-code-perf-budget", "mem-code-test-strategy", "mem-rel-rollback"],
+      "must_exclude": ["mem-agent-summary", "mem-ws-conventions"],
+      "optional": [],
+      "rationale": "QA additionally needs the rollback; the agent_run summary and conventions are out of scope."
+    },
+    "design_agent": {
+      "must_include": ["mem-dec-tz", "mem-tkt-sched-accept", "mem-ws-conventions"],
+      "must_exclude": ["mem-code-arch", "mem-code-perf-budget", "mem-code-test-strategy", "mem-agent-summary", "mem-rel-rollback"],
+      "optional": [],
+      "rationale": "Design sees the decision, the affected ticket, and conventions; all codebase entries, the agent_run summary, and the rollback (release) are out of scope."
+    },
+    "product_agent": {
+      "must_include": ["mem-dec-tz", "mem-tkt-sched-accept", "mem-ws-conventions", "mem-rel-rollback"],
+      "must_exclude": ["mem-code-arch", "mem-code-perf-budget", "mem-code-test-strategy", "mem-agent-summary"],
+      "optional": [],
+      "rationale": "Product sees the decision, the ticket, conventions, and the rollback; codebase entries and the agent_run summary are out of scope."
+    },
+    "human_teammate": {
+      "must_include": ["mem-dec-tz", "mem-tkt-sched-accept", "mem-code-arch", "mem-code-perf-budget", "mem-code-test-strategy", "mem-agent-summary", "mem-ws-conventions", "mem-rel-rollback"],
+      "must_exclude": [],
+      "optional": [],
+      "rationale": "Every candidate here is team-visible and current, so Alice sees all of them — the human baseline is the full superset the agent bundles narrow from."
+    }
+  }
+}

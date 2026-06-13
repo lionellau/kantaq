@@ -1,0 +1,52 @@
+{
+  "ticket": {
+    "id": "EVAL-09",
+    "title": "Update onboarding docs and changelog for v0.4",
+    "description": "Refresh the onboarding guide and write the v0.4 changelog and release comms for the GA.",
+    "lifecycle_stage": "release",
+    "status": "in_progress",
+    "labels": ["Docs", "Release"]
+  },
+  "candidate_memory": [
+    {"id": "mem-rel-changelog", "linked": true, "link_reason": "the changelog to finalize"},
+    {"id": "mem-ws-onboarding", "linked": true, "link_reason": "the onboarding docs to update"},
+    {"id": "mem-rel-comms", "linked": false},
+    {"id": "mem-ws-conventions", "linked": false},
+    {"id": "mem-proj-goal", "linked": false},
+    {"id": "mem-code-test-strategy", "linked": false},
+    {"id": "mem-rel-rollback", "linked": false},
+    {"id": "mem-bob-local-spike", "linked": false}
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": ["mem-proj-goal", "mem-code-test-strategy"],
+      "must_exclude": ["mem-rel-changelog", "mem-rel-comms", "mem-ws-onboarding", "mem-ws-conventions", "mem-rel-rollback", "mem-bob-local-spike"],
+      "optional": [],
+      "rationale": "Code sees only the project goal and the test strategy here; all release and workspace entries are out of code scope, and Bob's note is private."
+    },
+    "qa_agent": {
+      "must_include": ["mem-rel-changelog", "mem-rel-comms", "mem-code-test-strategy", "mem-rel-rollback"],
+      "must_exclude": ["mem-ws-onboarding", "mem-ws-conventions", "mem-proj-goal", "mem-bob-local-spike"],
+      "optional": [],
+      "rationale": "QA sees the release entries and the test strategy; workspace and project entries are out of scope; Bob's note is private."
+    },
+    "design_agent": {
+      "must_include": ["mem-ws-onboarding", "mem-ws-conventions", "mem-proj-goal"],
+      "must_exclude": ["mem-rel-changelog", "mem-rel-comms", "mem-code-test-strategy", "mem-rel-rollback", "mem-bob-local-spike"],
+      "optional": [],
+      "rationale": "Design sees onboarding/conventions (workspace) and the goal; release and codebase entries are out of scope; Bob's note is private."
+    },
+    "product_agent": {
+      "must_include": ["mem-rel-changelog", "mem-rel-comms", "mem-ws-onboarding", "mem-ws-conventions", "mem-proj-goal", "mem-rel-rollback"],
+      "must_exclude": ["mem-code-test-strategy", "mem-bob-local-spike"],
+      "optional": [],
+      "rationale": "Product sees the release entries, onboarding/conventions, and the goal; the test strategy (codebase) is out of scope; Bob's note is private."
+    },
+    "human_teammate": {
+      "must_include": ["mem-rel-changelog", "mem-rel-comms", "mem-ws-onboarding", "mem-ws-conventions", "mem-proj-goal", "mem-code-test-strategy", "mem-rel-rollback"],
+      "must_exclude": ["mem-bob-local-spike"],
+      "optional": [],
+      "rationale": "Alice sees every team-visible entry including the draft onboarding and comms notes; only Bob's local note is invisible to her."
+    }
+  }
+}

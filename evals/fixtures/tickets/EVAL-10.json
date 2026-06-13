@@ -1,0 +1,52 @@
+{
+  "ticket": {
+    "id": "EVAL-10",
+    "title": "Triage incoming bug reports for the beta",
+    "description": "Sort and shape the beta bug reports: reproduce, label, and decide which block GA. Mostly scheduling and search issues.",
+    "lifecycle_stage": "intake",
+    "status": "in_progress",
+    "labels": ["Bug", "QA/Testing"]
+  },
+  "candidate_memory": [
+    {"id": "mem-tkt-sched-accept", "linked": true, "link_reason": "the scheduling acceptance bugs are judged against"},
+    {"id": "mem-tkt-search-edge", "linked": true, "link_reason": "the known search edge cases"},
+    {"id": "mem-code-test-strategy", "linked": false},
+    {"id": "mem-code-perf-budget", "linked": false},
+    {"id": "mem-proj-personas", "linked": false},
+    {"id": "mem-agent-scratch", "linked": false},
+    {"id": "mem-dec-rejected-vendor", "linked": false},
+    {"id": "mem-alice-local-todo", "linked": false}
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": ["mem-tkt-sched-accept", "mem-tkt-search-edge", "mem-code-test-strategy", "mem-code-perf-budget"],
+      "must_exclude": ["mem-agent-scratch", "mem-dec-rejected-vendor", "mem-alice-local-todo"],
+      "optional": ["mem-proj-personas"],
+      "rationale": "Code sees the two ticket acceptance notes and the codebase context; the agent's local scratch and Alice's local todo are private, the rejected decision is withheld. Personas is in scope but loosely relevant to bug triage — optional."
+    },
+    "qa_agent": {
+      "must_include": ["mem-tkt-sched-accept", "mem-tkt-search-edge", "mem-code-test-strategy", "mem-code-perf-budget"],
+      "must_exclude": ["mem-proj-personas", "mem-agent-scratch", "mem-dec-rejected-vendor", "mem-alice-local-todo"],
+      "optional": [],
+      "rationale": "QA needs the acceptance notes, the test strategy, and the perf budget; personas (project) is out of scope, the rejected decision is withheld, both local notes are private."
+    },
+    "design_agent": {
+      "must_include": ["mem-tkt-sched-accept", "mem-tkt-search-edge", "mem-proj-personas"],
+      "must_exclude": ["mem-code-test-strategy", "mem-code-perf-budget", "mem-agent-scratch", "mem-dec-rejected-vendor", "mem-alice-local-todo"],
+      "optional": [],
+      "rationale": "Design sees the ticket notes and personas; codebase entries are out of scope, the rejected decision is withheld, both local notes are private."
+    },
+    "product_agent": {
+      "must_include": ["mem-tkt-sched-accept", "mem-tkt-search-edge", "mem-proj-personas"],
+      "must_exclude": ["mem-code-test-strategy", "mem-code-perf-budget", "mem-agent-scratch", "mem-dec-rejected-vendor", "mem-alice-local-todo"],
+      "optional": [],
+      "rationale": "Product sees the ticket notes and personas; codebase entries are out of scope, the rejected decision is withheld, both local notes are private."
+    },
+    "human_teammate": {
+      "must_include": ["mem-tkt-sched-accept", "mem-tkt-search-edge", "mem-code-test-strategy", "mem-code-perf-budget", "mem-proj-personas", "mem-dec-rejected-vendor", "mem-alice-local-todo"],
+      "must_exclude": ["mem-agent-scratch"],
+      "optional": [],
+      "rationale": "Alice sees every team-visible entry, the rejected decision (flagged), AND her own local todo; only the agent's private scratch is invisible to her."
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "ticket": {
+    "id": "EVAL-03",
+    "title": "Build full-text search for candidates",
+    "description": "Implement candidate search over name, role, and notes using Postgres full-text search, with pagination and ranking.",
+    "lifecycle_stage": "implementation",
+    "status": "in_progress",
+    "labels": ["Backend", "Search"]
+  },
+  "candidate_memory": [
+    {"id": "mem-tkt-search-edge", "linked": true, "link_reason": "the edge cases this ticket must cover"},
+    {"id": "mem-code-search-impl", "linked": true, "link_reason": "the chosen search implementation"},
+    {"id": "mem-code-arch", "linked": false},
+    {"id": "mem-code-perf-budget", "linked": false},
+    {"id": "mem-agent-summary", "linked": false},
+    {"id": "mem-agent-scratch", "linked": false},
+    {"id": "mem-proj-personas", "linked": false},
+    {"id": "mem-ws-conventions", "linked": false}
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": ["mem-tkt-search-edge", "mem-code-search-impl", "mem-code-arch", "mem-code-perf-budget"],
+      "must_exclude": ["mem-agent-summary", "mem-agent-scratch", "mem-ws-conventions"],
+      "optional": ["mem-proj-personas"],
+      "rationale": "Code needs the edge cases (draft is fine for agents), the search impl, architecture, and the perf budget. The agent_run summary and scratch are out of code scope (and the scratch is private); workspace conventions are out of scope. Personas is in scope but only loosely relevant to building search — optional."
+    },
+    "qa_agent": {
+      "must_include": ["mem-tkt-search-edge", "mem-code-search-impl", "mem-code-arch", "mem-code-perf-budget"],
+      "must_exclude": ["mem-agent-summary", "mem-agent-scratch", "mem-proj-personas", "mem-ws-conventions"],
+      "optional": [],
+      "rationale": "QA verifies the edge cases against the impl, architecture, and perf budget; agent_run entries, personas (project), and conventions (workspace) are all out of scope."
+    },
+    "design_agent": {
+      "must_include": ["mem-tkt-search-edge", "mem-proj-personas", "mem-ws-conventions"],
+      "must_exclude": ["mem-code-search-impl", "mem-code-arch", "mem-code-perf-budget", "mem-agent-summary", "mem-agent-scratch"],
+      "optional": [],
+      "rationale": "Design sees the ticket's edge cases, personas, and conventions; all codebase and agent_run entries are out of scope."
+    },
+    "product_agent": {
+      "must_include": ["mem-tkt-search-edge", "mem-proj-personas", "mem-ws-conventions"],
+      "must_exclude": ["mem-code-search-impl", "mem-code-arch", "mem-code-perf-budget", "mem-agent-summary", "mem-agent-scratch"],
+      "optional": [],
+      "rationale": "Product sees the ticket, personas, and conventions; codebase and agent_run entries are out of scope."
+    },
+    "human_teammate": {
+      "must_include": ["mem-tkt-search-edge", "mem-code-search-impl", "mem-code-arch", "mem-code-perf-budget", "mem-agent-summary", "mem-proj-personas", "mem-ws-conventions"],
+      "must_exclude": ["mem-agent-scratch"],
+      "optional": [],
+      "rationale": "Alice sees every team-visible entry including the agent's team-shared run summary; only the agent's private (local) scratch is invisible."
+    }
+  }
+}

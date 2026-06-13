@@ -1,0 +1,52 @@
+{
+  "ticket": {
+    "id": "EVAL-05",
+    "title": "Write the product brief for applicant tracking GA",
+    "description": "Draft the GA brief: goal, target users, what ships, and the headline changes for design partners.",
+    "lifecycle_stage": "discovery",
+    "status": "in_progress",
+    "labels": ["Product", "Feature"]
+  },
+  "candidate_memory": [
+    {"id": "mem-proj-goal", "linked": true, "link_reason": "the GA goal the brief states"},
+    {"id": "mem-proj-personas", "linked": true, "link_reason": "the target users"},
+    {"id": "mem-rel-changelog", "linked": true, "link_reason": "what is shipping in v0.4"},
+    {"id": "mem-ws-brand", "linked": false},
+    {"id": "mem-rel-comms", "linked": false},
+    {"id": "mem-dec-saml", "linked": false},
+    {"id": "mem-code-arch", "linked": false},
+    {"id": "mem-carol-local-pricing", "linked": false}
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": ["mem-proj-goal", "mem-proj-personas", "mem-dec-saml", "mem-code-arch"],
+      "must_exclude": ["mem-ws-brand", "mem-rel-changelog", "mem-rel-comms", "mem-carol-local-pricing"],
+      "optional": [],
+      "rationale": "Code sees the goal, personas, the SAML decision, and architecture; brand (workspace) and release entries are out of scope; Carol's note is private."
+    },
+    "qa_agent": {
+      "must_include": ["mem-rel-changelog", "mem-dec-saml", "mem-code-arch"],
+      "must_exclude": ["mem-proj-goal", "mem-proj-personas", "mem-ws-brand", "mem-carol-local-pricing"],
+      "optional": ["mem-rel-comms"],
+      "rationale": "QA sees the changelog, the SAML decision, and architecture; goal/personas (project) and brand (workspace) are out of scope; Carol's note is private. The release comms note is in scope but not behavior to verify — optional."
+    },
+    "design_agent": {
+      "must_include": ["mem-proj-goal", "mem-proj-personas", "mem-ws-brand", "mem-dec-saml"],
+      "must_exclude": ["mem-rel-changelog", "mem-rel-comms", "mem-code-arch", "mem-carol-local-pricing"],
+      "optional": [],
+      "rationale": "Design sees the goal, personas, brand, and the SAML decision; release and codebase entries are out of scope; Carol's note is private."
+    },
+    "product_agent": {
+      "must_include": ["mem-proj-goal", "mem-proj-personas", "mem-ws-brand", "mem-rel-changelog", "mem-rel-comms", "mem-dec-saml"],
+      "must_exclude": ["mem-code-arch", "mem-carol-local-pricing"],
+      "optional": [],
+      "rationale": "Product needs the widest context — goal, personas, brand, both release entries, and the SAML decision; codebase architecture is out of scope; Carol's note is private."
+    },
+    "human_teammate": {
+      "must_include": ["mem-proj-goal", "mem-proj-personas", "mem-ws-brand", "mem-rel-changelog", "mem-rel-comms", "mem-dec-saml", "mem-code-arch"],
+      "must_exclude": ["mem-carol-local-pricing"],
+      "optional": [],
+      "rationale": "Alice sees every team-visible entry; only Carol's local pricing note is invisible to her."
+    }
+  }
+}
