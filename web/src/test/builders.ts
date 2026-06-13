@@ -8,12 +8,16 @@ import type {
   Activity,
   AgentSnippet,
   Comment,
+  Device,
+  Grant,
   LinkedMemory,
+  Me,
   Member,
   MemoryEntry,
   MemoryLink,
   Project,
   Proposal,
+  SyncStatus,
   TelemetryView,
   Ticket,
 } from "../api/types";
@@ -109,6 +113,62 @@ export function buildMember(overrides: Partial<Member> = {}): Member {
     role: "Owner",
     status: "active",
     created_at: T0,
+    ...overrides,
+  };
+}
+
+export function buildMe(overrides: Partial<Me> = {}): Me {
+  return {
+    member_id: "member-1",
+    email: "owner@example.com",
+    role: "Owner",
+    scopes: [],
+    workspace_id: "ws-1",
+    workspace_name: "Acme Workspace",
+    ...overrides,
+  };
+}
+
+export function buildDevice(overrides: Partial<Device> = {}): Device {
+  return {
+    id: "dev-1",
+    label: "local runtime",
+    public_key: "a".repeat(64),
+    member_id: "member-1",
+    member_email: "owner@example.com",
+    created_at: T0,
+    revoked_at: null,
+    active: true,
+    is_current: true,
+    ...overrides,
+  };
+}
+
+export function buildSyncStatus(overrides: Partial<SyncStatus> = {}): SyncStatus {
+  return {
+    hub_mode: "local",
+    backend_configured: false,
+    pending_events: 0,
+    committed_events: 0,
+    total_events: 0,
+    last_committed_at: null,
+    ...overrides,
+  };
+}
+
+export function buildGrant(overrides: Partial<Grant> = {}): Grant {
+  return {
+    id: "grant-1",
+    subject: "member-1",
+    issuer: "dev-1",
+    resource: "workspace/main",
+    verbs: ["tickets.read"],
+    issued_at: 1_767_225_600,
+    expires_at: 1_767_229_200,
+    revoked_at: null,
+    sig: "ab12",
+    valid: true,
+    reason: "ok",
     ...overrides,
   };
 }
