@@ -581,22 +581,36 @@ def _sync_status(settings: Settings) -> int:
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     """Print the resolved config and verify the backend connection (MOD-14)."""
+    from sqlmodel import Session
+
     from kantaq_db import schema_version
     from kantaq_db.session import get_engine
     from kantaq_runtime.config import HubMode, get_settings
+    from kantaq_runtime.cutover import cutover_health
     from kantaq_runtime.verify import verify_connection
 
     settings = get_settings()
     result = verify_connection(settings)
-    schema = schema_version.verify(get_engine(_db_url()))
+    engine = get_engine(_db_url())
+    schema = schema_version.verify(engine)
+    with Session(engine) as session:
+        cutover = cutover_health(
+            session,
+            sign_events=settings.sign_events,
+            sign_cutover_rev=settings.sign_cutover_rev,
+        )
     print(f"hub_mode = {settings.hub_mode.value}")
     print(f"bind     = {settings.host}:{settings.port}")
     print(f"db_path  = {settings.local_db_path}")
     if settings.hub_mode is HubMode.supabase:
         print(f"supabase = {settings.supabase_url or '(unset)'}")
     print(f"schema   = {schema.status}: {schema.message}")
+    signing = f"on (cutover_rev={cutover.cutover_rev})" if cutover.sign_events else "off"
+    print(f"signing  = {signing}")
+    for warning in cutover.warnings:
+        print(f"warn     = {warning}")
     print(f"verify   = {'OK' if result.ok else 'FAIL'}: {result.message}")
-    return 0 if result.ok else 1
+    return 0 if result.ok and cutover.ok else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
