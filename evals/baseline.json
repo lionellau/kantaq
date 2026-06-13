@@ -1,0 +1,7 @@
+{
+  "cells": 80,
+  "note": "First eval baseline (E16-T4b): 20 tickets x 4 agent roles, green resolver run.",
+  "precision": 1.0,
+  "recall": 1.0,
+  "recorded_at": "2026-06-13"
+}

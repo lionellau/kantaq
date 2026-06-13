@@ -1,0 +1,143 @@
+{
+  "ticket": {
+    "id": "EVAL-13",
+    "title": "The KB content repo: scaffold, CI pipeline, and ingestion PLAN",
+    "description": "Stand up the KB content repo: the raw -> processed -> production ingestion pipeline, knowledge-lint validation rules, KG entity templates, and a CI gate. Plan the ingestion shape before building.",
+    "lifecycle_stage": "planning",
+    "status": "Done",
+    "labels": [
+      "Infrastructure",
+      "AI/Agents"
+    ]
+  },
+  "candidate_memory": [
+    {
+      "id": "mem-kb-ingest",
+      "linked": true,
+      "link_reason": "the ingestion pipeline being scaffolded"
+    },
+    {
+      "id": "mem-dec-kb-first",
+      "linked": true,
+      "link_reason": "why the KB exists at all"
+    },
+    {
+      "id": "mem-conventions",
+      "linked": false
+    },
+    {
+      "id": "mem-prd-v52",
+      "linked": false
+    },
+    {
+      "id": "mem-beta-goal",
+      "linked": false
+    },
+    {
+      "id": "mem-agent-stack",
+      "linked": false
+    },
+    {
+      "id": "mem-robin-kb-local",
+      "linked": false
+    },
+    {
+      "id": "mem-dec-browser-rejected",
+      "linked": false
+    },
+    {
+      "id": "mem-rel-launch-plan",
+      "linked": false
+    }
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": [
+        "mem-kb-ingest",
+        "mem-dec-kb-first",
+        "mem-prd-v52"
+      ],
+      "must_exclude": [
+        "mem-conventions",
+        "mem-robin-kb-local",
+        "mem-dec-browser-rejected",
+        "mem-rel-launch-plan"
+      ],
+      "optional": [
+        "mem-beta-goal",
+        "mem-agent-stack"
+      ],
+      "rationale": "code_agent keeps the in-scope codebase/decision/project context; release/workspace is out of scope, rejected entries are withheld, local notes are private; 'Beta goal: first 100 users', 'Company Research Agent build' are in scope but tangential here (optional)."
+    },
+    "qa_agent": {
+      "must_include": [
+        "mem-kb-ingest",
+        "mem-dec-kb-first"
+      ],
+      "must_exclude": [
+        "mem-conventions",
+        "mem-prd-v52",
+        "mem-beta-goal",
+        "mem-robin-kb-local",
+        "mem-dec-browser-rejected"
+      ],
+      "optional": [
+        "mem-agent-stack",
+        "mem-rel-launch-plan"
+      ],
+      "rationale": "qa_agent keeps the in-scope codebase/decision context; project/workspace is out of scope, rejected entries are withheld, local notes are private; 'Company Research Agent build', 'a linked ticket Executable Launch Plan' are in scope but tangential here (optional)."
+    },
+    "design_agent": {
+      "must_include": [
+        "mem-dec-kb-first",
+        "mem-prd-v52",
+        "mem-beta-goal"
+      ],
+      "must_exclude": [
+        "mem-kb-ingest",
+        "mem-agent-stack",
+        "mem-robin-kb-local",
+        "mem-dec-browser-rejected",
+        "mem-rel-launch-plan"
+      ],
+      "optional": [
+        "mem-conventions"
+      ],
+      "rationale": "design_agent keeps the in-scope decision/project context; codebase/release is out of scope, rejected entries are withheld, local notes are private; 'CONVENTIONS.md — input revalidation (Convention 9)' is in scope but tangential here (optional)."
+    },
+    "product_agent": {
+      "must_include": [
+        "mem-dec-kb-first",
+        "mem-prd-v52",
+        "mem-beta-goal",
+        "mem-rel-launch-plan"
+      ],
+      "must_exclude": [
+        "mem-kb-ingest",
+        "mem-agent-stack",
+        "mem-robin-kb-local",
+        "mem-dec-browser-rejected"
+      ],
+      "optional": [
+        "mem-conventions"
+      ],
+      "rationale": "product_agent keeps the in-scope decision/project/release context; codebase is out of scope, rejected entries are withheld, local notes are private; 'CONVENTIONS.md — input revalidation (Convention 9)' is in scope but tangential here (optional)."
+    },
+    "human_teammate": {
+      "must_include": [
+        "mem-kb-ingest",
+        "mem-dec-kb-first",
+        "mem-conventions",
+        "mem-prd-v52",
+        "mem-beta-goal",
+        "mem-agent-stack",
+        "mem-robin-kb-local",
+        "mem-dec-browser-rejected",
+        "mem-rel-launch-plan"
+      ],
+      "must_exclude": [],
+      "optional": [],
+      "rationale": "Robin (the baseline owner) sees the current team entries plus their own local note."
+    }
+  }
+}

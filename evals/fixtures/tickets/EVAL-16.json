@@ -1,0 +1,145 @@
+{
+  "ticket": {
+    "id": "EVAL-16",
+    "title": "Intent Broker Agent: classifier + credit gate + specialist delegation",
+    "description": "Authenticated requests route through a Haiku-powered intent broker: classify intent against the service catalog, handle credit freeze/confirm/refund, and delegate to the right specialist agent. A router + credit gate, not a god agent.",
+    "lifecycle_stage": "implementation",
+    "status": "Done",
+    "labels": [
+      "AI/Agents",
+      "Backend",
+      "Feature"
+    ]
+  },
+  "candidate_memory": [
+    {
+      "id": "mem-dec-async-jd",
+      "linked": true,
+      "link_reason": "the decisions that define the broker"
+    },
+    {
+      "id": "mem-agent-stack",
+      "linked": true,
+      "link_reason": "the Strands agent stack the broker delegates through"
+    },
+    {
+      "id": "mem-credit-system",
+      "linked": false
+    },
+    {
+      "id": "mem-prd-v52",
+      "linked": false
+    },
+    {
+      "id": "mem-input-validator",
+      "linked": false
+    },
+    {
+      "id": "mem-security-policy",
+      "linked": false
+    },
+    {
+      "id": "mem-agent-summary",
+      "linked": false
+    },
+    {
+      "id": "mem-agent-trace",
+      "linked": false
+    },
+    {
+      "id": "mem-dec-browser-rejected",
+      "linked": false
+    }
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": [
+        "mem-dec-async-jd",
+        "mem-agent-stack",
+        "mem-credit-system"
+      ],
+      "must_exclude": [
+        "mem-security-policy",
+        "mem-agent-summary",
+        "mem-agent-trace",
+        "mem-dec-browser-rejected"
+      ],
+      "optional": [
+        "mem-input-validator",
+        "mem-prd-v52"
+      ],
+      "rationale": "code_agent keeps the in-scope codebase/decision/project context; agent_run/workspace is out of scope, rejected entries are withheld, local notes are private; 'input-validator.ts / input-sanitiser.ts', 'PRD v5.2 locked decisions' are in scope but tangential here (optional)."
+    },
+    "qa_agent": {
+      "must_include": [
+        "mem-dec-async-jd",
+        "mem-agent-stack"
+      ],
+      "must_exclude": [
+        "mem-credit-system",
+        "mem-prd-v52",
+        "mem-security-policy",
+        "mem-agent-summary",
+        "mem-agent-trace",
+        "mem-dec-browser-rejected"
+      ],
+      "optional": [
+        "mem-input-validator"
+      ],
+      "rationale": "qa_agent keeps the in-scope codebase/decision context; agent_run/project/workspace is out of scope, rejected entries are withheld, local notes are private; 'input-validator.ts / input-sanitiser.ts' is in scope but tangential here (optional)."
+    },
+    "design_agent": {
+      "must_include": [
+        "mem-dec-async-jd",
+        "mem-prd-v52"
+      ],
+      "must_exclude": [
+        "mem-agent-stack",
+        "mem-input-validator",
+        "mem-agent-summary",
+        "mem-agent-trace",
+        "mem-dec-browser-rejected"
+      ],
+      "optional": [
+        "mem-security-policy",
+        "mem-credit-system"
+      ],
+      "rationale": "design_agent keeps the in-scope decision/project context; agent_run/codebase is out of scope, rejected entries are withheld, local notes are private; 'Agent security policy', 'Credit system terms' are in scope but tangential here (optional)."
+    },
+    "product_agent": {
+      "must_include": [
+        "mem-dec-async-jd",
+        "mem-credit-system",
+        "mem-prd-v52"
+      ],
+      "must_exclude": [
+        "mem-agent-stack",
+        "mem-input-validator",
+        "mem-agent-summary",
+        "mem-agent-trace",
+        "mem-dec-browser-rejected"
+      ],
+      "optional": [
+        "mem-security-policy"
+      ],
+      "rationale": "product_agent keeps the in-scope decision/project context; agent_run/codebase is out of scope, rejected entries are withheld, local notes are private; 'Agent security policy' is in scope but tangential here (optional)."
+    },
+    "human_teammate": {
+      "must_include": [
+        "mem-dec-async-jd",
+        "mem-agent-stack",
+        "mem-credit-system",
+        "mem-prd-v52",
+        "mem-input-validator",
+        "mem-security-policy",
+        "mem-agent-summary",
+        "mem-dec-browser-rejected"
+      ],
+      "must_exclude": [
+        "mem-agent-trace"
+      ],
+      "optional": [],
+      "rationale": "Robin (the baseline owner) sees the current team entries; another actor's local note stays on its owner's device."
+    }
+  }
+}

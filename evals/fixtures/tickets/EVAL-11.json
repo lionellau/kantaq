@@ -1,0 +1,143 @@
+{
+  "ticket": {
+    "id": "EVAL-11",
+    "title": "Deletion propagation into the KB / writeback / vectorized artifacts",
+    "description": "GDPR right-to-deletion must cascade beyond DynamoDB+S3 (a linked ticket) into KB writeback and vectorized artifacts. Trace writeback provenance (source_user_id, s3_key) in a deletion-eligible index; on DELETE /api/user/account, remove the user's derived KB content. Security/compliance, not optional.",
+    "lifecycle_stage": "intake",
+    "status": "Backlog",
+    "labels": [
+      "Security",
+      "Backend"
+    ]
+  },
+  "candidate_memory": [
+    {
+      "id": "mem-gdpr-deletion",
+      "linked": true,
+      "link_reason": "the deletion obligation this ticket implements"
+    },
+    {
+      "id": "mem-dec-kb-first",
+      "linked": true,
+      "link_reason": "the writeback the deletion must reverse"
+    },
+    {
+      "id": "mem-kb-ingest",
+      "linked": false
+    },
+    {
+      "id": "mem-security-policy",
+      "linked": false
+    },
+    {
+      "id": "mem-memory-arch",
+      "linked": false
+    },
+    {
+      "id": "mem-dec-user-memory",
+      "linked": false
+    },
+    {
+      "id": "mem-rel-launch-plan",
+      "linked": false
+    },
+    {
+      "id": "mem-jordan-local-legal",
+      "linked": false
+    },
+    {
+      "id": "mem-agent-summary",
+      "linked": false
+    }
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": [
+        "mem-dec-kb-first",
+        "mem-kb-ingest",
+        "mem-memory-arch",
+        "mem-dec-user-memory"
+      ],
+      "must_exclude": [
+        "mem-gdpr-deletion",
+        "mem-security-policy",
+        "mem-rel-launch-plan",
+        "mem-jordan-local-legal",
+        "mem-agent-summary"
+      ],
+      "optional": [],
+      "rationale": "code_agent keeps the in-scope codebase/decision context; agent_run/release/workspace is out of scope, local notes are private."
+    },
+    "qa_agent": {
+      "must_include": [
+        "mem-dec-kb-first",
+        "mem-kb-ingest",
+        "mem-memory-arch",
+        "mem-dec-user-memory"
+      ],
+      "must_exclude": [
+        "mem-gdpr-deletion",
+        "mem-security-policy",
+        "mem-jordan-local-legal",
+        "mem-agent-summary"
+      ],
+      "optional": [
+        "mem-rel-launch-plan"
+      ],
+      "rationale": "qa_agent keeps the in-scope codebase/decision context; agent_run/workspace is out of scope, local notes are private; 'a linked ticket Executable Launch Plan' is in scope but tangential here (optional)."
+    },
+    "design_agent": {
+      "must_include": [
+        "mem-gdpr-deletion",
+        "mem-dec-kb-first",
+        "mem-security-policy"
+      ],
+      "must_exclude": [
+        "mem-kb-ingest",
+        "mem-memory-arch",
+        "mem-rel-launch-plan",
+        "mem-jordan-local-legal",
+        "mem-agent-summary"
+      ],
+      "optional": [
+        "mem-dec-user-memory"
+      ],
+      "rationale": "design_agent keeps the in-scope decision/workspace context; agent_run/codebase/release is out of scope, local notes are private; 'Decision #15: user memory in DynamoDB' is in scope but tangential here (optional)."
+    },
+    "product_agent": {
+      "must_include": [
+        "mem-gdpr-deletion",
+        "mem-dec-kb-first",
+        "mem-security-policy"
+      ],
+      "must_exclude": [
+        "mem-kb-ingest",
+        "mem-memory-arch",
+        "mem-jordan-local-legal",
+        "mem-agent-summary"
+      ],
+      "optional": [
+        "mem-dec-user-memory",
+        "mem-rel-launch-plan"
+      ],
+      "rationale": "product_agent keeps the in-scope decision/workspace context; agent_run/codebase is out of scope, local notes are private; 'Decision #15: user memory in DynamoDB', 'a linked ticket Executable Launch Plan' are in scope but tangential here (optional)."
+    },
+    "human_teammate": {
+      "must_include": [
+        "mem-gdpr-deletion",
+        "mem-dec-kb-first",
+        "mem-kb-ingest",
+        "mem-security-policy",
+        "mem-memory-arch",
+        "mem-dec-user-memory",
+        "mem-rel-launch-plan",
+        "mem-agent-summary"
+      ],
+      "must_exclude": [
+        "mem-jordan-local-legal"
+      ],
+      "optional": [],
+      "rationale": "Robin (the baseline owner) sees the current team entries; another actor's local note stays on its owner's device."
+    }
+  }
+}

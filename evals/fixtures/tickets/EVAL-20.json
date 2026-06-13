@@ -1,0 +1,140 @@
+{
+  "ticket": {
+    "id": "EVAL-20",
+    "title": "Summarize the Phase 1 frontend reskin and rename",
+    "description": "Retrospective on the Phase 1 reskin: navy/amber -> forest/yellow tokens, the public-funnel rename, focus-ring + reduced-motion accessibility, and legacy-surface cleanup (a PR).",
+    "lifecycle_stage": "learn",
+    "status": "Done",
+    "labels": []
+  },
+  "candidate_memory": [
+    {
+      "id": "mem-color-tokens",
+      "linked": true,
+      "link_reason": "the token migration it captures"
+    },
+    {
+      "id": "mem-domain-stale",
+      "linked": false
+    },
+    {
+      "id": "mem-conventions",
+      "linked": false
+    },
+    {
+      "id": "mem-rel-reskin-shipped",
+      "linked": true,
+      "link_reason": "the shipped reskin being summarized"
+    },
+    {
+      "id": "mem-beta-goal",
+      "linked": false
+    },
+    {
+      "id": "mem-middleware-csp",
+      "linked": false
+    },
+    {
+      "id": "mem-security-policy",
+      "linked": false
+    },
+    {
+      "id": "mem-robin-codex-local",
+      "linked": false
+    },
+    {
+      "id": "mem-dec-legal-rejected",
+      "linked": false
+    }
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": [
+        "mem-middleware-csp"
+      ],
+      "must_exclude": [
+        "mem-color-tokens",
+        "mem-domain-stale",
+        "mem-conventions",
+        "mem-rel-reskin-shipped",
+        "mem-security-policy",
+        "mem-robin-codex-local",
+        "mem-dec-legal-rejected"
+      ],
+      "optional": [
+        "mem-beta-goal"
+      ],
+      "rationale": "code_agent keeps the in-scope codebase context; release/workspace is out of scope, rejected/stale entries are withheld, local notes are private; 'Beta goal: first 100 users' is in scope but tangential here (optional)."
+    },
+    "qa_agent": {
+      "must_include": [
+        "mem-rel-reskin-shipped"
+      ],
+      "must_exclude": [
+        "mem-color-tokens",
+        "mem-domain-stale",
+        "mem-conventions",
+        "mem-beta-goal",
+        "mem-security-policy",
+        "mem-robin-codex-local",
+        "mem-dec-legal-rejected"
+      ],
+      "optional": [
+        "mem-middleware-csp"
+      ],
+      "rationale": "qa_agent keeps the in-scope release context; project/workspace is out of scope, rejected/stale entries are withheld, local notes are private; 'middleware.ts CSP shape' is in scope but tangential here (optional)."
+    },
+    "design_agent": {
+      "must_include": [
+        "mem-color-tokens",
+        "mem-conventions",
+        "mem-beta-goal"
+      ],
+      "must_exclude": [
+        "mem-domain-stale",
+        "mem-rel-reskin-shipped",
+        "mem-middleware-csp",
+        "mem-robin-codex-local",
+        "mem-dec-legal-rejected"
+      ],
+      "optional": [
+        "mem-security-policy"
+      ],
+      "rationale": "design_agent keeps the in-scope project/workspace context; codebase/release is out of scope, rejected/stale entries are withheld, local notes are private; 'Agent security policy' is in scope but tangential here (optional)."
+    },
+    "product_agent": {
+      "must_include": [
+        "mem-color-tokens",
+        "mem-rel-reskin-shipped",
+        "mem-beta-goal"
+      ],
+      "must_exclude": [
+        "mem-domain-stale",
+        "mem-middleware-csp",
+        "mem-robin-codex-local",
+        "mem-dec-legal-rejected"
+      ],
+      "optional": [
+        "mem-security-policy",
+        "mem-conventions"
+      ],
+      "rationale": "product_agent keeps the in-scope project/release/workspace context; codebase is out of scope, rejected/stale entries are withheld, local notes are private; 'Agent security policy', 'CONVENTIONS.md — input revalidation (Convention 9)' are in scope but tangential here (optional)."
+    },
+    "human_teammate": {
+      "must_include": [
+        "mem-color-tokens",
+        "mem-domain-stale",
+        "mem-conventions",
+        "mem-rel-reskin-shipped",
+        "mem-beta-goal",
+        "mem-middleware-csp",
+        "mem-security-policy",
+        "mem-robin-codex-local",
+        "mem-dec-legal-rejected"
+      ],
+      "must_exclude": [],
+      "optional": [],
+      "rationale": "Robin (the baseline owner) sees the current team entries plus their own local note."
+    }
+  }
+}

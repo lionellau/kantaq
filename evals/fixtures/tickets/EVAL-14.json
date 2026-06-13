@@ -1,0 +1,143 @@
+{
+  "ticket": {
+    "id": "EVAL-14",
+    "title": "Landing page de-slop: hero visual anchor, layout, motion",
+    "description": "Redesign the landing page away from generic AI-slop: a real hero visual anchor, intentional layout, and motion - within the forest/yellow token system and the frontend conventions.",
+    "lifecycle_stage": "design",
+    "status": "Backlog",
+    "labels": [
+      "Frontend",
+      "Improvement"
+    ]
+  },
+  "candidate_memory": [
+    {
+      "id": "mem-color-tokens",
+      "linked": true,
+      "link_reason": "the token system the redesign must use"
+    },
+    {
+      "id": "mem-conventions",
+      "linked": true,
+      "link_reason": "the frontend conventions"
+    },
+    {
+      "id": "mem-prd-v52",
+      "linked": false
+    },
+    {
+      "id": "mem-beta-goal",
+      "linked": false
+    },
+    {
+      "id": "mem-security-policy",
+      "linked": false
+    },
+    {
+      "id": "mem-middleware-csp",
+      "linked": false
+    },
+    {
+      "id": "mem-domain-stale",
+      "linked": false
+    },
+    {
+      "id": "mem-robin-codex-local",
+      "linked": false
+    },
+    {
+      "id": "mem-rel-launch-plan",
+      "linked": false
+    }
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": [
+        "mem-middleware-csp"
+      ],
+      "must_exclude": [
+        "mem-color-tokens",
+        "mem-conventions",
+        "mem-security-policy",
+        "mem-domain-stale",
+        "mem-robin-codex-local",
+        "mem-rel-launch-plan"
+      ],
+      "optional": [
+        "mem-beta-goal",
+        "mem-prd-v52"
+      ],
+      "rationale": "code_agent keeps the in-scope codebase context; release/workspace is out of scope, stale entries are withheld, local notes are private; 'Beta goal: first 100 users', 'PRD v5.2 locked decisions' are in scope but tangential here (optional)."
+    },
+    "qa_agent": {
+      "must_include": [
+        "mem-middleware-csp"
+      ],
+      "must_exclude": [
+        "mem-color-tokens",
+        "mem-conventions",
+        "mem-prd-v52",
+        "mem-beta-goal",
+        "mem-security-policy",
+        "mem-domain-stale",
+        "mem-robin-codex-local"
+      ],
+      "optional": [
+        "mem-rel-launch-plan"
+      ],
+      "rationale": "qa_agent keeps the in-scope codebase context; project/workspace is out of scope, stale entries are withheld, local notes are private; 'a linked ticket Executable Launch Plan' is in scope but tangential here (optional)."
+    },
+    "design_agent": {
+      "must_include": [
+        "mem-color-tokens",
+        "mem-conventions",
+        "mem-prd-v52",
+        "mem-beta-goal"
+      ],
+      "must_exclude": [
+        "mem-middleware-csp",
+        "mem-domain-stale",
+        "mem-robin-codex-local",
+        "mem-rel-launch-plan"
+      ],
+      "optional": [
+        "mem-security-policy"
+      ],
+      "rationale": "design_agent keeps the in-scope project/workspace context; codebase/release is out of scope, stale entries are withheld, local notes are private; 'Agent security policy' is in scope but tangential here (optional)."
+    },
+    "product_agent": {
+      "must_include": [
+        "mem-color-tokens",
+        "mem-prd-v52",
+        "mem-beta-goal",
+        "mem-rel-launch-plan"
+      ],
+      "must_exclude": [
+        "mem-middleware-csp",
+        "mem-domain-stale",
+        "mem-robin-codex-local"
+      ],
+      "optional": [
+        "mem-security-policy",
+        "mem-conventions"
+      ],
+      "rationale": "product_agent keeps the in-scope project/release/workspace context; codebase is out of scope, stale entries are withheld, local notes are private; 'Agent security policy', 'CONVENTIONS.md — input revalidation (Convention 9)' are in scope but tangential here (optional)."
+    },
+    "human_teammate": {
+      "must_include": [
+        "mem-color-tokens",
+        "mem-conventions",
+        "mem-prd-v52",
+        "mem-beta-goal",
+        "mem-security-policy",
+        "mem-middleware-csp",
+        "mem-domain-stale",
+        "mem-robin-codex-local",
+        "mem-rel-launch-plan"
+      ],
+      "must_exclude": [],
+      "optional": [],
+      "rationale": "Robin (the baseline owner) sees the current team entries plus their own local note."
+    }
+  }
+}

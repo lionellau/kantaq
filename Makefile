@@ -27,7 +27,7 @@ lint: ## run ruff + Biome
 typecheck: ## run mypy + tsc
 	uv run kantaq typecheck
 
-eval: ## validate context-eval fixtures (MOD-21 / Epic E16; precision/recall in Sprint 4)
+eval: ## validate + score the context-eval set vs the baseline (MOD-21 / Epic E16)
 	uv run kantaq eval
 
 mcp-dev: ## run the loopback MCP gateway (random port; see docs/mcp.md)

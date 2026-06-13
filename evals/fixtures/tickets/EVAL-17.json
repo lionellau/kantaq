@@ -1,0 +1,146 @@
+{
+  "ticket": {
+    "id": "EVAL-17",
+    "title": "Backend hardening: API timeouts, security headers, env safety, CSP monitoring",
+    "description": "A post-CSP-fix audit found backend hardening gaps: API timeouts, security headers, env safety, an auth guard, and CSP monitoring. Fix before UAT sign-off; reference CONVENTIONS.md.",
+    "lifecycle_stage": "review",
+    "status": "Done",
+    "labels": [
+      "Security",
+      "Infrastructure",
+      "Backend",
+      "Improvement"
+    ]
+  },
+  "candidate_memory": [
+    {
+      "id": "mem-security-policy",
+      "linked": true,
+      "link_reason": "the security norms to hold"
+    },
+    {
+      "id": "mem-conventions",
+      "linked": false
+    },
+    {
+      "id": "mem-csp-rootcause",
+      "linked": true,
+      "link_reason": "the CSP incident this hardens after"
+    },
+    {
+      "id": "mem-dec-csp-phased",
+      "linked": false
+    },
+    {
+      "id": "mem-middleware-csp",
+      "linked": false
+    },
+    {
+      "id": "mem-input-validator",
+      "linked": false
+    },
+    {
+      "id": "mem-pm-security-audit",
+      "linked": false
+    },
+    {
+      "id": "mem-domain-stale",
+      "linked": false
+    },
+    {
+      "id": "mem-alex-local-spike",
+      "linked": false
+    }
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": [
+        "mem-csp-rootcause",
+        "mem-dec-csp-phased",
+        "mem-middleware-csp",
+        "mem-input-validator"
+      ],
+      "must_exclude": [
+        "mem-security-policy",
+        "mem-conventions",
+        "mem-domain-stale",
+        "mem-alex-local-spike"
+      ],
+      "optional": [
+        "mem-pm-security-audit"
+      ],
+      "rationale": "code_agent keeps the in-scope codebase/decision/ticket context; workspace is out of scope, stale entries are withheld, local notes are private; 'PM Security Audit ' is in scope but tangential here (optional)."
+    },
+    "qa_agent": {
+      "must_include": [
+        "mem-csp-rootcause",
+        "mem-dec-csp-phased",
+        "mem-middleware-csp",
+        "mem-pm-security-audit"
+      ],
+      "must_exclude": [
+        "mem-security-policy",
+        "mem-conventions",
+        "mem-domain-stale",
+        "mem-alex-local-spike"
+      ],
+      "optional": [
+        "mem-input-validator"
+      ],
+      "rationale": "qa_agent keeps the in-scope codebase/decision/ticket context; workspace is out of scope, stale entries are withheld, local notes are private; 'input-validator.ts / input-sanitiser.ts' is in scope but tangential here (optional)."
+    },
+    "design_agent": {
+      "must_include": [
+        "mem-security-policy",
+        "mem-pm-security-audit"
+      ],
+      "must_exclude": [
+        "mem-middleware-csp",
+        "mem-input-validator",
+        "mem-domain-stale",
+        "mem-alex-local-spike"
+      ],
+      "optional": [
+        "mem-conventions",
+        "mem-csp-rootcause",
+        "mem-dec-csp-phased"
+      ],
+      "rationale": "design_agent keeps the in-scope ticket/workspace context; codebase is out of scope, stale entries are withheld, local notes are private; 'CONVENTIONS.md — input revalidation (Convention 9)', 'CSP P0 root cause ', 'Decision: phased CSP' are in scope but tangential here (optional)."
+    },
+    "product_agent": {
+      "must_include": [
+        "mem-security-policy",
+        "mem-csp-rootcause",
+        "mem-pm-security-audit"
+      ],
+      "must_exclude": [
+        "mem-middleware-csp",
+        "mem-input-validator",
+        "mem-domain-stale",
+        "mem-alex-local-spike"
+      ],
+      "optional": [
+        "mem-conventions",
+        "mem-dec-csp-phased"
+      ],
+      "rationale": "product_agent keeps the in-scope ticket/workspace context; codebase is out of scope, stale entries are withheld, local notes are private; 'CONVENTIONS.md — input revalidation (Convention 9)', 'Decision: phased CSP' are in scope but tangential here (optional)."
+    },
+    "human_teammate": {
+      "must_include": [
+        "mem-security-policy",
+        "mem-conventions",
+        "mem-csp-rootcause",
+        "mem-dec-csp-phased",
+        "mem-middleware-csp",
+        "mem-input-validator",
+        "mem-pm-security-audit",
+        "mem-domain-stale"
+      ],
+      "must_exclude": [
+        "mem-alex-local-spike"
+      ],
+      "optional": [],
+      "rationale": "Robin (the baseline owner) sees the current team entries; another actor's local note stays on its owner's device."
+    }
+  }
+}

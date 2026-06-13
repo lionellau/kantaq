@@ -1,0 +1,144 @@
+{
+  "ticket": {
+    "id": "EVAL-18",
+    "title": "E2E integration test + security verification: async JD-parse",
+    "description": "End-to-end validation of the async JD-parse flow on staging: anonymous and authenticated happy paths (202 -> poll/WS -> parsed), plus security verification (prompt-injection delimiters, no cross-user leakage). Must pass before production.",
+    "lifecycle_stage": "qa",
+    "status": "Done",
+    "labels": [
+      "Security",
+      "QA/Testing"
+    ]
+  },
+  "candidate_memory": [
+    {
+      "id": "mem-dec-async-jd",
+      "linked": true,
+      "link_reason": "the flow under test"
+    },
+    {
+      "id": "mem-agent-stack",
+      "linked": false
+    },
+    {
+      "id": "mem-security-policy",
+      "linked": false
+    },
+    {
+      "id": "mem-input-validator",
+      "linked": false
+    },
+    {
+      "id": "mem-cognito-reqs",
+      "linked": false
+    },
+    {
+      "id": "mem-rel-smoke-pass",
+      "linked": false
+    },
+    {
+      "id": "mem-rel-staging-window",
+      "linked": false
+    },
+    {
+      "id": "mem-pm-security-audit",
+      "linked": true,
+      "link_reason": "the security checklist to verify against"
+    },
+    {
+      "id": "mem-agent-trace",
+      "linked": false
+    }
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": [
+        "mem-dec-async-jd",
+        "mem-agent-stack",
+        "mem-input-validator"
+      ],
+      "must_exclude": [
+        "mem-security-policy",
+        "mem-rel-smoke-pass",
+        "mem-rel-staging-window",
+        "mem-agent-trace"
+      ],
+      "optional": [
+        "mem-cognito-reqs",
+        "mem-pm-security-audit"
+      ],
+      "rationale": "code_agent keeps the in-scope codebase/decision context; release/workspace is out of scope, local notes are private, the staging note has expired; 'Cognito acceptance ', 'PM Security Audit ' are in scope but tangential here (optional)."
+    },
+    "qa_agent": {
+      "must_include": [
+        "mem-dec-async-jd",
+        "mem-agent-stack",
+        "mem-input-validator",
+        "mem-cognito-reqs",
+        "mem-pm-security-audit"
+      ],
+      "must_exclude": [
+        "mem-security-policy",
+        "mem-rel-staging-window",
+        "mem-agent-trace"
+      ],
+      "optional": [
+        "mem-rel-smoke-pass"
+      ],
+      "rationale": "qa_agent keeps the in-scope codebase/decision/ticket context; workspace is out of scope, local notes are private, the staging note has expired; 'Smoke test PASSED 5/5' is in scope but tangential here (optional)."
+    },
+    "design_agent": {
+      "must_include": [
+        "mem-cognito-reqs",
+        "mem-pm-security-audit"
+      ],
+      "must_exclude": [
+        "mem-agent-stack",
+        "mem-input-validator",
+        "mem-rel-smoke-pass",
+        "mem-rel-staging-window",
+        "mem-agent-trace"
+      ],
+      "optional": [
+        "mem-dec-async-jd",
+        "mem-security-policy"
+      ],
+      "rationale": "design_agent keeps the in-scope ticket context; codebase/release is out of scope, local notes are private, the staging note has expired; 'Decision: Async JD Parse v3 (D1–D9 confirmed)', 'Agent security policy' are in scope but tangential here (optional)."
+    },
+    "product_agent": {
+      "must_include": [
+        "mem-dec-async-jd",
+        "mem-cognito-reqs",
+        "mem-rel-smoke-pass",
+        "mem-pm-security-audit"
+      ],
+      "must_exclude": [
+        "mem-agent-stack",
+        "mem-input-validator",
+        "mem-rel-staging-window",
+        "mem-agent-trace"
+      ],
+      "optional": [
+        "mem-security-policy"
+      ],
+      "rationale": "product_agent keeps the in-scope decision/release/ticket context; codebase is out of scope, local notes are private, the staging note has expired; 'Agent security policy' is in scope but tangential here (optional)."
+    },
+    "human_teammate": {
+      "must_include": [
+        "mem-dec-async-jd",
+        "mem-agent-stack",
+        "mem-security-policy",
+        "mem-input-validator",
+        "mem-cognito-reqs",
+        "mem-rel-smoke-pass",
+        "mem-pm-security-audit"
+      ],
+      "must_exclude": [
+        "mem-rel-staging-window",
+        "mem-agent-trace"
+      ],
+      "optional": [],
+      "rationale": "Robin (the baseline owner) sees the current team entries; another actor's local note stays on its owner's device, the expired staging note is dropped."
+    }
+  }
+}

@@ -1,0 +1,143 @@
+{
+  "ticket": {
+    "id": "EVAL-19",
+    "title": "Deploy the DynamoDB session table + wire env vars",
+    "description": "Deploy the CDK DataStack to create app-sessions-{env} (PK sessionId, TTL, PAY_PER_REQUEST), set the session-table env vars, and grant the runtime role the session-table IAM actions - the deploy half of the session work.",
+    "lifecycle_stage": "release",
+    "status": "Done",
+    "labels": [
+      "Infrastructure"
+    ]
+  },
+  "candidate_memory": [
+    {
+      "id": "mem-session-store",
+      "linked": true,
+      "link_reason": "the table being deployed"
+    },
+    {
+      "id": "mem-auth-arch",
+      "linked": true,
+      "link_reason": "the auth stack it serves"
+    },
+    {
+      "id": "mem-dec-web-no-awssdk",
+      "linked": false
+    },
+    {
+      "id": "mem-rel-auth-shipped",
+      "linked": false
+    },
+    {
+      "id": "mem-conventions",
+      "linked": false
+    },
+    {
+      "id": "mem-cognito-reqs",
+      "linked": false
+    },
+    {
+      "id": "mem-rel-staging-window",
+      "linked": false
+    },
+    {
+      "id": "mem-credit-system",
+      "linked": false
+    },
+    {
+      "id": "mem-jordan-local-legal",
+      "linked": false
+    }
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": [
+        "mem-session-store",
+        "mem-auth-arch",
+        "mem-dec-web-no-awssdk"
+      ],
+      "must_exclude": [
+        "mem-rel-auth-shipped",
+        "mem-conventions",
+        "mem-rel-staging-window",
+        "mem-jordan-local-legal"
+      ],
+      "optional": [
+        "mem-credit-system",
+        "mem-cognito-reqs"
+      ],
+      "rationale": "code_agent keeps the in-scope codebase/decision context; release/workspace is out of scope, local notes are private, the staging note has expired; 'Credit system terms', 'Cognito acceptance ' are in scope but tangential here (optional)."
+    },
+    "qa_agent": {
+      "must_include": [
+        "mem-session-store",
+        "mem-auth-arch",
+        "mem-dec-web-no-awssdk"
+      ],
+      "must_exclude": [
+        "mem-conventions",
+        "mem-rel-staging-window",
+        "mem-credit-system",
+        "mem-jordan-local-legal"
+      ],
+      "optional": [
+        "mem-rel-auth-shipped",
+        "mem-cognito-reqs"
+      ],
+      "rationale": "qa_agent keeps the in-scope codebase/decision context; project/workspace is out of scope, local notes are private, the staging note has expired; 'Shipped a linked ticket (Cognito)', 'Cognito acceptance ' are in scope but tangential here (optional)."
+    },
+    "design_agent": {
+      "must_include": [
+        "mem-cognito-reqs"
+      ],
+      "must_exclude": [
+        "mem-session-store",
+        "mem-auth-arch",
+        "mem-rel-auth-shipped",
+        "mem-rel-staging-window",
+        "mem-jordan-local-legal"
+      ],
+      "optional": [
+        "mem-dec-web-no-awssdk",
+        "mem-conventions",
+        "mem-credit-system"
+      ],
+      "rationale": "design_agent keeps the in-scope ticket context; codebase/release is out of scope, local notes are private, the staging note has expired; 'Decision: the web app never imports the AWS SDK', 'CONVENTIONS.md — input revalidation (Convention 9)', 'Credit system terms' are in scope but tangential here (optional)."
+    },
+    "product_agent": {
+      "must_include": [
+        "mem-rel-auth-shipped",
+        "mem-cognito-reqs"
+      ],
+      "must_exclude": [
+        "mem-session-store",
+        "mem-auth-arch",
+        "mem-rel-staging-window",
+        "mem-jordan-local-legal"
+      ],
+      "optional": [
+        "mem-conventions",
+        "mem-dec-web-no-awssdk",
+        "mem-credit-system"
+      ],
+      "rationale": "product_agent keeps the in-scope release/ticket context; codebase is out of scope, local notes are private, the staging note has expired; 'CONVENTIONS.md — input revalidation (Convention 9)', 'Decision: the web app never imports the AWS SDK', 'Credit system terms' are in scope but tangential here (optional)."
+    },
+    "human_teammate": {
+      "must_include": [
+        "mem-session-store",
+        "mem-auth-arch",
+        "mem-dec-web-no-awssdk",
+        "mem-rel-auth-shipped",
+        "mem-conventions",
+        "mem-cognito-reqs",
+        "mem-credit-system"
+      ],
+      "must_exclude": [
+        "mem-rel-staging-window",
+        "mem-jordan-local-legal"
+      ],
+      "optional": [],
+      "rationale": "Robin (the baseline owner) sees the current team entries; another actor's local note stays on its owner's device, the expired staging note is dropped."
+    }
+  }
+}

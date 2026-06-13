@@ -11,21 +11,32 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from kantaq_core import evals
+from kantaq_core import evals, memory_policy
 
 # --------------------------------------------------------- the checked-in set
 
 
-def test_real_fixture_set_is_valid_and_meets_the_sprint3_target() -> None:
+def test_real_fixture_set_is_valid_and_complete() -> None:
+    """v0.1 complete (E16-T4b): 20 tickets x 5 columns = 100 graded bundles."""
     report = evals.validate(evals.workspace_fixtures_dir())
     assert report.ok, report.problems
-    assert report.ticket_count == 10
-    assert report.graded_bundles == evals.SPRINT3_GRADED_TARGET == 50
-    # All five columns graded for every ticket this sprint.
-    assert report.per_role == dict.fromkeys(evals.EVAL_ROLES, 10)
+    assert report.ticket_count == evals.TARGET_TICKETS == 20
+    assert report.graded_bundles == evals.TARGET_BUNDLES == 100
+    # All five columns graded for every ticket.
+    assert report.per_role == dict.fromkeys(evals.EVAL_ROLES, 20)
+
+
+def test_real_fixture_set_covers_every_lifecycle_stage() -> None:
+    """The 20 tickets span the whole MOD-20 taxonomy (a realistic spread)."""
+    from kantaq_core import lifecycle
+
+    evalset = evals.load_eval_set(evals.workspace_fixtures_dir())
+    stages = {ticket.lifecycle_stage for ticket in evalset.tickets}
+    assert stages == set(lifecycle.STAGE_SLUGS)
 
 
 def test_eval_roles_are_the_four_agents_plus_the_human_baseline() -> None:
@@ -342,3 +353,77 @@ def test_parse_expires_accepts_iso_or_null_and_rejects_others() -> None:
     assert evals._parse_expires("2026-06-13T00:00:00") == datetime(2026, 6, 13)
     with pytest.raises(evals.EvalFixtureError):
         evals._parse_expires(12345)
+
+
+# ----------------------------------------------------- scoring (E16-T3)
+
+
+def test_score_of_the_real_resolver_is_perfect() -> None:
+    """The recorded baseline: the rules-based resolver scores 1.0/1.0 (RISK-02)."""
+    report = evals.score(evals.load_eval_set(evals.workspace_fixtures_dir()))
+    assert report.cells == evals.TARGET_TICKETS * len(memory_policy.ROLE_SLUGS) == 80
+    assert report.precision == 1.0
+    assert report.recall == 1.0
+    assert report.mismatches == ()
+    # Only the four agent roles are scored — the human baseline has no resolver.
+    assert {r.role for r in report.per_role} == set(memory_policy.ROLE_SLUGS)
+
+
+def _include_everything(role: str, candidates: list, *, now: datetime) -> SimpleNamespace:
+    """A deliberately broken resolver: includes every candidate (no policy)."""
+    return SimpleNamespace(included=tuple(candidates))
+
+
+def test_score_catches_a_broken_resolver() -> None:
+    """A resolver that ignores the policy admits must_exclude entries -> precision drops."""
+    evalset = evals.load_eval_set(evals.workspace_fixtures_dir())
+    report = evals.score(evalset, resolve=_include_everything)
+    assert report.precision < 1.0  # it includes graded must_exclude entries
+    assert report.false_positives > 0
+    assert report.mismatches  # every offending cell is reported for diagnosis
+
+
+def test_baseline_roundtrip_and_tolerance(tmp_path: Path) -> None:
+    """Record a baseline, then prove the gate passes at parity and fails on a drop."""
+    evalset = evals.load_eval_set(evals.workspace_fixtures_dir())
+    good = evals.score(evalset)
+    path = tmp_path / "baseline.json"
+    baseline = evals.write_baseline(good, recorded_at="2026-06-13", note="test", path=path)
+
+    reloaded = evals.load_baseline(path)
+    assert reloaded == baseline
+    assert evals.load_baseline(tmp_path / "absent.json") is None
+
+    # Same score -> within tolerance (no regressions).
+    assert evals.regressions_against_baseline(good, baseline) == []
+
+    # A broken resolver's score is well below the 1.0 baseline -> regression.
+    bad = evals.score(evalset, resolve=_include_everything)
+    problems = evals.regressions_against_baseline(bad, baseline)
+    assert problems
+    assert any("precision" in p for p in problems)
+
+
+def test_a_small_drop_within_five_points_does_not_trip_the_gate() -> None:
+    """The gate tolerates noise up to BASELINE_DROP_TOLERANCE (5 points)."""
+    baseline = evals.Baseline(precision=1.0, recall=1.0, cells=80, recorded_at="x")
+    # 0.97 is a 3-point drop -> still within tolerance.
+    near = evals.ScoreReport(
+        cells=80,
+        true_positives=97,
+        false_positives=3,
+        false_negatives=0,
+        per_role=(),
+        mismatches=(),
+    )
+    assert evals.regressions_against_baseline(near, baseline) == []
+    # 0.94 is a 6-point drop -> trips it.
+    far = evals.ScoreReport(
+        cells=80,
+        true_positives=94,
+        false_positives=6,
+        false_negatives=0,
+        per_role=(),
+        mismatches=(),
+    )
+    assert evals.regressions_against_baseline(far, baseline)
