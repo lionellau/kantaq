@@ -34,6 +34,7 @@ if TYPE_CHECKING:
         build_memory_link,
         build_project,
         build_ticket,
+        build_ticket_relationship,
         build_token,
         build_workspace,
     )
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
         PrivacyClass,
         Project,
         Ticket,
+        TicketRelationship,
         Token,
         Workspace,
     )
@@ -84,6 +86,7 @@ _LAZY: dict[str, str] = {
     "PrivacyClass": "kantaq_test_harness.models:PrivacyClass",
     "Project": "kantaq_test_harness.models:Project",
     "Ticket": "kantaq_test_harness.models:Ticket",
+    "TicketRelationship": "kantaq_test_harness.models:TicketRelationship",
     "Token": "kantaq_test_harness.models:Token",
     "Workspace": "kantaq_test_harness.models:Workspace",
     "build_agent_proposal": "kantaq_test_harness.builders:build_agent_proposal",
@@ -95,6 +98,7 @@ _LAZY: dict[str, str] = {
     "build_memory_link": "kantaq_test_harness.builders:build_memory_link",
     "build_project": "kantaq_test_harness.builders:build_project",
     "build_ticket": "kantaq_test_harness.builders:build_ticket",
+    "build_ticket_relationship": "kantaq_test_harness.builders:build_ticket_relationship",
     "build_token": "kantaq_test_harness.builders:build_token",
     "build_workspace": "kantaq_test_harness.builders:build_workspace",
 }
@@ -138,6 +142,7 @@ __all__ = [
     "Project",
     "SeededRandom",
     "Ticket",
+    "TicketRelationship",
     "Token",
     "Workspace",
     "build_agent_proposal",
@@ -149,6 +154,7 @@ __all__ = [
     "build_memory_link",
     "build_project",
     "build_ticket",
+    "build_ticket_relationship",
     "build_token",
     "build_workspace",
     "load_injection_corpus",

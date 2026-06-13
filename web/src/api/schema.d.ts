@@ -466,6 +466,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tickets/{ticket_id}/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Relations
+         * @description Every typed relationship touching the ticket, from either end.
+         */
+        get: operations["list_relations_v1_tickets__ticket_id__relations_get"];
+        put?: never;
+        /** Create Relation */
+        post: operations["create_relation_v1_tickets__ticket_id__relations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tickets/{ticket_id}/relations/{relationship_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Relation */
+        delete: operations["delete_relation_v1_tickets__ticket_id__relations__relationship_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -891,6 +929,42 @@ export interface components {
              */
             updated_at: string;
         };
+        /** RelationIn */
+        RelationIn: {
+            /** To Id */
+            to_id: string;
+            /** Type */
+            type: string;
+        };
+        /**
+         * RelationOut
+         * @description One typed ticket relationship (E12-T3), seen from a ticket's side.
+         *
+         *     ``direction`` is relative to the ticket in the request path: ``outgoing``
+         *     when it is the ``from`` end (e.g. it *blocks* the other), ``incoming`` when
+         *     it is the ``to`` end (e.g. it *is blocked by* the other). The raw stored
+         *     edge (``from_id``/``to_id``/``type``) is always one of the five real types —
+         *     no inverse pseudo-type is invented for the view.
+         */
+        RelationOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string | null;
+            /** Direction */
+            direction: string;
+            /** From Id */
+            from_id: string;
+            /** Id */
+            id: string;
+            /** To Id */
+            to_id: string;
+            /** Type */
+            type: string;
+        };
         /**
          * Role
          * @description The 5 base roles (PRD §11). Stored on ``members.role``.
@@ -1000,6 +1074,8 @@ export interface components {
             assignee: string | null;
             /** Attachments */
             attachments: components["schemas"]["AttachmentOut"][];
+            /** Blocked */
+            blocked: boolean;
             /**
              * Created At
              * Format: date-time
@@ -1027,8 +1103,12 @@ export interface components {
             project_id: string;
             /** Recommended Next Stages */
             recommended_next_stages: string[];
+            /** Relationship Count */
+            relationship_count: number;
             /** Status */
             status: string;
+            /** Subticket Count */
+            subticket_count: number;
             /** Sync State */
             sync_state: string;
             /** Title */
@@ -1870,6 +1950,7 @@ export interface operations {
                 assignee?: string | null;
                 label?: string | null;
                 stage?: string | null;
+                parent?: string | null;
             };
             header?: never;
             path?: never;
@@ -2181,6 +2262,102 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LinkedMemoryOut"][];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_relations_v1_tickets__ticket_id__relations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_relation_v1_tickets__ticket_id__relations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelationIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_relation_v1_tickets__ticket_id__relations__relationship_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+                relationship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

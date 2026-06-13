@@ -18,6 +18,7 @@ _ALL_TABLES = {
     "projects",
     "tickets",
     "comments",
+    "ticket_relationships",
     "members",
     "tokens",
     "audit_events",

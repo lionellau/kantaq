@@ -24,19 +24,20 @@ What the maintainer applies to the team's Supabase project, in order:
 
 ## Schema updates for existing projects
 
-Projects created **before E13 memory sync** (sprint-3) carry the original
-6-collection allowlist on `sync_events` and will refuse memory events
-(breaking the whole push batch). Run once in the SQL Editor:
+Projects created **before E13 memory sync / E12 relations** (sprint-3) carry an
+older allowlist on `sync_events` and will refuse the newer collections'
+events (breaking the whole push batch). Run once in the SQL Editor to bring the
+constraint up to the current set:
 
 ```sql
 ALTER TABLE sync_events DROP CONSTRAINT ck_sync_events_collection;
 ALTER TABLE sync_events ADD CONSTRAINT ck_sync_events_collection CHECK (collection IN
-  ('workspaces', 'projects', 'tickets', 'comments', 'members', 'agent_proposals',
-   'memory_entries', 'memory_links'));
+  ('workspaces', 'projects', 'tickets', 'comments', 'ticket_relationships',
+   'members', 'agent_proposals', 'memory_entries', 'memory_links'));
 ```
 
 (New projects just apply the current `0002_sync_events.sql`, which already
-includes both.)
+includes all of them.)
 
 ## How this is tested
 

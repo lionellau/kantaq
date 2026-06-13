@@ -32,6 +32,7 @@ __all__ = [
     "PrivacyClass",
     "Project",
     "Ticket",
+    "TicketRelationship",
     "Token",
     "Workspace",
 ]
@@ -79,6 +80,16 @@ class Comment:
     ticket_id: str
     author_id: str
     body: str
+
+
+@dataclass
+class TicketRelationship:
+    """Look-alike of the v0.1 typed ticket edge (E12-T3 / MOD-03)."""
+
+    id: str
+    from_id: str
+    to_id: str
+    type: str = "related"
 
 
 @dataclass

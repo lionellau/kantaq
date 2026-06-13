@@ -96,6 +96,31 @@ class Comment(CollectionBase, table=True):
     body: str
 
 
+class TicketRelationship(CollectionBase, table=True):
+    """A typed edge between two tickets (MOD-03 v0.1 / FR-E12-3).
+
+    The five relation types (``related``/``blocked-by``/``blocking``/
+    ``duplicate``/``caused-by``) live in ``kantaq_core.tracker`` — the one write
+    path validates the vocabulary and the integrity rules (no self-link, no
+    duplicate including the symmetric/inverse spelling, no dependency cycle).
+    Both endpoints are tickets in the same workspace; the row carries no mutable
+    fields (an edge is created and tombstoned, never patched), so it syncs
+    ``lww`` like any collection. The ``UNIQUE`` backs the duplicate rule at the
+    database for the exact spelling; the symmetric/inverse collapse is the
+    service's job (no portable SQL expresses it across both dialects).
+    """
+
+    __tablename__ = "ticket_relationships"
+    __table_args__ = (UniqueConstraint("from_id", "to_id", "type", name="uq_ticket_relationship"),)
+
+    from_id: str = Field(foreign_key="tickets.id", index=True)
+    to_id: str = Field(foreign_key="tickets.id", index=True)
+    # type ∈ related | blocked-by | blocking | duplicate | caused-by (VARCHAR
+    # for dialect parity; the vocabulary is enforced in the service).
+    type: str = Field(max_length=16)
+    created_by: str | None = Field(default=None)
+
+
 class Member(CollectionBase, table=True):
     __tablename__ = "members"
 
@@ -335,12 +360,13 @@ def new_id() -> str:
     return new_ulid()
 
 
-# The 12 collection table classes, in the canonical order (matches meta.py).
+# The 13 collection table classes, in the canonical order (matches meta.py).
 COLLECTION_MODELS: tuple[type[CollectionBase], ...] = (
     Workspace,
     Project,
     Ticket,
     Comment,
+    TicketRelationship,
     Member,
     Token,
     AuditEvent,

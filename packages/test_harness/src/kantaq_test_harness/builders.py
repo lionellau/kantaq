@@ -24,6 +24,7 @@ from kantaq_test_harness.models import (
     MemoryLink,
     Project,
     Ticket,
+    TicketRelationship,
     Token,
     Workspace,
 )
@@ -57,6 +58,16 @@ def build_comment(rng: SeededRandom | None = None, **overrides: Any) -> Comment:
     r = _rng(rng)
     base = Comment(
         id=r.ident("cmt"), ticket_id=r.ident("tkt"), author_id=r.ident("mbr"), body="A comment"
+    )
+    return replace(base, **overrides)
+
+
+def build_ticket_relationship(
+    rng: SeededRandom | None = None, **overrides: Any
+) -> TicketRelationship:
+    r = _rng(rng)
+    base = TicketRelationship(
+        id=r.ident("rel"), from_id=r.ident("tkt"), to_id=r.ident("tkt"), type="related"
     )
     return replace(base, **overrides)
 

@@ -57,6 +57,9 @@ export function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
     updated_at: T0,
     sync_state: "committed",
     pending_proposals: 0,
+    subticket_count: 0,
+    relationship_count: 0,
+    blocked: false,
     ...overrides,
   };
 }

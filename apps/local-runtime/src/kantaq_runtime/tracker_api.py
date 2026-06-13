@@ -41,6 +41,7 @@ from kantaq_db.models import (
     EventLog,
     Project,
     Ticket,
+    TicketRelationship,
     Workspace,
 )
 from kantaq_runtime.auth import get_engine_dep, require_action
@@ -142,6 +143,13 @@ class TicketOut(BaseModel):
     pending_proposals: int
     # E14 (MOD-20): the locked recommended-next rule, computed per row.
     recommended_next_stages: list[str]
+    # E12-T3 (MOD-03): relation badges for the list view. `subticket_count` is
+    # the direct children (parent/sub); `relationship_count` is typed edges
+    # touching this ticket either way; `blocked` is true while an unresolved
+    # blocker (a blocked-by/blocking edge from a not-done ticket) points at it.
+    subticket_count: int
+    relationship_count: int
+    blocked: bool
 
     @classmethod
     def from_row(
@@ -151,6 +159,9 @@ class TicketOut(BaseModel):
         sync_state: str = "committed",
         pending_proposals: int = 0,
         recommended_next_stages: list[str] | None = None,
+        subticket_count: int = 0,
+        relationship_count: int = 0,
+        blocked: bool = False,
     ) -> TicketOut:
         return cls.model_validate(
             {
@@ -158,6 +169,9 @@ class TicketOut(BaseModel):
                 "sync_state": sync_state,
                 "pending_proposals": pending_proposals,
                 "recommended_next_stages": recommended_next_stages or [],
+                "subticket_count": subticket_count,
+                "relationship_count": relationship_count,
+                "blocked": blocked,
             }
         )
 
@@ -204,6 +218,63 @@ def _open_subticket_parents(session: Session, ticket_ids: list[str]) -> set[str]
     return {parent for parent in session.exec(statement).all() if parent is not None}
 
 
+def _subticket_counts(session: Session, ticket_ids: list[str]) -> dict[str, int]:
+    """Direct-child counts per parent (the parent/sub badge), one query."""
+    if not ticket_ids:
+        return {}
+    statement = (
+        select(Ticket.parent_id, func.count())
+        .where(col(Ticket.parent_id).in_(ticket_ids))
+        .group_by(col(Ticket.parent_id))
+    )
+    return {parent: n for parent, n in session.exec(statement).all() if parent is not None}
+
+
+def _relationship_counts(session: Session, ticket_ids: list[str]) -> dict[str, int]:
+    """Typed-edge counts per ticket (either endpoint), one query."""
+    if not ticket_ids:
+        return {}
+    ids = set(ticket_ids)
+    statement = select(TicketRelationship).where(
+        col(TicketRelationship.from_id).in_(ids) | col(TicketRelationship.to_id).in_(ids)
+    )
+    counts: dict[str, int] = {}
+    for rel in session.exec(statement).all():
+        if rel.from_id in ids:
+            counts[rel.from_id] = counts.get(rel.from_id, 0) + 1
+        if rel.to_id in ids:
+            counts[rel.to_id] = counts.get(rel.to_id, 0) + 1
+    return counts
+
+
+def _blocked_ids(session: Session, ticket_ids: list[str]) -> set[str]:
+    """Tickets with an unresolved blocker — a blocked-by/blocking edge whose
+    blocking ticket is not yet ``done`` (two batched queries, no N+1)."""
+    if not ticket_ids:
+        return set()
+    ids = set(ticket_ids)
+    statement = select(TicketRelationship).where(
+        col(TicketRelationship.type).in_(("blocking", "blocked-by")),
+        col(TicketRelationship.from_id).in_(ids) | col(TicketRelationship.to_id).in_(ids),
+    )
+    # (blocked ticket in this list, the ticket blocking it)
+    pairs: list[tuple[str, str]] = []
+    blocker_ids: set[str] = set()
+    for rel in session.exec(statement).all():
+        if rel.type == "blocking" and rel.to_id in ids:
+            pairs.append((rel.to_id, rel.from_id))
+            blocker_ids.add(rel.from_id)
+        elif rel.type == "blocked-by" and rel.from_id in ids:
+            pairs.append((rel.from_id, rel.to_id))
+            blocker_ids.add(rel.to_id)
+    if not blocker_ids:
+        return set()
+    statuses = dict(
+        session.exec(select(Ticket.id, Ticket.status).where(col(Ticket.id).in_(blocker_ids))).all()
+    )
+    return {blocked for blocked, blocker in pairs if statuses.get(blocker) != "done"}
+
+
 def _recommended_next(row: Ticket, open_parents: set[str]) -> list[str]:
     if not lifecycle.is_stage(row.lifecycle_stage):
         return []  # legacy row predating the locked taxonomy (fail-soft, MOD-20)
@@ -213,18 +284,25 @@ def _recommended_next(row: Ticket, open_parents: set[str]) -> list[str]:
 
 
 def tickets_out(session: Session, rows: list[Ticket]) -> list[TicketOut]:
-    """Decorate ticket rows with sync + proposal badges and the recommended
-    next stages (three batched queries, MOD-11 + MOD-20)."""
+    """Decorate ticket rows with sync + proposal badges, the recommended next
+    stages, and the E12 relation badges — all via batched queries, no N+1
+    (MOD-11 + MOD-20 + MOD-03)."""
     ids = [row.id for row in rows]
     drafts = _draft_ticket_ids(session, ids)
     counts = _pending_proposal_counts(session, ids)
     open_parents = _open_subticket_parents(session, ids)
+    subtickets = _subticket_counts(session, ids)
+    relationships = _relationship_counts(session, ids)
+    blocked = _blocked_ids(session, ids)
     return [
         TicketOut.from_row(
             row,
             sync_state="draft" if row.id in drafts else "committed",
             pending_proposals=counts.get(row.id, 0),
             recommended_next_stages=_recommended_next(row, open_parents),
+            subticket_count=subtickets.get(row.id, 0),
+            relationship_count=relationships.get(row.id, 0),
+            blocked=row.id in blocked,
         )
         for row in rows
     ]
@@ -306,6 +384,39 @@ class LifecycleStageOut(BaseModel):
     purpose: str
     containers: list[str]
     order: int
+
+
+class RelationOut(BaseModel):
+    """One typed ticket relationship (E12-T3), seen from a ticket's side.
+
+    ``direction`` is relative to the ticket in the request path: ``outgoing``
+    when it is the ``from`` end (e.g. it *blocks* the other), ``incoming`` when
+    it is the ``to`` end (e.g. it *is blocked by* the other). The raw stored
+    edge (``from_id``/``to_id``/``type``) is always one of the five real types —
+    no inverse pseudo-type is invented for the view.
+    """
+
+    id: str
+    from_id: str
+    to_id: str
+    type: str
+    direction: str
+    created_by: str | None
+    created_at: datetime
+
+    @classmethod
+    def from_row(cls, row: TicketRelationship, *, ticket_id: str) -> RelationOut:
+        return cls.model_validate(
+            {
+                **row.model_dump(),
+                "direction": "outgoing" if row.from_id == ticket_id else "incoming",
+            }
+        )
+
+
+class RelationIn(BaseModel):
+    to_id: str
+    type: str
 
 
 # ------------------------------------------------------------- error mapping
@@ -395,10 +506,16 @@ def list_tickets(
     assignee: str | None = None,
     label: str | None = None,
     stage: str | None = None,
+    parent: str | None = None,
 ) -> list[TicketOut]:
     with Session(engine) as session:
         rows = _service(session, actor).list_tickets(
-            project_id=project, status=status, assignee=assignee, label=label, stage=stage
+            project_id=project,
+            status=status,
+            assignee=assignee,
+            label=label,
+            stage=stage,
+            parent=parent,
         )
         return tickets_out(session, rows)
 
@@ -471,6 +588,48 @@ def add_comment(
         except (TrackerNotFoundError, TrackerValidationError) as exc:
             raise _domain(exc) from exc
         return CommentOut.from_row(row)
+
+
+# ----------------------------------------------------- relations (E12-T3)
+
+
+@router.get("/tickets/{ticket_id}/relations", response_model=list[RelationOut])
+def list_relations(ticket_id: str, actor: ReaderActor, engine: EngineDep) -> list[RelationOut]:
+    """Every typed relationship touching the ticket, from either end."""
+    with Session(engine) as session:
+        try:
+            rows = _service(session, actor).relations_for(ticket_id)
+        except TrackerNotFoundError as exc:
+            raise _domain(exc) from exc
+        return [RelationOut.from_row(row, ticket_id=ticket_id) for row in rows]
+
+
+@router.post("/tickets/{ticket_id}/relations", response_model=RelationOut, status_code=201)
+def create_relation(
+    ticket_id: str, body: RelationIn, actor: WriterActor, engine: EngineDep
+) -> RelationOut:
+    with Session(engine) as session:
+        try:
+            row = _service(session, actor).add_relation(ticket_id, body.to_id, body.type)
+        except (TrackerNotFoundError, TrackerValidationError) as exc:
+            raise _domain(exc) from exc
+        return RelationOut.from_row(row, ticket_id=ticket_id)
+
+
+@router.delete("/tickets/{ticket_id}/relations/{relationship_id}", status_code=204)
+def delete_relation(
+    ticket_id: str, relationship_id: str, actor: WriterActor, engine: EngineDep
+) -> None:
+    with Session(engine) as session:
+        try:
+            service = _service(session, actor)
+            # Scope the delete to the path ticket: the relationship must touch
+            # it, so a mismatched id is a 404 rather than a cross-ticket delete.
+            if not any(r.id == relationship_id for r in service.relations_for(ticket_id)):
+                raise TrackerNotFoundError("ticket_relationships", relationship_id)
+            service.remove_relation(relationship_id)
+        except TrackerNotFoundError as exc:
+            raise _domain(exc) from exc
 
 
 # ---------------------------------------------------------- lifecycle (MOD-20)
