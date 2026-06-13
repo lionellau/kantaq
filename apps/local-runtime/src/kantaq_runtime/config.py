@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     # unsigned write fails closed locally; the backend then rejects unsigned
     # or grant-less events past the cutover revision (E24-T5).
     sign_events: bool = False
+    # The cutover revision (D-15): committed events at or below it are
+    # pre-cutover, unsigned-immutable history that verified ingestion passes
+    # through; everything above it must verify. A fresh workspace cuts over at
+    # 0 (sign from the start); an existing one at its current backend head.
+    sign_cutover_rev: int = 0
 
 
 def get_settings() -> Settings:

@@ -28,9 +28,13 @@ from typing import TYPE_CHECKING
 from kantaq import __version__
 
 if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
+
     from kantaq_backend_supabase import SupabaseAuth
     from kantaq_core.identity import Keychain
     from kantaq_runtime.config import Settings
+    from kantaq_sync_engine import BackendPort, EventVerification
+    from kantaq_sync_engine.events import Event
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 3939
@@ -431,6 +435,7 @@ def _sync_login(auth: SupabaseAuth, keychain: Keychain, email: str) -> int:
 def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) -> int:
     from kantaq_backend_supabase import SupabaseSyncBackend, lookup_active_members
     from kantaq_db.session import get_engine
+    from kantaq_runtime.config import get_settings
     from kantaq_sync_engine import SyncEngine
 
     email = keychain.get(SUPABASE_EMAIL_KEY)
@@ -479,14 +484,20 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
         return 1
 
     me = mine[0]
-    backend = SupabaseSyncBackend(
-        url,
-        anon_key,
-        workspace_id=me.workspace_id,
-        access_token=current_token,
-        refresh=refresh_session,
+    db = get_engine(_db_url())
+    backend = _verifying_backend(
+        SupabaseSyncBackend(
+            url,
+            anon_key,
+            workspace_id=me.workspace_id,
+            access_token=current_token,
+            refresh=refresh_session,
+        ),
+        db=db,
+        actor_id=me.id,
+        settings=get_settings(),
     )
-    engine = SyncEngine(get_engine(_db_url()), backend, actor_id=me.id)
+    engine = SyncEngine(db, backend, actor_id=me.id)
     pushed = engine.push()
     pulled = engine.pull()
     print(
@@ -495,6 +506,55 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
         f"{pulled.own_reconciled} own reconciled · cursor {pulled.cursor}"
     )
     return 0
+
+
+def _verifying_backend(
+    inner: BackendPort, *, db: Engine, actor_id: str, settings: Settings
+) -> BackendPort:
+    """Wrap the sync backend so events verify against the local trust store
+    (E24-T5): signed under a known device's grant, or dropped-and-audited
+    rather than folded. A no-op until the workspace cuts over (``sign_events``);
+    events at or below ``sign_cutover_rev`` are unsigned-immutable history.
+
+    v0.1 limit (DEBT-15): the puller verifies against the grants + device roots
+    it holds locally. Own events always verify; a peer's events verify once the
+    team's device roots (the team manifest) and that peer's grant are present
+    locally — full automatic distribution rides device/grant sync (v0.2).
+    """
+    from datetime import UTC, datetime
+
+    from sqlmodel import Session
+
+    from kantaq_core import audit
+    from kantaq_core.identity import local_grant_index, verification_roots
+    from kantaq_sync_engine import VerifyContext, VerifyingBackend
+
+    def context() -> VerifyContext:
+        with Session(db) as session:
+            grants, revoked = local_grant_index(session)
+            return VerifyContext(
+                roots=verification_roots(session),
+                grants=grants,
+                now=int(datetime.now(UTC).timestamp()),
+                revoked_ids=revoked,
+                require_signature=settings.sign_events,
+            )
+
+    def on_deny(event: Event, verdict: EventVerification) -> None:
+        with Session(db) as session:
+            audit.write(
+                session,
+                actor_id=actor_id,
+                action=f"{event.collection}.sync_denied"[:64],
+                source="sync",
+                object_ref=f"{event.collection}/{event.entity_id}",
+                after={"code": verdict.code, "reason": verdict.reason, "event_id": event.event_id},
+            )
+            session.commit()
+
+    return VerifyingBackend(
+        inner, context=context, cutover_rev=settings.sign_cutover_rev, on_deny=on_deny
+    )
 
 
 def _sync_status(settings: Settings) -> int:
