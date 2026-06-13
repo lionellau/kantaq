@@ -56,6 +56,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/lifecycle/stages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lifecycle Stages
+         * @description The locked 9-stage taxonomy (E14), so UIs and agents render it
+         *     without hardcoding slugs, titles, or skill containers.
+         */
+        get: operations["lifecycle_stages_v1_lifecycle_stages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/agent-snippet": {
         parameters: {
             query?: never;
@@ -590,6 +611,22 @@ export interface components {
             token: string;
         };
         /**
+         * LifecycleStageOut
+         * @description One locked lifecycle stage (MOD-20): identity, labels, canonical order.
+         */
+        LifecycleStageOut: {
+            /** Containers */
+            containers: string[];
+            /** Order */
+            order: number;
+            /** Purpose */
+            purpose: string;
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+        };
+        /**
          * LinkedMemoryOut
          * @description One linked entry on a ticket: the link (reason) plus the entry
          *     (with provenance) — what the ticket page renders (E13-T3).
@@ -988,6 +1025,8 @@ export interface components {
             priority: string;
             /** Project Id */
             project_id: string;
+            /** Recommended Next Stages */
+            recommended_next_stages: string[];
             /** Status */
             status: string;
             /** Sync State */
@@ -1158,6 +1197,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lifecycle_stages_v1_lifecycle_stages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LifecycleStageOut"][];
                 };
             };
         };

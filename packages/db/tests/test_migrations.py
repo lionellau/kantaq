@@ -143,3 +143,46 @@ def test_downgrade_with_data_present(tmp_path: Path) -> None:
         survivor = session.get(Member, member_id)
         assert survivor is not None
         assert survivor.status == "active"  # server_default backfilled the row
+
+
+def test_lifecycle_stage_normalized_to_taxonomy(tmp_path: Path) -> None:
+    """0008 rewrites pre-taxonomy stage slugs to ``intake`` (MOD-20 / E14).
+
+    Data-only and one-way: rows written under v0.0.5's any-slug rule join the
+    locked taxonomy; canonical slugs are untouched; the downgrade restores the
+    version row (the old slugs are gone by design).
+    """
+    from sqlmodel import Session
+
+    from kantaq_db.models import Project, Ticket, Workspace
+
+    url = _url(tmp_path)
+    engine = get_engine(url)
+    migrations.upgrade(url, "0007")  # the schema before the taxonomy lock
+
+    with Session(engine) as session:
+        workspace = Workspace(name="ws")
+        session.add(workspace)
+        session.flush()
+        project = Project(workspace_id=workspace.id, name="p")
+        session.add(project)
+        session.flush()
+        legacy = Ticket(project_id=project.id, title="legacy", lifecycle_stage="build")
+        canonical = Ticket(project_id=project.id, title="canonical", lifecycle_stage="qa")
+        session.add(legacy)
+        session.add(canonical)
+        session.commit()
+        legacy_id, canonical_id = legacy.id, canonical.id
+
+    migrations.upgrade(url)
+    assert schema_version.verify(engine).ok
+    with Session(engine) as session:
+        normalized = session.get(Ticket, legacy_id)
+        untouched = session.get(Ticket, canonical_id)
+        assert normalized is not None and normalized.lifecycle_stage == "intake"
+        assert untouched is not None and untouched.lifecycle_stage == "qa"
+
+    migrations.downgrade(url, "0007")
+    assert schema_version.verify(engine, expected=7).ok
+    migrations.upgrade(url)
+    assert schema_version.verify(engine).ok

@@ -68,6 +68,8 @@ class Ticket:
     status: str = "todo"
     priority: str = "medium"
     assignee: str | None = None
+    # MOD-20 (E14): the taxonomy's entry stage; override per test.
+    lifecycle_stage: str = "intake"
     privacy_class: PrivacyClass = field(default_factory=PrivacyClass)
 
 

@@ -135,7 +135,7 @@ def test_project_round_trip_and_default_workspace(client: TestClient, owner_toke
 def test_ticket_crud_filters_and_activity(client: TestClient, owner_token: str) -> None:
     project = _create_project(client, owner_token)
     ticket = _create_ticket(
-        client, owner_token, project["id"], labels=["bug"], lifecycle_stage="build"
+        client, owner_token, project["id"], labels=["bug"], lifecycle_stage="implementation"
     )
     _create_ticket(client, owner_token, project["id"], title="Other", status="done")
 
@@ -148,7 +148,12 @@ def test_ticket_crud_filters_and_activity(client: TestClient, owner_token: str) 
 
     by_filter = client.get(
         "/v1/tickets",
-        params={"project": project["id"], "status": "doing", "label": "bug", "stage": "build"},
+        params={
+            "project": project["id"],
+            "status": "doing",
+            "label": "bug",
+            "stage": "implementation",
+        },
         headers=_bearer(owner_token),
     )
     assert [t["id"] for t in by_filter.json()] == [ticket["id"]]
@@ -194,6 +199,92 @@ def test_validation_and_missing_map_to_422_and_404(client: TestClient, owner_tok
         headers=_bearer(owner_token),
     )
     assert orphan.status_code == 404
+
+
+# --------------------------------------------------------- lifecycle (MOD-20)
+
+
+def test_lifecycle_stages_endpoint_serves_the_locked_taxonomy(
+    client: TestClient, owner_token: str, viewer_token: str
+) -> None:
+    assert client.get("/v1/lifecycle/stages").status_code == 401  # no token
+
+    response = client.get("/v1/lifecycle/stages", headers=_bearer(viewer_token))
+    assert response.status_code == 200, response.text
+    stages = response.json()
+    assert [s["slug"] for s in stages] == [
+        "intake",
+        "discovery",
+        "planning",
+        "design",
+        "implementation",
+        "review",
+        "qa",
+        "release",
+        "learn",
+    ]
+    assert [s["order"] for s in stages] == list(range(9))
+    qa = next(s for s in stages if s["slug"] == "qa")
+    assert qa["title"] == "QA"
+    assert qa["containers"] == ["browser-qa", "regression-testing", "bug-triage"]
+    assert all(s["purpose"] for s in stages)
+
+
+def test_stage_transition_round_trip_with_activity_and_validation(
+    client: TestClient, owner_token: str
+) -> None:
+    project = _create_project(client, owner_token)
+    ticket = _create_ticket(client, owner_token, project["id"])
+    assert ticket["lifecycle_stage"] == "intake"
+    assert ticket["recommended_next_stages"] == ["discovery"]
+
+    moved = client.patch(
+        f"/v1/tickets/{ticket['id']}",
+        json={"lifecycle_stage": "review"},  # jumps are valid: order is advisory
+        headers=_bearer(owner_token),
+    )
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["lifecycle_stage"] == "review"
+    assert moved.json()["recommended_next_stages"] == ["qa", "implementation"]
+
+    bogus = client.patch(
+        f"/v1/tickets/{ticket['id']}",
+        json={"lifecycle_stage": "build"},
+        headers=_bearer(owner_token),
+    )
+    assert bogus.status_code == 422
+    assert "unknown lifecycle stage" in bogus.json()["detail"]
+
+    activity = client.get(
+        f"/v1/tickets/{ticket['id']}/activity", headers=_bearer(owner_token)
+    ).json()
+    transition = activity[-1]
+    assert transition["action"] == "ticket.update"
+    assert transition["before"]["lifecycle_stage"] == "intake"
+    assert transition["after"]["lifecycle_stage"] == "review"
+
+
+def test_recommended_next_gates_release_behind_open_subtickets(
+    client: TestClient, owner_token: str
+) -> None:
+    project = _create_project(client, owner_token)
+    parent = _create_ticket(client, owner_token, project["id"], lifecycle_stage="qa")
+    child = _create_ticket(
+        client, owner_token, project["id"], title="Child", parent_id=parent["id"]
+    )
+
+    listed = client.get(
+        "/v1/tickets", params={"project": project["id"]}, headers=_bearer(owner_token)
+    ).json()
+    by_id = {t["id"]: t for t in listed}
+    assert by_id[parent["id"]]["recommended_next_stages"] == ["implementation"]
+
+    done = client.patch(
+        f"/v1/tickets/{child['id']}", json={"status": "done"}, headers=_bearer(owner_token)
+    )
+    assert done.status_code == 200
+    refreshed = client.get(f"/v1/tickets/{parent['id']}", headers=_bearer(owner_token)).json()
+    assert refreshed["recommended_next_stages"] == ["release", "implementation"]
 
 
 # ------------------------------------------------------------- attachments

@@ -14,7 +14,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from sqlmodel import Session, SQLModel, create_engine
 
-from kantaq_core import audit
+from kantaq_core import audit, lifecycle
 from kantaq_core.tracker import RecordingSink, TrackerService, fold_entity
 from kantaq_db.models import Workspace
 from kantaq_test_harness.clock import FakeClock
@@ -34,7 +34,7 @@ _mutation = st.fixed_dictionaries(
         "priority": st.sampled_from(["low", "medium", "high", "urgent"]),
         "labels": st.lists(st.sampled_from(["bug", "ux", "infra", "docs"]), max_size=4),
         "description": st.text(max_size=80),
-        "lifecycle_stage": st.sampled_from(["intake", "design", "build", "review", "done"]),
+        "lifecycle_stage": st.sampled_from(lifecycle.STAGE_SLUGS),
         "acceptance_criteria": st.text(max_size=60),
     },
 ).filter(lambda d: d)

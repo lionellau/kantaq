@@ -19,14 +19,13 @@ Timestamps are injectable (``now=``) so tests drive them with FakeClock.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, TypeVar
 
 from sqlmodel import Session, select
 
-from kantaq_core import audit
+from kantaq_core import audit, lifecycle
 from kantaq_core.tracker.blobs import AttachmentRef
 from kantaq_core.tracker.events import DomainEvent, EventSink, Op
 from kantaq_db.models import AuditEvent, Comment, Member, Project, Ticket, Workspace
@@ -35,10 +34,6 @@ from kantaq_db.models import AuditEvent, Comment, Member, Project, Ticket, Works
 TICKET_STATUSES: tuple[str, ...] = ("todo", "doing", "done")
 TICKET_PRIORITIES: tuple[str, ...] = ("low", "medium", "high", "urgent")
 PROJECT_STATUSES: tuple[str, ...] = ("active", "paused", "done")
-
-# Lifecycle stages are MOD-20's domain (the 9-stage taxonomy lands v0.1); in
-# v0.0.5 a stage is a short slug the UI can render, nothing more.
-_STAGE_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
 
 _TITLE_MAX = 500
 _LABEL_MAX = 64
@@ -312,6 +307,30 @@ class TrackerService:
             rows = [t for t in rows if label in t.labels]
         return sorted(rows, key=lambda t: t.id, reverse=True)
 
+    # ----------------------------------------------------------- lifecycle (MOD-20)
+
+    def recommended_next(self, ticket: Ticket) -> list[str]:
+        """The recommended next stages for the ticket (FR-E14-2).
+
+        The rule itself is ``kantaq_core.lifecycle.recommend_next``; this glue
+        supplies the relations input (open sub-tickets, v0.1's parent/sub
+        relation). A legacy row whose stage predates the locked taxonomy
+        recommends nothing rather than erroring a list endpoint — the strict
+        check lives at the write path.
+        """
+        if not lifecycle.is_stage(ticket.lifecycle_stage):
+            return []
+        return list(
+            lifecycle.recommend_next(
+                ticket.lifecycle_stage,
+                has_open_subtickets=self._has_open_subtickets(ticket.id),
+            )
+        )
+
+    def _has_open_subtickets(self, ticket_id: str) -> bool:
+        statement = select(Ticket).where(Ticket.parent_id == ticket_id, Ticket.status != "done")
+        return self._session.exec(statement).first() is not None
+
     # ---------------------------------------------------------------- comments
 
     def add_comment(self, ticket_id: str, body: str) -> Comment:
@@ -464,9 +483,12 @@ class TrackerService:
             out["labels"] = cleaned
         if "description" in out and len(str(out["description"])) > _BODY_MAX:
             raise TrackerValidationError(f"description exceeds {_BODY_MAX} characters")
-        if "lifecycle_stage" in out and not _STAGE_PATTERN.fullmatch(str(out["lifecycle_stage"])):
+        if "lifecycle_stage" in out and not lifecycle.is_stage(str(out["lifecycle_stage"])):
+            # MOD-20 locks the taxonomy in v0.1 (E14); migration 0008
+            # normalized pre-taxonomy rows, so only the 9 slugs are written.
             raise TrackerValidationError(
-                "lifecycle_stage must be a short slug ([a-z0-9_-], max 32 chars)"
+                f"unknown lifecycle stage {out['lifecycle_stage']!r}; "
+                f"expected one of {lifecycle.STAGE_SLUGS}"
             )
         if out.get("assignee") is not None:
             self._require_member(out["assignee"])

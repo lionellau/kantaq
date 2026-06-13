@@ -49,6 +49,7 @@ export function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
     due_date: null,
     acceptance_criteria: "",
     lifecycle_stage: "intake",
+    recommended_next_stages: ["discovery"],
     parent_id: null,
     created_by: "member-1",
     attachments: [],
