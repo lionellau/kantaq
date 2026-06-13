@@ -28,8 +28,11 @@ from kantaq_core.identity import (
     TokenVerifier,
     VerifiedActor,
     can,
+    device_private_key,
+    ensure_member_grant,
 )
 from kantaq_runtime.config import Settings
+from kantaq_sync_engine import EventSigner
 
 RUNTIME_TOKEN_KEY = "runtime-token"
 
@@ -138,6 +141,39 @@ def require_actor(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return actor
+
+
+def get_event_signer(
+    request: Request,
+    actor: Annotated[VerifiedActor, Depends(require_actor)],
+) -> EventSigner | None:
+    """The device signer for this actor's writes (E04-T4), or None pre-cutover.
+
+    ``None`` when ``sign_events`` is off — the signing cutover has not happened,
+    so events stay unsigned-but-immutable. When on, returns the device seed plus
+    the actor's live self-grant id (ensured here in its own transaction, so the
+    grant commits independently of the request's write). Fails closed with 503
+    if signing is on but this runtime holds no device key: it never silently
+    writes an unsigned event past the cutover.
+    """
+    settings: Settings = request.app.state.settings
+    if not settings.sign_events:
+        return None
+    keychain = keychain_for(settings)
+    seed = device_private_key(keychain)
+    if seed is None:
+        raise HTTPException(
+            status_code=503,
+            detail="signing is enabled but this runtime has no device key (boot first)",
+        )
+    from sqlmodel import Session
+
+    engine = get_engine_dep(request)
+    with Session(engine) as session:
+        grant = ensure_member_grant(session, keychain, actor.member_id)
+        session.commit()
+        policy_ref = grant.id
+    return EventSigner(private_key=seed, policy_ref=policy_ref)
 
 
 class require_action:  # noqa: N801 - reads as a dependency, not a class

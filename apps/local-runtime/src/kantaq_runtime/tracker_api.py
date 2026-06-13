@@ -44,15 +44,18 @@ from kantaq_db.models import (
     TicketRelationship,
     Workspace,
 )
-from kantaq_runtime.auth import get_engine_dep, require_action
+from kantaq_runtime.auth import get_engine_dep, get_event_signer, require_action
 from kantaq_runtime.config import Settings
-from kantaq_sync_engine import EventLogSink
+from kantaq_sync_engine import EventLogSink, EventSigner
 
 router = APIRouter(prefix="/v1", tags=["tracker"])
 
 EngineDep = Annotated[Engine, Depends(get_engine_dep)]
 ReaderActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_read))]
 WriterActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_write))]
+# Resolved only on write routes (it ensures the member's self-grant); reads
+# never carry it, so a GET never triggers a grant write (E04-T4).
+SignerDep = Annotated[EventSigner | None, Depends(get_event_signer)]
 
 
 def blob_store_for(settings: Settings) -> LocalBlobStore:
@@ -60,11 +63,15 @@ def blob_store_for(settings: Settings) -> LocalBlobStore:
     return LocalBlobStore(Path(settings.local_db_path).parent / "blobs")
 
 
-def _service(session: Session, actor: VerifiedActor) -> TrackerService:
+def _service(
+    session: Session, actor: VerifiedActor, signer: EventSigner | None = None
+) -> TrackerService:
     # The sink closes the MOD-03 rule "all writes go through the sync engine
     # as Events": entity row, audit row, and event-log row share one
-    # transaction, attributed to the authenticated member (E04).
-    sink = EventLogSink(session, actor.member_id)
+    # transaction, attributed to the authenticated member (E04). Post-cutover
+    # (E04-T4) the signer makes each emitted event Ed25519-signed; reads pass
+    # no signer (None) so a GET never signs or ensures a grant.
+    sink = EventLogSink(session, actor.member_id, signer=signer)
     return TrackerService(session, actor_id=actor.member_id, source="app", sink=sink)
 
 
@@ -441,11 +448,13 @@ def list_projects(
 
 
 @router.post("/projects", response_model=ProjectOut, status_code=201)
-def create_project(body: ProjectIn, actor: WriterActor, engine: EngineDep) -> ProjectOut:
+def create_project(
+    body: ProjectIn, actor: WriterActor, engine: EngineDep, signer: SignerDep
+) -> ProjectOut:
     with Session(engine) as session:
         workspace_id = body.workspace_id or _default_workspace(session)
         try:
-            row = _service(session, actor).create_project(
+            row = _service(session, actor, signer).create_project(
                 workspace_id=workspace_id,
                 name=body.name,
                 goal=body.goal,
@@ -470,11 +479,15 @@ def get_project(project_id: str, actor: ReaderActor, engine: EngineDep) -> Proje
 
 @router.patch("/projects/{project_id}", response_model=ProjectOut)
 def update_project(
-    project_id: str, body: ProjectPatch, actor: WriterActor, engine: EngineDep
+    project_id: str,
+    body: ProjectPatch,
+    actor: WriterActor,
+    engine: EngineDep,
+    signer: SignerDep,
 ) -> ProjectOut:
     with Session(engine) as session:
         try:
-            row = _service(session, actor).update_project(
+            row = _service(session, actor, signer).update_project(
                 project_id, body.model_dump(exclude_unset=True)
             )
         except (TrackerNotFoundError, TrackerValidationError) as exc:
@@ -521,10 +534,12 @@ def list_tickets(
 
 
 @router.post("/tickets", response_model=TicketOut, status_code=201)
-def create_ticket(body: TicketIn, actor: WriterActor, engine: EngineDep) -> TicketOut:
+def create_ticket(
+    body: TicketIn, actor: WriterActor, engine: EngineDep, signer: SignerDep
+) -> TicketOut:
     with Session(engine) as session:
         try:
-            row = _service(session, actor).create_ticket(
+            row = _service(session, actor, signer).create_ticket(
                 project_id=body.project_id,
                 title=body.title,
                 description=body.description,
@@ -553,11 +568,15 @@ def get_ticket(ticket_id: str, actor: ReaderActor, engine: EngineDep) -> TicketO
 
 @router.patch("/tickets/{ticket_id}", response_model=TicketOut)
 def update_ticket(
-    ticket_id: str, body: TicketPatch, actor: WriterActor, engine: EngineDep
+    ticket_id: str,
+    body: TicketPatch,
+    actor: WriterActor,
+    engine: EngineDep,
+    signer: SignerDep,
 ) -> TicketOut:
     with Session(engine) as session:
         try:
-            row = _service(session, actor).update_ticket(
+            row = _service(session, actor, signer).update_ticket(
                 ticket_id, body.model_dump(exclude_unset=True)
             )
         except (TrackerNotFoundError, TrackerValidationError) as exc:
@@ -580,11 +599,15 @@ def list_comments(ticket_id: str, actor: ReaderActor, engine: EngineDep) -> list
 
 @router.post("/tickets/{ticket_id}/comments", response_model=CommentOut, status_code=201)
 def add_comment(
-    ticket_id: str, body: CommentIn, actor: WriterActor, engine: EngineDep
+    ticket_id: str,
+    body: CommentIn,
+    actor: WriterActor,
+    engine: EngineDep,
+    signer: SignerDep,
 ) -> CommentOut:
     with Session(engine) as session:
         try:
-            row = _service(session, actor).add_comment(ticket_id, body.body)
+            row = _service(session, actor, signer).add_comment(ticket_id, body.body)
         except (TrackerNotFoundError, TrackerValidationError) as exc:
             raise _domain(exc) from exc
         return CommentOut.from_row(row)
@@ -606,11 +629,15 @@ def list_relations(ticket_id: str, actor: ReaderActor, engine: EngineDep) -> lis
 
 @router.post("/tickets/{ticket_id}/relations", response_model=RelationOut, status_code=201)
 def create_relation(
-    ticket_id: str, body: RelationIn, actor: WriterActor, engine: EngineDep
+    ticket_id: str,
+    body: RelationIn,
+    actor: WriterActor,
+    engine: EngineDep,
+    signer: SignerDep,
 ) -> RelationOut:
     with Session(engine) as session:
         try:
-            row = _service(session, actor).add_relation(ticket_id, body.to_id, body.type)
+            row = _service(session, actor, signer).add_relation(ticket_id, body.to_id, body.type)
         except (TrackerNotFoundError, TrackerValidationError) as exc:
             raise _domain(exc) from exc
         return RelationOut.from_row(row, ticket_id=ticket_id)
@@ -618,11 +645,15 @@ def create_relation(
 
 @router.delete("/tickets/{ticket_id}/relations/{relationship_id}", status_code=204)
 def delete_relation(
-    ticket_id: str, relationship_id: str, actor: WriterActor, engine: EngineDep
+    ticket_id: str,
+    relationship_id: str,
+    actor: WriterActor,
+    engine: EngineDep,
+    signer: SignerDep,
 ) -> None:
     with Session(engine) as session:
         try:
-            service = _service(session, actor)
+            service = _service(session, actor, signer)
             # Scope the delete to the path ticket: the relationship must touch
             # it, so a mismatched id is a 404 rather than a cross-ticket delete.
             if not any(r.id == relationship_id for r in service.relations_for(ticket_id)):
@@ -677,6 +708,7 @@ def upload_attachment(
     actor: WriterActor,
     engine: EngineDep,
     request: Request,
+    signer: SignerDep,
 ) -> TicketOut:
     # Read one byte past the cap: a larger upload 413s without buffering it all.
     data = file.file.read(MAX_ATTACHMENT_BYTES + 1)
@@ -692,7 +724,7 @@ def upload_attachment(
     )
     with Session(engine) as session:
         try:
-            row = _service(session, actor).add_attachment(ticket_id, ref)
+            row = _service(session, actor, signer).add_attachment(ticket_id, ref)
         except TrackerNotFoundError as exc:
             raise _domain(exc) from exc
         return ticket_out(session, row)

@@ -29,20 +29,26 @@ from kantaq_core.memory import (
     domain_visibility,
 )
 from kantaq_db.models import MemoryEntry, MemoryLink
-from kantaq_runtime.auth import get_engine_dep, require_action
-from kantaq_sync_engine import EventLogSink
+from kantaq_runtime.auth import get_engine_dep, get_event_signer, require_action
+from kantaq_sync_engine import EventLogSink, EventSigner
 
 router = APIRouter(prefix="/v1", tags=["memory"])
 
 EngineDep = Annotated[Engine, Depends(get_engine_dep)]
 ReaderActor = Annotated[VerifiedActor, Depends(require_action(Action.memory_read))]
 WriterActor = Annotated[VerifiedActor, Depends(require_action(Action.memory_write))]
+# Write routes only (it ensures the member's self-grant), so a read never signs.
+SignerDep = Annotated[EventSigner | None, Depends(get_event_signer)]
 
 
-def _service(session: Session, actor: VerifiedActor) -> MemoryService:
+def _service(
+    session: Session, actor: VerifiedActor, signer: EventSigner | None = None
+) -> MemoryService:
     # Same seam as the tracker API: entity row, audit row, and (team-only)
-    # event-log row share one transaction, attributed to the member (E04).
-    sink = EventLogSink(session, actor.member_id)
+    # event-log row share one transaction, attributed to the member (E04). The
+    # signer (E04-T4) signs each emitted event post-cutover; a ``visibility=local``
+    # write produces no event, so it is simply never signed.
+    sink = EventLogSink(session, actor.member_id, signer=signer)
     return MemoryService(session, actor_id=actor.member_id, source="app", sink=sink)
 
 
@@ -170,10 +176,12 @@ def list_memory(
 
 
 @router.post("/memory", response_model=MemoryOut, status_code=201)
-def create_memory(body: MemoryIn, actor: WriterActor, engine: EngineDep) -> MemoryOut:
+def create_memory(
+    body: MemoryIn, actor: WriterActor, engine: EngineDep, signer: SignerDep
+) -> MemoryOut:
     with Session(engine) as session:
         try:
-            row = _service(session, actor).create_entry(
+            row = _service(session, actor, signer).create_entry(
                 title=body.title,
                 body=body.body,
                 type=body.type,
@@ -201,11 +209,15 @@ def get_memory(memory_id: str, actor: ReaderActor, engine: EngineDep) -> MemoryO
 
 @router.patch("/memory/{memory_id}", response_model=MemoryOut)
 def update_memory(
-    memory_id: str, body: MemoryPatch, actor: WriterActor, engine: EngineDep
+    memory_id: str,
+    body: MemoryPatch,
+    actor: WriterActor,
+    engine: EngineDep,
+    signer: SignerDep,
 ) -> MemoryOut:
     with Session(engine) as session:
         try:
-            row = _service(session, actor).update_entry(
+            row = _service(session, actor, signer).update_entry(
                 memory_id, body.model_dump(exclude_unset=True)
             )
         except (MemoryNotFoundError, MemoryValidationError) as exc:
@@ -214,10 +226,10 @@ def update_memory(
 
 
 @router.delete("/memory/{memory_id}", status_code=204)
-def delete_memory(memory_id: str, actor: WriterActor, engine: EngineDep) -> None:
+def delete_memory(memory_id: str, actor: WriterActor, engine: EngineDep, signer: SignerDep) -> None:
     with Session(engine) as session:
         try:
-            _service(session, actor).delete_entry(memory_id)
+            _service(session, actor, signer).delete_entry(memory_id)
         except MemoryNotFoundError as exc:
             raise _domain(exc) from exc
 
@@ -227,11 +239,15 @@ def delete_memory(memory_id: str, actor: WriterActor, engine: EngineDep) -> None
 
 @router.post("/memory/{memory_id}/link", response_model=MemoryLinkOut, status_code=201)
 def link_memory(
-    memory_id: str, body: MemoryLinkIn, actor: WriterActor, engine: EngineDep
+    memory_id: str,
+    body: MemoryLinkIn,
+    actor: WriterActor,
+    engine: EngineDep,
+    signer: SignerDep,
 ) -> MemoryLinkOut:
     with Session(engine) as session:
         try:
-            row = _service(session, actor).link(memory_id, body.ticket_id, body.reason)
+            row = _service(session, actor, signer).link(memory_id, body.ticket_id, body.reason)
         except (MemoryNotFoundError, MemoryValidationError) as exc:
             raise _domain(exc) from exc
         return MemoryLinkOut.from_row(row)
