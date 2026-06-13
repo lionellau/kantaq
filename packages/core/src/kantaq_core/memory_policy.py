@@ -98,13 +98,23 @@ class MemoryPolicy:
 
 class MemoryReadable(Protocol):
     """The fields :func:`filter` reads — satisfied by ``MemoryEntry`` and the
-    eval-fixture rows, so the policy is testable without a database session."""
+    eval-fixture rows, so the policy is testable without a database session.
 
-    id: str
-    space: str
-    visibility: str
-    review_status: str
-    expires_at: datetime | None
+    Declared **read-only** (properties, not settable attributes): the policy only
+    reads these fields, and a read-only protocol is satisfied by both the mutable
+    ORM ``MemoryEntry`` and the frozen ``EvalMemory`` fixture row (a frozen
+    dataclass cannot satisfy a settable-attribute protocol)."""
+
+    @property
+    def id(self) -> str: ...
+    @property
+    def space(self) -> str: ...
+    @property
+    def visibility(self) -> str: ...
+    @property
+    def review_status(self) -> str: ...
+    @property
+    def expires_at(self) -> datetime | None: ...
 
 
 @dataclass(frozen=True)

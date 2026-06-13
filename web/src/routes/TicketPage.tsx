@@ -3,7 +3,8 @@
  *
  * Three regions (FR-E19-3): the header (title + field chips), the body
  * (markdown description, the combined comments-and-activity timeline, the
- * attachments), and the right rail (sync badge, pending proposals).
+ * attachments), and the right rail (sync badge, pending proposals, and — behind
+ * the VITE_RECO_PANEL flag — the E17-T2 role/skill recommendation panel).
  *
  * The description is untrusted human text (PRD §15): react-markdown renders
  * it to React elements — no innerHTML anywhere, and raw HTML inside the
@@ -18,7 +19,9 @@ import { Link, useParams } from "react-router-dom";
 import { api, authFetch } from "../api/client";
 import type { Activity, Comment, LinkedMemory, Ticket } from "../api/types";
 import ProposalChip from "../components/ProposalChip";
+import RecoPanel from "../components/RecoPanel";
 import SyncBadge, { type SyncState } from "../components/SyncBadge";
+import { recoPanelEnabled } from "../lib/flags";
 import { fmtDateTime } from "../lib/format";
 import { useSession } from "../lib/session";
 import * as ui from "../lib/ui";
@@ -213,8 +216,9 @@ export default function TicketPage() {
 
       <aside
         aria-label="Ticket status rail"
-        style={{ width: 200, flexShrink: 0, display: "grid", gap: 12 }}
+        style={{ width: recoPanelEnabled() ? 260 : 200, flexShrink: 0, display: "grid", gap: 12 }}
       >
+        {recoPanelEnabled() && <RecoPanel ticketId={ticket.id} />}
         <div>
           <div style={ui.label}>Sync</div>
           <SyncBadge state={ticket.sync_state as SyncState} />

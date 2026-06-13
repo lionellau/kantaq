@@ -1,0 +1,144 @@
+{
+  "ticket": {
+    "id": "EVAL-15",
+    "title": "Auth session persistence: SRP sessions don't survive a browser reload",
+    "description": "Cognito SRP/OAuth auth works end-to-end, but sessions don't survive a full page reload or restart (tokens are in-memory). Persist sessions via a server-side session store so the session cookie resolves on reload.",
+    "lifecycle_stage": "implementation",
+    "status": "Done",
+    "labels": [
+      "Infrastructure",
+      "Backend"
+    ]
+  },
+  "candidate_memory": [
+    {
+      "id": "mem-auth-arch",
+      "linked": true,
+      "link_reason": "the auth stack being extended"
+    },
+    {
+      "id": "mem-session-store",
+      "linked": true,
+      "link_reason": "the session store this adds"
+    },
+    {
+      "id": "mem-dec-web-no-awssdk",
+      "linked": false
+    },
+    {
+      "id": "mem-conventions",
+      "linked": false
+    },
+    {
+      "id": "mem-cognito-reqs",
+      "linked": false
+    },
+    {
+      "id": "mem-memory-arch",
+      "linked": false
+    },
+    {
+      "id": "mem-rel-auth-shipped",
+      "linked": false
+    },
+    {
+      "id": "mem-alex-local-spike",
+      "linked": false
+    },
+    {
+      "id": "mem-security-policy",
+      "linked": false
+    }
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": [
+        "mem-auth-arch",
+        "mem-session-store",
+        "mem-dec-web-no-awssdk",
+        "mem-cognito-reqs"
+      ],
+      "must_exclude": [
+        "mem-conventions",
+        "mem-rel-auth-shipped",
+        "mem-alex-local-spike",
+        "mem-security-policy"
+      ],
+      "optional": [
+        "mem-memory-arch"
+      ],
+      "rationale": "code_agent keeps the in-scope codebase/decision/ticket context; release/workspace is out of scope, local notes are private; 'Memory tiers architecture' is in scope but tangential here (optional)."
+    },
+    "qa_agent": {
+      "must_include": [
+        "mem-auth-arch",
+        "mem-session-store",
+        "mem-dec-web-no-awssdk",
+        "mem-cognito-reqs"
+      ],
+      "must_exclude": [
+        "mem-conventions",
+        "mem-alex-local-spike",
+        "mem-security-policy"
+      ],
+      "optional": [
+        "mem-memory-arch",
+        "mem-rel-auth-shipped"
+      ],
+      "rationale": "qa_agent keeps the in-scope codebase/decision/ticket context; workspace is out of scope, local notes are private; 'Memory tiers architecture', 'Shipped a linked ticket (Cognito)' are in scope but tangential here (optional)."
+    },
+    "design_agent": {
+      "must_include": [
+        "mem-cognito-reqs",
+        "mem-security-policy"
+      ],
+      "must_exclude": [
+        "mem-auth-arch",
+        "mem-session-store",
+        "mem-memory-arch",
+        "mem-rel-auth-shipped",
+        "mem-alex-local-spike"
+      ],
+      "optional": [
+        "mem-dec-web-no-awssdk",
+        "mem-conventions"
+      ],
+      "rationale": "design_agent keeps the in-scope ticket/workspace context; codebase/release is out of scope, local notes are private; 'Decision: the web app never imports the AWS SDK', 'CONVENTIONS.md — input revalidation (Convention 9)' are in scope but tangential here (optional)."
+    },
+    "product_agent": {
+      "must_include": [
+        "mem-cognito-reqs",
+        "mem-rel-auth-shipped",
+        "mem-security-policy"
+      ],
+      "must_exclude": [
+        "mem-auth-arch",
+        "mem-session-store",
+        "mem-memory-arch",
+        "mem-alex-local-spike"
+      ],
+      "optional": [
+        "mem-conventions",
+        "mem-dec-web-no-awssdk"
+      ],
+      "rationale": "product_agent keeps the in-scope release/ticket/workspace context; codebase is out of scope, local notes are private; 'CONVENTIONS.md — input revalidation (Convention 9)', 'Decision: the web app never imports the AWS SDK' are in scope but tangential here (optional)."
+    },
+    "human_teammate": {
+      "must_include": [
+        "mem-auth-arch",
+        "mem-session-store",
+        "mem-dec-web-no-awssdk",
+        "mem-conventions",
+        "mem-cognito-reqs",
+        "mem-memory-arch",
+        "mem-rel-auth-shipped",
+        "mem-security-policy"
+      ],
+      "must_exclude": [
+        "mem-alex-local-spike"
+      ],
+      "optional": [],
+      "rationale": "Robin (the baseline owner) sees the current team entries; another actor's local note stays on its owner's device."
+    }
+  }
+}

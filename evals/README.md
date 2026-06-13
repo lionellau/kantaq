@@ -2,23 +2,23 @@
 
 Context-quality evaluation set (MOD-21, Epic E16) — the hand-graded guard on the
 role-aware context resolver (PRD §17.3). `kantaq eval` (also `make eval`) loads
-and validates these fixtures; the precision/recall run against the resolver lands
-with the resolver in Sprint 4.
+and validates these fixtures, **scores** the resolver against them
+(precision/recall over the 80 agent cells), and **fails on a drop over 5 points**
+from the recorded baseline (`baseline.json`) — the FR-E16-5 CI gate. Record a
+fresh baseline from a green tree with `kantaq eval --update-baseline`.
 
 ## Layout
 
 - **`fixtures/memory.json`** — the shared memory pool every ticket draws from, plus
   `baseline_owner` (the actor whose view the `human_teammate` column represents).
   Each entry carries the fields the resolver's policy reads: `space`, `visibility`,
-  `review_status`, `type`, `created_by`. The pool and tickets are **derived from the
-  real JobWinAI V1 Linear export** (`docs/reference/JobWinAI_V1_Linear_Tickets.xlsx`
-  in the project-docs repo) — real, messy tickets surface resolver bugs that synthetic
-  data misses (PRD §17.3). The dataset's owner has cleared it for use in these public
-  fixtures; bodies summarise real ticket descriptions and comments (real authors and
-  PR/commit refs kept), with signed upload URLs dropped (they are auth tokens, not
-  content). `visibility` (local/team) and `review_status` (stale/rejected) are kantaq
-  concepts assigned from real signals — e.g. the superseded `jobwinai.com` domain is
-  `stale`, the closed-and-replaced PR #124 is `rejected`, personal working notes are `local`.
+  `review_status`, `type`, `created_by`. The pool and tickets are **de-identified** —
+  derived from a real, messy Linear export (the kind that surfaces resolver bugs
+  synthetic data misses, PRD §17.3) with personal names, ticket IDs, product/domain
+  names, and PR/commit refs removed; the grading is unchanged. `visibility`
+  (local/team) and `review_status` (stale/rejected) are kantaq concepts assigned from
+  real signals — e.g. a superseded domain is `stale`, a closed-and-replaced revision is
+  `rejected`, personal working notes are `local`.
 - **`fixtures/tickets/<id>.json`** — one ticket, its `candidate_memory` (pool entries
   offered to the resolver, marked linked/unlinked with a reason), and the expected
   `bundles` per graded role.
@@ -44,5 +44,13 @@ its author.
 
 The decision procedure a grader follows for each (ticket, role) cell is documented in
 `docs/modules/MOD-21-context-resolver-evals.md` (project-docs repo) under "Grading
-rubric". E16-T4a grades the first 50 of 100 bundles (10 tickets × 5 roles) against the
-real export; the remaining 10 tickets land in Sprint 4 (E16-T4b) using the same format.
+rubric". E16-T4a graded the first 50 of 100 bundles; E16-T4b completes the set at
+**20 tickets × 5 roles = 100 bundles** (the second 10 tickets, EVAL-11..20, extend the
+shared pool and span the full lifecycle taxonomy, including an expired-entry case).
+
+## Recommendation eval (E17-T3)
+
+`reco_fixtures.json` holds 30 hand-graded `(stage, labels) → expected_roles` cases for
+the MOD-22 recommendation engine. `kantaq_core.reco.confusion_matrix` scores
+`recommend()` role-wise against them (a 2×2 confusion matrix); `test_reco_eval.py`
+asserts it stays perfect (a deterministic engine, so any FP/FN is a real regression).

@@ -135,34 +135,92 @@ def cmd_test(args: argparse.Namespace) -> int:
 
 
 def cmd_eval(args: argparse.Namespace) -> int:
-    """Validate the context-eval fixtures (MOD-21 / Epic E16).
+    """Validate and score the context-eval set (MOD-21 / Epic E16).
 
-    This sprint runs the fixture validator and reports grading coverage; exits
-    non-zero on any inconsistency so CI can gate it. The precision/recall run
-    against the resolver lands with the resolver itself in Sprint 4 (MOD-21).
+    Three steps, each fail-closed so CI can gate them (FR-E16-5, RISK-02):
+
+    1. **validate** the hand-graded fixtures (partition + the NFR-E16-1 invariant);
+    2. **score** the rules-based resolver against them (precision/recall, agents only);
+    3. **gate** the score against the recorded baseline — a drop over five points
+       fails the build (``--update-baseline`` records a fresh baseline instead,
+       run once from a green, reviewed tree).
     """
+    from datetime import UTC, datetime
+
     from kantaq_core import evals
 
     base = find_root() / "evals" / "fixtures"
     try:
         report = evals.validate(base)
+        evalset = evals.load_eval_set(base)
     except evals.EvalFixtureError as exc:
         print(f"kantaq eval: {exc}", file=sys.stderr)
         return 1
 
     print(
         f"kantaq eval: {report.ticket_count} ticket(s), "
-        f"{report.graded_bundles}/{evals.TARGET_BUNDLES} bundles graded "
-        f"(Sprint-3 target {evals.SPRINT3_GRADED_TARGET})"
+        f"{report.graded_bundles}/{evals.TARGET_BUNDLES} bundles graded"
     )
     for role, count in report.per_role.items():
         print(f"  {role:16} {count} graded", file=sys.stderr)
     if not report.ok:
-        print(f"kantaq eval: {len(report.problems)} problem(s):", file=sys.stderr)
+        print(f"kantaq eval: {len(report.problems)} fixture problem(s):", file=sys.stderr)
         for problem in report.problems:
             print(f"  - {problem}", file=sys.stderr)
         return 1
-    print("kantaq eval: fixtures valid (precision/recall lands with the resolver, Sprint 4)")
+
+    # 2. Score the resolver against the ground truth.
+    score = evals.score(evalset)
+    print(
+        f"kantaq eval: resolver scored over {score.cells} agent cell(s) — "
+        f"precision {score.precision:.3f}, recall {score.recall:.3f}"
+    )
+    for role_score in score.per_role:
+        print(
+            f"  {role_score.role:16} P={role_score.precision:.3f} "
+            f"R={role_score.recall:.3f} ({role_score.cells} cells)",
+            file=sys.stderr,
+        )
+    for mismatch in score.mismatches:
+        print(
+            f"  ! {mismatch.ticket_id}/{mismatch.role}: "
+            f"extra={list(mismatch.false_positives)} dropped={list(mismatch.false_negatives)}",
+            file=sys.stderr,
+        )
+
+    # 3. Record or gate against the baseline.
+    if getattr(args, "update_baseline", False):
+        recorded = evals.write_baseline(
+            score,
+            recorded_at=datetime.now(UTC).date().isoformat(),
+            note="First eval baseline (E16-T4b): 20 tickets x 4 agent roles, green resolver run.",
+            path=evals.baseline_path(base),
+        )
+        print(
+            f"kantaq eval: baseline recorded — precision {recorded.precision:.3f}, "
+            f"recall {recorded.recall:.3f} over {recorded.cells} cells "
+            f"({evals.baseline_path(base)})"
+        )
+        return 0
+
+    baseline = evals.load_baseline(evals.baseline_path(base))
+    if baseline is None:
+        print(
+            "kantaq eval: no baseline recorded yet — run `kantaq eval --update-baseline` "
+            "from a green tree to record one (the gate needs it).",
+            file=sys.stderr,
+        )
+        return 1
+    problems = evals.regressions_against_baseline(score, baseline)
+    if problems:
+        print(f"kantaq eval: REGRESSION vs baseline ({baseline.recorded_at}):", file=sys.stderr)
+        for problem in problems:
+            print(f"  - {problem}", file=sys.stderr)
+        return 1
+    print(
+        f"kantaq eval: within tolerance of the baseline "
+        f"(P {baseline.precision:.3f}, R {baseline.recall:.3f}, {baseline.recorded_at})"
+    )
     return 0
 
 
@@ -673,7 +731,12 @@ def build_parser() -> argparse.ArgumentParser:
     lint = sub.add_parser("lint", help="run ruff + Biome")
     lint.set_defaults(func=cmd_lint)
 
-    ev = sub.add_parser("eval", help="validate context-eval fixtures (E16)")
+    ev = sub.add_parser("eval", help="validate + score the context-eval set (E16)")
+    ev.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="record the current resolver score as the baseline (run from a green tree)",
+    )
     ev.set_defaults(func=cmd_eval)
 
     typecheck = sub.add_parser("typecheck", help="run mypy + tsc")

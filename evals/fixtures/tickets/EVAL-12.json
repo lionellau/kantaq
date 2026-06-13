@@ -1,0 +1,143 @@
+{
+  "ticket": {
+    "id": "EVAL-12",
+    "title": "Hybrid retrieval observability + cost telemetry",
+    "description": "Once KB-first retrieval is live, instrument it: KB hit rate, fallback rate, freshness misses, writeback yield, and cost-per-retrieve vs cost-per-scrape - to prove the investment and tune freshness thresholds.",
+    "lifecycle_stage": "discovery",
+    "status": "Backlog",
+    "labels": [
+      "Infrastructure",
+      "AI/Agents"
+    ]
+  },
+  "candidate_memory": [
+    {
+      "id": "mem-dec-kb-first",
+      "linked": true,
+      "link_reason": "the retrieval path being instrumented"
+    },
+    {
+      "id": "mem-kb-ingest",
+      "linked": true,
+      "link_reason": "the module that gains the metrics"
+    },
+    {
+      "id": "mem-agent-stack",
+      "linked": false
+    },
+    {
+      "id": "mem-prd-v52",
+      "linked": false
+    },
+    {
+      "id": "mem-credit-system",
+      "linked": false
+    },
+    {
+      "id": "mem-agent-summary",
+      "linked": false
+    },
+    {
+      "id": "mem-agent-trace",
+      "linked": false
+    },
+    {
+      "id": "mem-conventions",
+      "linked": false
+    },
+    {
+      "id": "mem-dec-browser-rejected",
+      "linked": false
+    }
+  ],
+  "bundles": {
+    "code_agent": {
+      "must_include": [
+        "mem-dec-kb-first",
+        "mem-kb-ingest",
+        "mem-agent-stack",
+        "mem-prd-v52"
+      ],
+      "must_exclude": [
+        "mem-agent-summary",
+        "mem-agent-trace",
+        "mem-conventions",
+        "mem-dec-browser-rejected"
+      ],
+      "optional": [
+        "mem-credit-system"
+      ],
+      "rationale": "code_agent keeps the in-scope codebase/decision/project context; agent_run/workspace is out of scope, rejected entries are withheld, local notes are private; 'Credit system terms' is in scope but tangential here (optional)."
+    },
+    "qa_agent": {
+      "must_include": [
+        "mem-dec-kb-first",
+        "mem-kb-ingest",
+        "mem-agent-stack"
+      ],
+      "must_exclude": [
+        "mem-prd-v52",
+        "mem-credit-system",
+        "mem-agent-summary",
+        "mem-agent-trace",
+        "mem-conventions",
+        "mem-dec-browser-rejected"
+      ],
+      "optional": [],
+      "rationale": "qa_agent keeps the in-scope codebase/decision context; agent_run/project/workspace is out of scope, rejected entries are withheld, local notes are private."
+    },
+    "design_agent": {
+      "must_include": [
+        "mem-dec-kb-first",
+        "mem-prd-v52"
+      ],
+      "must_exclude": [
+        "mem-kb-ingest",
+        "mem-agent-stack",
+        "mem-agent-summary",
+        "mem-agent-trace",
+        "mem-dec-browser-rejected"
+      ],
+      "optional": [
+        "mem-credit-system",
+        "mem-conventions"
+      ],
+      "rationale": "design_agent keeps the in-scope decision/project context; agent_run/codebase is out of scope, rejected entries are withheld, local notes are private; 'Credit system terms', 'CONVENTIONS.md — input revalidation (Convention 9)' are in scope but tangential here (optional)."
+    },
+    "product_agent": {
+      "must_include": [
+        "mem-dec-kb-first",
+        "mem-prd-v52",
+        "mem-credit-system"
+      ],
+      "must_exclude": [
+        "mem-kb-ingest",
+        "mem-agent-stack",
+        "mem-agent-summary",
+        "mem-agent-trace",
+        "mem-dec-browser-rejected"
+      ],
+      "optional": [
+        "mem-conventions"
+      ],
+      "rationale": "product_agent keeps the in-scope decision/project context; agent_run/codebase is out of scope, rejected entries are withheld, local notes are private; 'CONVENTIONS.md — input revalidation (Convention 9)' is in scope but tangential here (optional)."
+    },
+    "human_teammate": {
+      "must_include": [
+        "mem-dec-kb-first",
+        "mem-kb-ingest",
+        "mem-agent-stack",
+        "mem-prd-v52",
+        "mem-credit-system",
+        "mem-agent-summary",
+        "mem-conventions",
+        "mem-dec-browser-rejected"
+      ],
+      "must_exclude": [
+        "mem-agent-trace"
+      ],
+      "optional": [],
+      "rationale": "Robin (the baseline owner) sees the current team entries; another actor's local note stays on its owner's device."
+    }
+  }
+}

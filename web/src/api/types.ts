@@ -20,6 +20,7 @@ export type LinkedMemory = components["schemas"]["LinkedMemoryOut"];
 export type TelemetryView = components["schemas"]["TelemetryOut"];
 export type Relation = components["schemas"]["RelationOut"];
 export type RelationInput = components["schemas"]["RelationIn"];
+export type Recommendation = components["schemas"]["RecommendationOut"];
 
 // The domain vocabularies (mirrors kantaq_core.tracker.service; values are
 // validated server-side — these drive the filter/create selects only).

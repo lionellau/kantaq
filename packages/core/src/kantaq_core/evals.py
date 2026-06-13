@@ -29,8 +29,9 @@ but it is not a resolver policy — see :mod:`kantaq_core.memory_policy`).
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,16 @@ TARGET_BUNDLES = TARGET_TICKETS * len(EVAL_ROLES)  # 100
 SPRINT3_GRADED_TARGET = 50
 
 _VISIBILITIES = ("local", "team")
+
+# The fixed clock the eval set is graded and scored against. Grading is relative
+# to one instant (the `expired` gate depends on it), so scoring must use the same
+# instant or expiry-bearing fixtures would score differently than they were
+# graded. Pinned, UTC, and injected into the resolver — never `datetime.now()`.
+EVAL_NOW: datetime = datetime(2026, 6, 1, tzinfo=UTC)
+
+# The eval gate (FR-E16-5, RISK-02): CI fails if precision or recall drops by more
+# than this many points from the recorded baseline. Five points on a [0, 1] scale.
+BASELINE_DROP_TOLERANCE = 0.05
 
 
 class EvalFixtureError(ValueError):
@@ -326,3 +337,222 @@ def validate(base: Path | None = None) -> ValidationReport:
         graded_bundles=evalset.graded_bundle_count(),
         per_role=per_role,
     )
+
+
+# --------------------------------------------------------- scoring (E16-T3)
+#
+# Precision/recall of the rules-based resolver against the hand-graded ground
+# truth (FR-E16-5, RISK-02). Only the four **agent** roles are scored — the
+# ``human_teammate`` column is the baseline the agent bundles narrow from, not a
+# resolver policy, so it has no resolver output to score (it is graded purely to
+# anchor the SEC invariant in the fixtures). ``must_include`` drives recall,
+# ``must_exclude`` drives precision, ``optional`` is unscored: a correct
+# rules-based resolver therefore scores 1.0/1.0 (``must_exclude`` only ever
+# covers a policy-gate failure), and this number is the regression baseline.
+
+# A resolver: ``(role, candidates, *, now) -> object with an ``included`` tuple``.
+# Injected so scoring stays decoupled from :mod:`kantaq_core.context` (and so a
+# test can score a deliberately-broken resolver to prove the gate bites).
+ResolveFn = Callable[..., Any]
+
+
+@dataclass(frozen=True)
+class RoleScore:
+    """Precision/recall for one agent role over every ticket that grades it."""
+
+    role: str
+    cells: int
+    true_positives: int
+    false_positives: int
+    false_negatives: int
+
+    @property
+    def precision(self) -> float:
+        denom = self.true_positives + self.false_positives
+        return self.true_positives / denom if denom else 1.0
+
+    @property
+    def recall(self) -> float:
+        denom = self.true_positives + self.false_negatives
+        return self.true_positives / denom if denom else 1.0
+
+
+@dataclass(frozen=True)
+class Mismatch:
+    """One cell where the resolver disagreed with the ground truth (diagnostics)."""
+
+    ticket_id: str
+    role: str
+    false_positives: tuple[str, ...]  # included but graded must_exclude
+    false_negatives: tuple[str, ...]  # graded must_include but dropped
+
+
+@dataclass(frozen=True)
+class ScoreReport:
+    """Aggregate resolver score across every graded agent cell."""
+
+    cells: int
+    true_positives: int
+    false_positives: int
+    false_negatives: int
+    per_role: tuple[RoleScore, ...]
+    mismatches: tuple[Mismatch, ...]
+
+    @property
+    def precision(self) -> float:
+        denom = self.true_positives + self.false_positives
+        return self.true_positives / denom if denom else 1.0
+
+    @property
+    def recall(self) -> float:
+        denom = self.true_positives + self.false_negatives
+        return self.true_positives / denom if denom else 1.0
+
+
+def _candidates_for(ticket: EvalTicket, pool: dict[str, EvalMemory]) -> list[EvalMemory]:
+    # EvalMemory satisfies the read-only MemoryReadable protocol the resolver reads.
+    return [pool[candidate.memory_id] for candidate in ticket.candidates]
+
+
+def score(
+    evalset: EvalSet,
+    *,
+    now: datetime = EVAL_NOW,
+    resolve: ResolveFn | None = None,
+) -> ScoreReport:
+    """Score a resolver against the graded fixtures (precision/recall, agents only).
+
+    ``resolve`` defaults to the production resolver
+    (:func:`kantaq_core.context.resolve`); it is a parameter so a test can score a
+    broken resolver and prove the baseline gate catches the drop.
+    """
+    if resolve is None:
+        from kantaq_core import context  # lazy: keep the validator path resolver-free
+
+        resolve = context.resolve
+
+    tallies: dict[str, list[int]] = {role: [0, 0, 0, 0] for role in memory_policy.ROLE_SLUGS}
+    mismatches: list[Mismatch] = []
+    for ticket in evalset.tickets:
+        candidates = _candidates_for(ticket, evalset.memory)
+        for role in memory_policy.ROLE_SLUGS:
+            expected = ticket.bundles.get(role)
+            if expected is None:
+                continue
+            included = {entry.id for entry in resolve(role, candidates, now=now).included}
+            must_in = set(expected.must_include)
+            must_out = set(expected.must_exclude)
+            false_pos = included & must_out
+            false_neg = must_in - included
+
+            cell = tallies[role]
+            cell[0] += 1  # cells
+            cell[1] += len(included & must_in)  # tp
+            cell[2] += len(false_pos)  # fp
+            cell[3] += len(false_neg)  # fn
+            if false_pos or false_neg:
+                mismatches.append(
+                    Mismatch(
+                        ticket_id=ticket.id,
+                        role=role,
+                        false_positives=tuple(sorted(false_pos)),
+                        false_negatives=tuple(sorted(false_neg)),
+                    )
+                )
+
+    per_role = tuple(
+        RoleScore(role, c[0], c[1], c[2], c[3])
+        for role, c in tallies.items()
+        if c[0]  # only roles that some ticket graded
+    )
+    return ScoreReport(
+        cells=sum(r.cells for r in per_role),
+        true_positives=sum(r.true_positives for r in per_role),
+        false_positives=sum(r.false_positives for r in per_role),
+        false_negatives=sum(r.false_negatives for r in per_role),
+        per_role=per_role,
+        mismatches=tuple(mismatches),
+    )
+
+
+# ------------------------------------------------------- the baseline gate
+#
+# The first baseline is recorded from a green, reviewed run (the sprint-4 risk
+# note: "the first baseline defines 'regression' forever after"). It is checked
+# in beside the fixtures; ``kantaq eval`` compares every later run against it and
+# fails CI on a drop over :data:`BASELINE_DROP_TOLERANCE` (FR-E16-5).
+
+
+@dataclass(frozen=True)
+class Baseline:
+    """The recorded green-run score the eval gate compares against."""
+
+    precision: float
+    recall: float
+    cells: int
+    recorded_at: str
+    note: str = ""
+
+
+def baseline_path(base: Path | None = None) -> Path:
+    """``evals/baseline.json`` (beside ``fixtures/``)."""
+    base = base or workspace_fixtures_dir()
+    return base.parent / "baseline.json"
+
+
+def load_baseline(path: Path | None = None) -> Baseline | None:
+    """Load the recorded baseline, or ``None`` if it has not been recorded yet."""
+    path = path or baseline_path()
+    if not path.is_file():
+        return None
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return Baseline(
+        precision=float(raw["precision"]),
+        recall=float(raw["recall"]),
+        cells=int(raw["cells"]),
+        recorded_at=str(raw.get("recorded_at", "")),
+        note=str(raw.get("note", "")),
+    )
+
+
+def write_baseline(
+    report: ScoreReport,
+    *,
+    recorded_at: str,
+    note: str = "",
+    path: Path | None = None,
+) -> Baseline:
+    """Record ``report`` as the baseline (deterministic, sorted-key JSON)."""
+    path = path or baseline_path()
+    baseline = Baseline(
+        precision=report.precision,
+        recall=report.recall,
+        cells=report.cells,
+        recorded_at=recorded_at,
+        note=note,
+    )
+    payload = {
+        "precision": baseline.precision,
+        "recall": baseline.recall,
+        "cells": baseline.cells,
+        "recorded_at": baseline.recorded_at,
+        "note": baseline.note,
+    }
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return baseline
+
+
+def regressions_against_baseline(report: ScoreReport, baseline: Baseline) -> list[str]:
+    """The structured reasons (empty == within tolerance) a run fails the gate."""
+    problems: list[str] = []
+    if report.precision < baseline.precision - BASELINE_DROP_TOLERANCE:
+        problems.append(
+            f"precision {report.precision:.3f} dropped > {BASELINE_DROP_TOLERANCE:.0%} "
+            f"below the baseline {baseline.precision:.3f}"
+        )
+    if report.recall < baseline.recall - BASELINE_DROP_TOLERANCE:
+        problems.append(
+            f"recall {report.recall:.3f} dropped > {BASELINE_DROP_TOLERANCE:.0%} "
+            f"below the baseline {baseline.recall:.3f}"
+        )
+    return problems

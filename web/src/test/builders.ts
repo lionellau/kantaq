@@ -17,6 +17,7 @@ import type {
   MemoryLink,
   Project,
   Proposal,
+  Recommendation,
   SyncStatus,
   TelemetryView,
   Ticket,
@@ -64,6 +65,23 @@ export function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
     subticket_count: 0,
     relationship_count: 0,
     blocked: false,
+    ...overrides,
+  };
+}
+
+export function buildRecommendation(overrides: Partial<Recommendation> = {}): Recommendation {
+  return {
+    role: "code_agent",
+    skill_container: "code-review",
+    why: "At the Review stage, kantaq recommends a code_agent run Code review.",
+    required_memory: ["codebase", "decision", "ticket", "project"],
+    missing_memory: ["codebase"],
+    expected_output: "a code review: correctness, security, and maintainability findings",
+    mapped_tool: "an MCP-connected coding agent (e.g. Claude Code, Codex)",
+    mcp_session_template: '# kantaq MCP\nrole_context_get(ticket="tick-1")',
+    risk_level: "medium",
+    confidence: "rule_match_strong",
+    approval_rule: "read_only",
     ...overrides,
   };
 }

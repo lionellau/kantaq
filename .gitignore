@@ -43,3 +43,4 @@ Thumbs.db
 web/e2e/.runtime/
 web/playwright-report/
 web/test-results/
+.gstack/
