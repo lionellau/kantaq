@@ -59,6 +59,11 @@ from kantaq_protocol.grants import (
     sign_grant,
     verify_grant,
 )
+from kantaq_protocol.hashing import (
+    AUDIT_CHAIN_DOMAIN,
+    HASH_HEX,
+    chain_hash,
+)
 from kantaq_protocol.signing import (
     KeyPair,
     generate_keypair,
@@ -72,6 +77,7 @@ from kantaq_protocol.signing import (
 __version__: str = "0.0.5"
 
 __all__ = [
+    "AUDIT_CHAIN_DOMAIN",
     "EVENT_SIGNING_DOMAIN",
     "GRANT_EXPIRED",
     "GRANT_FORGED",
@@ -82,6 +88,7 @@ __all__ = [
     "GRANT_REVOKED",
     "GRANT_SIGNING_DOMAIN",
     "GRANT_UNKNOWN_ROOT",
+    "HASH_HEX",
     "MAX_DEPTH",
     "MAX_DOCUMENT_BYTES",
     "MAX_SAFE_INT",
@@ -106,6 +113,7 @@ __all__ = [
     "UnknownCollection",
     "__version__",
     "canonicalize",
+    "chain_hash",
     "crdt",
     "decode",
     "decode_grant",
