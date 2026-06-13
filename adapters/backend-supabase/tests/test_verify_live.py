@@ -48,7 +48,7 @@ def _bob_world() -> tuple[str, CapabilityGrant, str]:
             grant_id=BOB_GRANT,
             subject=BOB,
             issuer=BOB_DEVICE,
-            resource="workspace/ws_a",
+            resource="ws_a",  # the bare workspace id, matching the ingestion scope
             verbs=("tickets.write",),
             issued_at=NOW - 60,
             expires_at=NOW + 3600,
@@ -85,6 +85,7 @@ def test_verifying_pull_keeps_signed_and_drops_unsigned_seed(sync_pg: Engine) ->
         roots={BOB_DEVICE: public_key},
         grants={BOB_GRANT: grant},
         now=NOW,
+        workspace_id="ws_a",  # the grant's resource must scope it (DEBT-15(d))
     )
     verifying = VerifyingBackend(
         adapter,

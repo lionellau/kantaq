@@ -94,7 +94,10 @@ class VerifyContext:
     grant id to the signed capability grant; ``now`` is unix seconds for the
     grant window; ``revoked_ids`` are the grant ids the store knows are revoked
     (a signature cannot prove an absence). ``require_signature`` is the cutover
-    state: ``True`` once a workspace has cut over to signed sync.
+    state: ``True`` once a workspace has cut over to signed sync. ``workspace_id``
+    is the ingestion workspace: when set, the grant's ``resource`` must scope it,
+    so the gate enforces workspace scope itself rather than leaning entirely on
+    RLS (DEBT-15(d) / E27 HIGH-2(b)). ``None`` skips the check (single-store tests).
     """
 
     roots: Mapping[str, str]
@@ -102,6 +105,7 @@ class VerifyContext:
     now: int
     revoked_ids: Collection[str] = ()
     require_signature: bool = True
+    workspace_id: str | None = None
 
 
 def verify_event(event: Event, context: VerifyContext) -> EventVerification:
@@ -130,6 +134,15 @@ def verify_event(event: Event, context: VerifyContext) -> EventVerification:
         if grant.subject != event.actor_id:
             return EventVerification(
                 False, POLICY_DENIED, "grant subject does not authorise this actor"
+            )
+
+        # Workspace scope (DEBT-15(d)): the grant must be issued for the
+        # workspace we are ingesting into — the gate enforces this itself rather
+        # than leaning entirely on RLS, closing the resource axis before
+        # multi-workspace sync (E27 HIGH-2(b)).
+        if context.workspace_id is not None and grant.resource != context.workspace_id:
+            return EventVerification(
+                False, POLICY_DENIED, "grant resource does not scope this workspace"
             )
 
         # Fine per-verb scoping (D-03): the grant must carry a verb that

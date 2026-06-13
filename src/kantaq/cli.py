@@ -495,6 +495,7 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
         ),
         db=db,
         actor_id=me.id,
+        workspace_id=me.workspace_id,
         settings=get_settings(),
     )
     engine = SyncEngine(db, backend, actor_id=me.id)
@@ -509,7 +510,7 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
 
 
 def _verifying_backend(
-    inner: BackendPort, *, db: Engine, actor_id: str, settings: Settings
+    inner: BackendPort, *, db: Engine, actor_id: str, workspace_id: str, settings: Settings
 ) -> BackendPort:
     """Wrap the sync backend so events verify against the local trust store
     (E24-T5): signed under a known device's grant, or dropped-and-audited
@@ -538,6 +539,7 @@ def _verifying_backend(
                 now=int(datetime.now(UTC).timestamp()),
                 revoked_ids=revoked,
                 require_signature=settings.sign_events,
+                workspace_id=workspace_id,
             )
 
     def on_deny(event: Event, verdict: EventVerification) -> None:
