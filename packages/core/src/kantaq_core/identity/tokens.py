@@ -12,6 +12,13 @@ p=4). A deliberate-cost hash is too slow to run on every request, so
 revocation budget (NFR-E06-2): a revoked token keeps working at most TTL
 seconds, and same-process revocations purge the cache immediately. The clock is
 injectable so tests pin the TTL with FakeClock.
+
+The production cost is **never weakened**: the only override is an explicit
+test-only switch, ``KANTAQ_ARGON2_TEST_FAST=1`` (set by the root ``conftest.py``),
+which selects a trivial Argon2id profile so the suite is not dominated by hashing
+(DEBT-18). Production never sets the flag, and verification is cost-agnostic — it
+reads the parameters out of each PHC string — so a token minted under the fast
+profile still verifies, and nothing about the at-rest format changes.
 """
 
 from __future__ import annotations
@@ -35,14 +42,34 @@ TOKEN_PREFIX = "kq_"
 _SECRET_BYTES = 32  # 256-bit secrets; URL-safe base64 in the token
 
 # RFC 9106 §4, second recommended option (memory-constrained environments).
+# This is the production cost and is never lowered at runtime.
 _ARGON2_ITERATIONS = 3
 _ARGON2_LANES = 4
 _ARGON2_MEMORY_KIB = 64 * 1024
 _ARGON2_LENGTH = 32
 _ARGON2_SALT_BYTES = 16
 
+# Test-only escape hatch (DEBT-18): when ``KANTAQ_ARGON2_TEST_FAST=1``, hashing
+# uses a trivial Argon2id profile so the suite is not dominated by the KDF. This
+# is the *minimal valid* profile — cryptography's Argon2id requires
+# ``memory_cost >= 8 * lanes`` — and is selected only by this env var, which
+# production never sets. Verification ignores it (the cost is encoded in each PHC
+# string), so a token minted fast still verifies under any cost.
+_ARGON2_TEST_FAST_ENV = "KANTAQ_ARGON2_TEST_FAST"
+_ARGON2_FAST_ITERATIONS = 1
+_ARGON2_FAST_LANES = 1
+_ARGON2_FAST_MEMORY_KIB = 8
+
 # Verified entries live at most this long; must stay < 5 s (NFR-E06-2).
 VERIFY_CACHE_TTL_SECONDS = 3.0
+
+
+def _argon2_cost() -> tuple[int, int, int]:
+    """``(iterations, lanes, memory_kib)`` — the production RFC 9106 profile,
+    unless a test opts into the trivial profile via ``KANTAQ_ARGON2_TEST_FAST=1``."""
+    if os.environ.get(_ARGON2_TEST_FAST_ENV) == "1":
+        return _ARGON2_FAST_ITERATIONS, _ARGON2_FAST_LANES, _ARGON2_FAST_MEMORY_KIB
+    return _ARGON2_ITERATIONS, _ARGON2_LANES, _ARGON2_MEMORY_KIB
 
 
 def mint_token(token_id: str) -> tuple[str, str]:
@@ -67,12 +94,13 @@ def parse_token(presented: str) -> tuple[str, str] | None:
 
 
 def _kdf() -> Argon2id:
+    iterations, lanes, memory_kib = _argon2_cost()
     return Argon2id(
         salt=os.urandom(_ARGON2_SALT_BYTES),
         length=_ARGON2_LENGTH,
-        iterations=_ARGON2_ITERATIONS,
-        lanes=_ARGON2_LANES,
-        memory_cost=_ARGON2_MEMORY_KIB,
+        iterations=iterations,
+        lanes=lanes,
+        memory_cost=memory_kib,
     )
 
 

@@ -20,6 +20,7 @@ from kantaq_core.identity import (
     parse_token,
     verify_secret,
 )
+from kantaq_core.identity import tokens as tokens_mod
 from kantaq_db.models import Member, Token, Workspace
 from kantaq_test_harness.clock import FakeClock
 
@@ -46,6 +47,48 @@ def test_forged_and_tampered_secrets_fail_verify() -> None:
     assert not verify_secret("wrong-secret", hashed)
     assert not verify_secret("right-secret", hashed[:-4] + "AAAA")  # tampered hash
     assert not verify_secret("right-secret", "not-a-phc-string")
+
+
+# -- Argon2 cost: production stays RFC 9106; tests opt into a trivial profile (DEBT-18) --
+
+
+def test_production_argon2_profile_is_rfc_9106(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With the test flag absent, the cost is exactly the RFC 9106 §4 second profile."""
+    monkeypatch.delenv(tokens_mod._ARGON2_TEST_FAST_ENV, raising=False)
+    assert tokens_mod._argon2_cost() == (3, 4, 64 * 1024)  # t=3, p=4, m=64 MiB
+    # The constants themselves are the production profile (never weakened).
+    assert (
+        tokens_mod._ARGON2_ITERATIONS,
+        tokens_mod._ARGON2_LANES,
+        tokens_mod._ARGON2_MEMORY_KIB,
+    ) == (3, 4, 65536)
+
+
+def test_fast_flag_selects_a_minimal_valid_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(tokens_mod._ARGON2_TEST_FAST_ENV, "1")
+    iterations, lanes, memory_kib = tokens_mod._argon2_cost()
+    assert (iterations, lanes, memory_kib) == (1, 1, 8)
+    # cryptography's Argon2id requires memory_cost >= 8 * lanes — stay valid.
+    assert memory_kib >= 8 * lanes
+
+
+def test_verify_is_cost_agnostic_across_profiles(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A token minted at either cost verifies regardless of the active profile —
+    the parameters live in the PHC string, so the fast test cost is safe."""
+    monkeypatch.delenv(tokens_mod._ARGON2_TEST_FAST_ENV, raising=False)
+    prod_hash = hash_secret("s")  # one full-cost hash (proves the prod path runs)
+    assert "m=65536,t=3,p=4" in prod_hash
+
+    monkeypatch.setenv(tokens_mod._ARGON2_TEST_FAST_ENV, "1")
+    fast_hash = hash_secret("s")
+    assert "m=8,t=1,p=1" in fast_hash
+
+    # Verification ignores the active flag — both hashes still verify either way.
+    assert verify_secret("s", prod_hash)
+    assert verify_secret("s", fast_hash)
+    monkeypatch.delenv(tokens_mod._ARGON2_TEST_FAST_ENV, raising=False)
+    assert verify_secret("s", prod_hash)
+    assert verify_secret("s", fast_hash)
 
 
 @pytest.mark.parametrize(
