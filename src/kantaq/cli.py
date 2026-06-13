@@ -130,6 +130,38 @@ def cmd_test(args: argparse.Namespace) -> int:
     return rc
 
 
+def cmd_eval(args: argparse.Namespace) -> int:
+    """Validate the context-eval fixtures (MOD-21 / Epic E16).
+
+    This sprint runs the fixture validator and reports grading coverage; exits
+    non-zero on any inconsistency so CI can gate it. The precision/recall run
+    against the resolver lands with the resolver itself in Sprint 4 (MOD-21).
+    """
+    from kantaq_core import evals
+
+    base = find_root() / "evals" / "fixtures"
+    try:
+        report = evals.validate(base)
+    except evals.EvalFixtureError as exc:
+        print(f"kantaq eval: {exc}", file=sys.stderr)
+        return 1
+
+    print(
+        f"kantaq eval: {report.ticket_count} ticket(s), "
+        f"{report.graded_bundles}/{evals.TARGET_BUNDLES} bundles graded "
+        f"(Sprint-3 target {evals.SPRINT3_GRADED_TARGET})"
+    )
+    for role, count in report.per_role.items():
+        print(f"  {role:16} {count} graded", file=sys.stderr)
+    if not report.ok:
+        print(f"kantaq eval: {len(report.problems)} problem(s):", file=sys.stderr)
+        for problem in report.problems:
+            print(f"  - {problem}", file=sys.stderr)
+        return 1
+    print("kantaq eval: fixtures valid (precision/recall lands with the resolver, Sprint 4)")
+    return 0
+
+
 def cmd_lint(args: argparse.Namespace) -> int:
     root = find_root()
     rc = _run([sys.executable, "-m", "ruff", "check", "."], cwd=root)
@@ -533,6 +565,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     lint = sub.add_parser("lint", help="run ruff + Biome")
     lint.set_defaults(func=cmd_lint)
+
+    ev = sub.add_parser("eval", help="validate context-eval fixtures (E16)")
+    ev.set_defaults(func=cmd_eval)
 
     typecheck = sub.add_parser("typecheck", help="run mypy + tsc")
     typecheck.set_defaults(func=cmd_typecheck)
