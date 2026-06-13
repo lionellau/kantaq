@@ -130,8 +130,9 @@ export default function Agents() {
       )}
       {sessions !== null && sessions.length === 0 && (
         <p style={ui.muted}>
-          No agent sessions. Invite an agent and issue it a capability grant from{" "}
-          <Link to="/settings/members">Members</Link>.
+          No agent sessions here. Invite an agent and issue it a capability grant from{" "}
+          <Link to="/settings/members">Members</Link>. Workspace-wide agent oversight requires
+          credential-admin (Maintainer+) rights.
         </p>
       )}
       <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: 12 }}>

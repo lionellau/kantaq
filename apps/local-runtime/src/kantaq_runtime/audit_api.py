@@ -97,6 +97,13 @@ def audit_range(
     workspace only for ``tokens.rotate`` holders). ``action="tool.deny"`` +
     ``source="mcp"`` is the denied-calls view. ``limit`` is capped at 200.
     """
+    # Reject malformed filters early (defense in depth — the values are already
+    # parameterized, so this is intent-clarity, not an injection guard).
+    if source is not None and source not in audit.SOURCES:
+        raise HTTPException(status_code=422, detail=f"unknown source {source!r}")
+    if action is not None and len(action) > audit.ACTION_MAX_LENGTH:
+        raise HTTPException(status_code=422, detail="action filter too long")
+
     full = can(actor.role, Action.tokens_rotate, scopes=list(actor.scopes))
     if member is None:
         target = None if full else actor.member_id

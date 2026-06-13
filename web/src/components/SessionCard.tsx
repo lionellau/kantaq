@@ -44,7 +44,7 @@ export default function SessionCard({
             <span style={{ fontWeight: 600 }}>
               {session.owner_email ?? session.owner_member_id}
             </span>
-            <span style={ui.chip}>{session.owner_role ?? "agent"}</span>
+            <span style={ui.chip}>{session.owner_role ?? "subject unknown"}</span>
             {session.active ? (
               <span
                 style={{

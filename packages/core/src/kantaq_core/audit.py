@@ -223,6 +223,20 @@ def read_range(
     return list(session.exec(stmt).all())
 
 
+def mcp_actor_ids(session: Session) -> set[str]:
+    """Distinct actors that have made an MCP gateway call (``source="mcp"``).
+
+    The Agents page uses this for completeness (NFR-E20-1): a capability grant
+    whose subject has *any* gateway activity is a real session and must be
+    shown — even if the subject's member role isn't Agent, or its member row is
+    gone. Completeness over neatness: a used grant is never hidden.
+    """
+    rows = session.exec(
+        select(col(AuditEvent.actor_id)).where(col(AuditEvent.source) == "mcp").distinct()
+    ).all()
+    return set(rows)
+
+
 def verify_chain(
     session: Session,
     *,

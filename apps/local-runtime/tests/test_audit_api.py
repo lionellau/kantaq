@@ -179,3 +179,13 @@ def test_limit_is_capped(client: TestClient, owner: tuple[str, str]) -> None:
     _, token = owner
     assert client.get("/v1/audit/range?limit=500", headers=_bearer(token)).status_code == 422
     assert client.get("/v1/audit/range?limit=0", headers=_bearer(token)).status_code == 422
+
+
+def test_malformed_filters_are_rejected(client: TestClient, owner: tuple[str, str]) -> None:
+    _, token = owner
+    assert client.get("/v1/audit/range?source=bogus", headers=_bearer(token)).status_code == 422
+    long_action = "a" * 65
+    assert (
+        client.get(f"/v1/audit/range?action={long_action}", headers=_bearer(token)).status_code
+        == 422
+    )

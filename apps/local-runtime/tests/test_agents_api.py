@@ -17,7 +17,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel
 
+from kantaq_core import audit
 from kantaq_core.identity import IdentityService, Role, TokenVerifier, ensure_device
+from kantaq_db.models import Member
 from kantaq_runtime.app import create_app
 from kantaq_runtime.auth import keychain_for
 from kantaq_runtime.config import Settings
@@ -173,3 +175,52 @@ def test_plain_member_cannot_enumerate_the_workspace(
     listed = client.get("/v1/agents/sessions", headers=_bearer(member_token))
     assert listed.status_code == 200
     assert listed.json() == []  # the member subjects no agent grants
+
+
+def test_completeness_a_grant_used_as_a_session_shows_even_if_not_agent_role(
+    client: TestClient, engine: Engine, owner: tuple[str, str], member: tuple[str, str]
+) -> None:
+    """NFR-E20-1 completeness: a Member-role token driving the gateway is a real
+    session and must not be hidden just because the role isn't Agent."""
+    owner_id, owner_token = owner
+    member_id, member_token = member
+    # The member issues their own grant, then makes a (denied) gateway call.
+    client.post(
+        "/v1/grants",
+        json={"resource": "workspace/main", "verbs": ["tickets.read"]},
+        headers=_bearer(member_token),
+    )
+    with Session(engine) as session:
+        audit.write(
+            session,
+            actor_id=member_id,
+            action="tool.deny",
+            source="mcp",
+            object_ref="tools/ticket_search",
+            after={"reason": "tool_allowlist", "detail": "x", "session_id": "s"},
+        )
+        session.commit()
+
+    sessions = client.get("/v1/agents/sessions", headers=_bearer(owner_token)).json()
+    assert member_id in {s["owner_member_id"] for s in sessions}
+
+
+def test_completeness_a_grant_with_a_missing_subject_is_shown_not_dropped(
+    client: TestClient, engine: Engine, owner: tuple[str, str], agent: tuple[str, str]
+) -> None:
+    """A trust surface must never silently drop a session: an agent grant whose
+    subject member row is gone is surfaced (marked subject-unknown), not hidden."""
+    _, owner_token = owner
+    agent_id, _ = agent
+    _issue(client, owner_token, agent_id, ["tickets.read"])
+    with Session(engine) as session:
+        member = session.get(Member, agent_id)
+        assert member is not None
+        session.delete(member)
+        session.commit()
+
+    sessions = client.get("/v1/agents/sessions", headers=_bearer(owner_token)).json()
+    orphan = next((s for s in sessions if s["owner_member_id"] == agent_id), None)
+    assert orphan is not None  # not silently dropped
+    assert orphan["owner_role"] is None
+    assert orphan["owner_email"] is None

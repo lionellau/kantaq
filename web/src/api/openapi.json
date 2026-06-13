@@ -2221,7 +2221,7 @@
     },
     "/v1/agents/sessions": {
       "get": {
-        "description": "Live agent sessions, derived from the workspace's agent capability grants.\n\n``tokens.rotate`` holders see every agent; everyone else sees only agent\ngrants subjected to themselves (almost always none \u2014 agents are their own\nmembers). Newest grant first. No cache: a revoked grant flips ``active`` to\nfalse on the next poll, the same instant the revocation row commits.",
+        "description": "Live agent sessions, derived from the workspace's capability grants.\n\n``tokens.rotate`` holders see every agent; everyone else sees only grants\nsubjected to themselves. Newest grant first. No cache: a revoked grant flips\n``active`` to false on the next poll, the same instant the revocation commits.\n\nCompleteness over neatness (NFR-E20-1 \u2014 \"every agent session is here\"): a\ngrant is shown when its subject is an Agent member, **or** its subject has\nany gateway activity (it is being used as a session even if its role isn't\nAgent), **or** its subject member row is missing (an anomaly the overseer\nmust see, never a silent drop). Only a pure human signing self-grant that was\nnever used as a session is omitted \u2014 it is not a session.",
         "operationId": "list_sessions_v1_agents_sessions_get",
         "responses": {
           "200": {

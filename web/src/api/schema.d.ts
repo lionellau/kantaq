@@ -30,12 +30,18 @@ export interface paths {
         };
         /**
          * List Sessions
-         * @description Live agent sessions, derived from the workspace's agent capability grants.
+         * @description Live agent sessions, derived from the workspace's capability grants.
          *
-         *     ``tokens.rotate`` holders see every agent; everyone else sees only agent
-         *     grants subjected to themselves (almost always none — agents are their own
-         *     members). Newest grant first. No cache: a revoked grant flips ``active`` to
-         *     false on the next poll, the same instant the revocation row commits.
+         *     ``tokens.rotate`` holders see every agent; everyone else sees only grants
+         *     subjected to themselves. Newest grant first. No cache: a revoked grant flips
+         *     ``active`` to false on the next poll, the same instant the revocation commits.
+         *
+         *     Completeness over neatness (NFR-E20-1 — "every agent session is here"): a
+         *     grant is shown when its subject is an Agent member, **or** its subject has
+         *     any gateway activity (it is being used as a session even if its role isn't
+         *     Agent), **or** its subject member row is missing (an anomaly the overseer
+         *     must see, never a silent drop). Only a pure human signing self-grant that was
+         *     never used as a session is omitted — it is not a session.
          */
         get: operations["list_sessions_v1_agents_sessions_get"];
         put?: never;

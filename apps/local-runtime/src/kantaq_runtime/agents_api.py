@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
+from kantaq_core import audit
 from kantaq_core.identity import Action, GrantService, Role, VerifiedActor, can
 from kantaq_db.models import CapabilityGrantRow, Member
 from kantaq_runtime.auth import get_engine_dep, keychain_for, require_actor
@@ -86,12 +87,18 @@ class AgentSessionOut(BaseModel):
 
 @router.get("/sessions", response_model=list[AgentSessionOut])
 def list_sessions(actor: AnyActor, engine: EngineDep, request: Request) -> list[AgentSessionOut]:
-    """Live agent sessions, derived from the workspace's agent capability grants.
+    """Live agent sessions, derived from the workspace's capability grants.
 
-    ``tokens.rotate`` holders see every agent; everyone else sees only agent
-    grants subjected to themselves (almost always none — agents are their own
-    members). Newest grant first. No cache: a revoked grant flips ``active`` to
-    false on the next poll, the same instant the revocation row commits.
+    ``tokens.rotate`` holders see every agent; everyone else sees only grants
+    subjected to themselves. Newest grant first. No cache: a revoked grant flips
+    ``active`` to false on the next poll, the same instant the revocation commits.
+
+    Completeness over neatness (NFR-E20-1 — "every agent session is here"): a
+    grant is shown when its subject is an Agent member, **or** its subject has
+    any gateway activity (it is being used as a session even if its role isn't
+    Agent), **or** its subject member row is missing (an anomaly the overseer
+    must see, never a silent drop). Only a pure human signing self-grant that was
+    never used as a session is omitted — it is not a session.
     """
     settings: Settings = request.app.state.settings
     full = can(actor.role, Action.tokens_rotate, scopes=list(actor.scopes))
@@ -99,8 +106,12 @@ def list_sessions(actor: AnyActor, engine: EngineDep, request: Request) -> list[
         service = GrantService(session, keychain_for(settings))
         rows = service.list_all() if full else service.list_for(actor.member_id)
         members = {sid: session.get(Member, sid) for sid in {row.subject for row in rows}}
-        return [
-            AgentSessionOut.from_grant(row, service=service, member=members.get(row.subject))
-            for row in rows
-            if (m := members.get(row.subject)) is not None and m.role == Role.agent
-        ]
+        used = audit.mcp_actor_ids(session)
+        sessions: list[AgentSessionOut] = []
+        for row in rows:
+            member = members.get(row.subject)
+            is_agent = member is not None and member.role == Role.agent
+            subject_unknown = member is None
+            if is_agent or subject_unknown or row.subject in used:
+                sessions.append(AgentSessionOut.from_grant(row, service=service, member=member))
+        return sessions
