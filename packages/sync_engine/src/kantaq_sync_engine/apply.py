@@ -29,6 +29,7 @@ from kantaq_db import (
     MemoryLink,
     Project,
     Ticket,
+    TicketRelationship,
     Workspace,
 )
 from kantaq_sync_engine.log import entity_rows
@@ -43,6 +44,9 @@ SYNCABLE_MODELS: dict[str, type[SQLModel]] = {
     "projects": Project,
     "tickets": Ticket,
     "comments": Comment,
+    # ticket_relationships (E12 v0.1): typed ticket edges; created via patch,
+    # removed via tombstone — folds like any lww collection.
+    "ticket_relationships": TicketRelationship,
     "members": Member,
     "agent_proposals": AgentProposal,
     "memory_entries": MemoryEntry,

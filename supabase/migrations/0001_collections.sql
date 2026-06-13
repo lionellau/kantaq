@@ -255,3 +255,25 @@ CREATE TABLE memory_links (
 CREATE INDEX ix_memory_links_memory_id ON memory_links (memory_id);
 
 CREATE INDEX ix_memory_links_ticket_id ON memory_links (ticket_id);
+
+CREATE TABLE ticket_relationships (
+	id VARCHAR(26) NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	actor_seq INTEGER NOT NULL,
+	visibility VARCHAR(16) NOT NULL,
+	hosting_mode VARCHAR(16) NOT NULL,
+	retention_policy VARCHAR(16) NOT NULL,
+	from_id VARCHAR NOT NULL,
+	to_id VARCHAR NOT NULL,
+	type VARCHAR(16) NOT NULL,
+	created_by VARCHAR,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_ticket_relationship UNIQUE (from_id, to_id, type),
+	FOREIGN KEY(from_id) REFERENCES tickets (id),
+	FOREIGN KEY(to_id) REFERENCES tickets (id)
+);
+
+CREATE INDEX ix_ticket_relationships_from_id ON ticket_relationships (from_id);
+
+CREATE INDEX ix_ticket_relationships_to_id ON ticket_relationships (to_id);

@@ -504,3 +504,64 @@ def test_rls_is_enabled_on_every_collection(backend: Engine) -> None:
         )
         enabled = {row.relname: row.relrowsecurity for row in rows}
     assert enabled == dict.fromkeys(COLLECTION_TABLES, True)
+
+
+# --- ticket_relationships: workspace-scoped, written AS yourself (E12-T3) -----
+
+
+def test_ticket_relationships_are_workspace_scoped(backend: Engine) -> None:
+    """A typed edge is visible/insertable only inside the member's workspace,
+    written AS yourself; a cross-workspace edge never leaks (D-03 coarse wall).
+
+    The shared seed gives one ticket per workspace, so this test seeds (via the
+    service role, which bypasses RLS) a second ticket and one edge per side.
+    """
+    svc = service(backend)
+    for tid, pid in (("tkt_a2", "prj_a"), ("tkt_b2", "prj_b")):
+        assert svc.attempt(
+            "insert into tickets (id, created_at, updated_at, actor_seq, visibility,"
+            " hosting_mode, retention_policy, project_id, title, description, status,"
+            " priority, labels, acceptance_criteria, lifecycle_stage, attachments) values"
+            f" ('{tid}', {ENVELOPE}, '{pid}', 'seed', '', 'todo', 'medium', '[]'::json,"
+            " '', 'intake', '[]'::json)"
+        ).ok
+    for rid, frm, to, who in (
+        ("rel_a", "tkt_a", "tkt_a2", "mbr_alice"),
+        ("rel_b", "tkt_b", "tkt_b2", "mbr_cher"),
+    ):
+        assert svc.attempt(
+            "insert into ticket_relationships (id, created_at, updated_at, actor_seq,"
+            " visibility, hosting_mode, retention_policy, from_id, to_id, type, created_by)"
+            f" values ('{rid}', {ENVELOPE}, '{frm}', '{to}', 'blocking', '{who}')"
+        ).ok
+
+    bob = member(backend, "bob@acme.dev")
+    # reads only workspace A's edge
+    assert [r.id for r in bob.fetch_all("select id from ticket_relationships")] == ["rel_a"]
+    assert bob.fetch_all("select id from ticket_relationships where id = 'rel_b'") == []
+
+    # positive control: bob creates an edge in A, as himself
+    own = bob.attempt(
+        "insert into ticket_relationships (id, created_at, updated_at, actor_seq,"
+        " visibility, hosting_mode, retention_policy, from_id, to_id, type, created_by)"
+        f" values ('rel_own', {ENVELOPE}, 'tkt_a', 'tkt_a2', 'related', 'mbr_bob')"
+    )
+    assert own.ok and own.rowcount == 1
+
+    # cannot forge authorship, cannot write into workspace B
+    forged = bob.attempt(
+        "insert into ticket_relationships (id, created_at, updated_at, actor_seq,"
+        " visibility, hosting_mode, retention_policy, from_id, to_id, type, created_by)"
+        f" values ('rel_forged', {ENVELOPE}, 'tkt_a', 'tkt_a2', 'duplicate', 'mbr_alice')"
+    )
+    assert forged.denied, "bob attributed an edge to alice"
+    cross = bob.attempt(
+        "insert into ticket_relationships (id, created_at, updated_at, actor_seq,"
+        " visibility, hosting_mode, retention_policy, from_id, to_id, type, created_by)"
+        f" values ('rel_evil', {ENVELOPE}, 'tkt_b', 'tkt_b2', 'related', 'mbr_bob')"
+    )
+    assert cross.denied, "bob created an edge in workspace B"
+    # cannot delete workspace B's edge (USING filters it out → 0 rows)
+    assert bob.attempt("delete from ticket_relationships where id = 'rel_b'").denied
+    survives = service(backend).fetch_all("select id from ticket_relationships where id = 'rel_b'")
+    assert [r.id for r in survives] == ["rel_b"]

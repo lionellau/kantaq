@@ -48,6 +48,7 @@ CREATE TABLE sync_events (
 	-- tampered client cannot push either into the shared log.
 	-- memory_entries/memory_links joined with E13 (team-visibility rows only;
 	-- local rows never produce events at all — the MOD-19 emit seam).
+	-- ticket_relationships joined with E12-T3 (typed ticket edges, MOD-03 v0.1).
 	-- devices and capability_grants are DELIBERATELY absent until the backend
 	-- verifies signatures + grants before accepting events (E24-T5, Sprint 4):
 	-- an unverified client-pushed device event must never become a teammate's
@@ -55,8 +56,8 @@ CREATE TABLE sync_events (
 	-- and COLLECTION_META in lock-step — tests/test_sync_allowlists.py pins
 	-- all three against each other.
 	CONSTRAINT ck_sync_events_collection CHECK (collection IN
-		('workspaces', 'projects', 'tickets', 'comments', 'members', 'agent_proposals',
-		 'memory_entries', 'memory_links'))
+		('workspaces', 'projects', 'tickets', 'comments', 'ticket_relationships',
+		 'members', 'agent_proposals', 'memory_entries', 'memory_links'))
 );
 
 CREATE INDEX ix_sync_events_collection ON sync_events (collection, revision);

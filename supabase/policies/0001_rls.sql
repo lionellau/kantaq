@@ -173,6 +173,7 @@ alter table workspaces      enable row level security;
 alter table projects        enable row level security;
 alter table tickets         enable row level security;
 alter table comments        enable row level security;
+alter table ticket_relationships enable row level security;
 alter table members         enable row level security;
 alter table tokens          enable row level security;
 alter table audit_events    enable row level security;
@@ -186,6 +187,9 @@ grant select, insert, update         on workspaces      to authenticated;
 grant select, insert, update, delete on projects        to authenticated;
 grant select, insert, update, delete on tickets         to authenticated;
 grant select, insert, update, delete on comments        to authenticated;
+-- ticket_relationships are immutable edges (created + deleted, never patched),
+-- so no update grant — the missing verb is the rule, like audit_events.
+grant select, insert, delete         on ticket_relationships to authenticated;
 grant select, insert, update         on members         to authenticated;
 grant select, insert, update         on tokens          to authenticated;
 grant select, insert                 on audit_events    to authenticated;
@@ -360,6 +364,34 @@ drop policy if exists comments_delete on comments;
 create policy comments_delete on comments
   for delete to authenticated
   using (author_actor_id in (select kantaq.member_ids()));
+
+-- ---------------------------------------------------------------------------
+-- ticket_relationships (E12-T3) — typed ticket edges, scoped through their
+-- endpoints' workspace. SELECT/DELETE gate on the from-ticket; INSERT requires
+-- BOTH endpoints to be in my workspaces (so an edge can never reach across the
+-- workspace boundary) AND the row written AS yourself (attribution, like
+-- comments). No UPDATE policy — an edge is immutable (re-typed by delete +
+-- recreate), the database half of the service's create/tombstone-only rule.
+-- ---------------------------------------------------------------------------
+
+drop policy if exists ticket_relationships_select on ticket_relationships;
+create policy ticket_relationships_select on ticket_relationships
+  for select to authenticated
+  using (kantaq.ticket_in_my_workspaces(from_id));
+
+drop policy if exists ticket_relationships_insert on ticket_relationships;
+create policy ticket_relationships_insert on ticket_relationships
+  for insert to authenticated
+  with check (
+    kantaq.ticket_in_my_workspaces(from_id)
+    and kantaq.ticket_in_my_workspaces(to_id)
+    and created_by in (select kantaq.member_ids())
+  );
+
+drop policy if exists ticket_relationships_delete on ticket_relationships;
+create policy ticket_relationships_delete on ticket_relationships
+  for delete to authenticated
+  using (kantaq.ticket_in_my_workspaces(from_id));
 
 -- ---------------------------------------------------------------------------
 -- agent_proposals — readable across the workspace; proposed AS yourself.
