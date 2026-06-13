@@ -208,9 +208,7 @@ def _recommended_next(row: Ticket, open_parents: set[str]) -> list[str]:
     if not lifecycle.is_stage(row.lifecycle_stage):
         return []  # legacy row predating the locked taxonomy (fail-soft, MOD-20)
     return list(
-        lifecycle.recommend_next(
-            row.lifecycle_stage, has_open_subtickets=row.id in open_parents
-        )
+        lifecycle.recommend_next(row.lifecycle_stage, has_open_subtickets=row.id in open_parents)
     )
 
 

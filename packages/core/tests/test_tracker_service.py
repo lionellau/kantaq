@@ -226,14 +226,13 @@ def test_unknown_stage_is_rejected_at_create_and_patch(
         service.update_ticket(ticket.id, {"lifecycle_stage": "shipping"})
 
 
-def test_stage_jumps_are_valid_in_both_directions(
-    service: TrackerService, project_id: str
-) -> None:
+def test_stage_jumps_are_valid_in_both_directions(service: TrackerService, project_id: str) -> None:
     """Ordering is advisory: a QA bounce-back and an import-style jump both land."""
     ticket = service.create_ticket(project_id=project_id, title="T", lifecycle_stage="qa")
-    assert service.update_ticket(
-        ticket.id, {"lifecycle_stage": "implementation"}
-    ).lifecycle_stage == "implementation"
+    assert (
+        service.update_ticket(ticket.id, {"lifecycle_stage": "implementation"}).lifecycle_stage
+        == "implementation"
+    )
     assert service.update_ticket(ticket.id, {"lifecycle_stage": "learn"}).lifecycle_stage == "learn"
 
 

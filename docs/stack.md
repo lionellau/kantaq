@@ -186,6 +186,12 @@ was not needed.
 | OS keychain for the device seed | **FileKeychain kept** (0600 file, ours) | Apache-2.0 (ours) | The deferred golden-rule re-pass, run at exactly the moment D-01 scheduled it (E06-T4, 2026-06): **jaraco/keyring** is still ~1.5k★ (below the 5k bar; CLI-shaped API, plugin backends of varying quality), **secretstorage** (Linux-only, <1k★), **pyobjc-framework-Security** (macOS-only, binding not an abstraction). Nothing clears the bar, exactly as in v0.0.5 — so the sprint risk note's sanctioned fallback applies: the 0600 ``FileKeychain`` beside the SQLite replica holds the Ed25519 seed; the ``Keychain`` protocol keeps every caller indifferent for a future backend. Re-revisit if keyring's stars/maintenance change by v0.2 (hub-issued grants). |
 | Grant issuance/verification | **kantaq-protocol (MOD-17) + role matrix** | Apache-2.0 (ours) | No new dependency: grants sign with the E03 codec + pyca/cryptography and derive strictly from the PRD §11 matrix (never widening a role); PyJWT/Biscuit/macaroons were evaluated and rejected in the E03 pass (one codec rule). |
 
+### E14 / MOD-20 lifecycle stages
+
+| Need | Chosen | License | Notes |
+|---|---|---|---|
+| Lifecycle stage machine | **built from scratch** (`kantaq_core.lifecycle`, stdlib) | Apache-2.0 (ours) | Category: finite-state-machine / workflow library. No candidate clears the bar (checked 2026-06): **pytransitions/transitions** (6.5k★, MIT) fails the maintenance bar — last push 2025-09, ~9 months stale; **python-statemachine** (1.2k★) and **glyph/automat** (0.6k★) are below the star bar; **viewflow** is AGPL-3.0 (license bar). The shape is wrong too: FSM libraries model *enforced* per-instance machines with callbacks, while MOD-20 locks an advisory taxonomy persisted as a ticket column — membership-validated, free transitions, a pure recommend-next rule. One tuple of 9 frozen `Stage` records + two pure functions (~170 lines incl. docs), fully pinned by tests. |
+
 ## Consequences
 
 - Two toolchains in CI (Python + web). Keep total CI **under 10 minutes**

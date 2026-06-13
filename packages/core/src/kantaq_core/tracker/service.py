@@ -328,9 +328,7 @@ class TrackerService:
         )
 
     def _has_open_subtickets(self, ticket_id: str) -> bool:
-        statement = select(Ticket).where(
-            Ticket.parent_id == ticket_id, Ticket.status != "done"
-        )
+        statement = select(Ticket).where(Ticket.parent_id == ticket_id, Ticket.status != "done")
         return self._session.exec(statement).first() is not None
 
     # ---------------------------------------------------------------- comments
