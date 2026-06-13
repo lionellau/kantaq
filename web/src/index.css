@@ -1,0 +1,39 @@
+/*
+ * Base interaction polish (E20-T2 taste pass, MOD-12).
+ *
+ * The shell has no CSS framework on purpose (RISK-08): `lib/ui.ts` inline-style
+ * objects own the look. Inline styles cannot express :hover / :active /
+ * :focus-visible, so this is the one thin layer that adds the interaction and
+ * focus states the design audit flagged as missing — deliberately restrained
+ * (Notion/Linear editorial minimalism), motion via `filter`/`transform`/
+ * `outline` only so it never overrides an inline `background`, and at zero
+ * specificity (`:where`) so it never fights a component style.
+ */
+
+:where(button, a, input, select, [role="button"]) {
+  transition: filter 150ms ease, transform 80ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+button:not(:disabled):hover {
+  filter: brightness(0.96);
+}
+
+button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+a:hover {
+  filter: brightness(0.88);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* Accessible keyboard focus (palette accent), absent from the inline styles. */
+:where(a, button, input, select):focus-visible {
+  outline: 2px solid #1d4ed8;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
