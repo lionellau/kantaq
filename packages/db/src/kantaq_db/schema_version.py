@@ -19,12 +19,12 @@ from typing import Literal
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
-# Bump this whenever a migration changes the version row. Version 8 normalizes
-# tickets.lifecycle_stage to the locked MOD-20 taxonomy (data-only, E14).
-EXPECTED_SCHEMA_VERSION = 8
+# Bump this whenever a migration changes the version row. Version 9 adds the
+# ticket_relationships collection (E12-T3, MOD-03 v0.1).
+EXPECTED_SCHEMA_VERSION = 9
 # The Alembic head revision that defines the expected schema. Kept in sync with
 # the migration filename in ``migrations/versions``.
-HEAD_REVISION = "0008"
+HEAD_REVISION = "0009"
 
 Status = Literal["ok", "uninitialized", "mismatch"]
 

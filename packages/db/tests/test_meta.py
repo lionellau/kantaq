@@ -10,6 +10,7 @@ _EXPECTED = {
     "projects",
     "tickets",
     "comments",
+    "ticket_relationships",
     "members",
     "tokens",
     "audit_events",
@@ -23,9 +24,9 @@ _VALID_MERGE = {"lww", "append_only", "authoritative_tx", "crdt"}
 _VALID_AUTHORITY = {"local", "backend"}
 
 
-def test_twelve_collections_declared() -> None:
+def test_thirteen_collections_declared() -> None:
     assert set(collection_names()) == _EXPECTED
-    assert len(collection_names()) == 12
+    assert len(collection_names()) == 13
 
 
 def test_meta_matches_table_models() -> None:

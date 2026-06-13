@@ -52,16 +52,23 @@ class CollectionMeta:
 
 _DEFAULT_PRIVACY = PrivacyClass()
 
-# The 8 v0.0.5 collections (architecture §6) plus the v0.1 memory collections
-# (E13 / MOD-19). schema_version is infrastructure, not a collection, so it is
-# deliberately absent here. The collection-level privacy class stays the
-# default (team/plain/standard) for memory too: rows tighten to
-# visibility="local" per entity (D-14 — tightened, never loosened).
+# The 8 v0.0.5 collections (architecture §6) plus the v0.1 additions: the
+# memory collections (E13 / MOD-19), the typed ticket relationships (E12 /
+# MOD-03), and the identity pair (E06 / MOD-06). schema_version is
+# infrastructure, not a collection, so it is deliberately absent here. The
+# collection-level privacy class stays the default (team/plain/standard) for
+# memory too: rows tighten to visibility="local" per entity (D-14 — tightened,
+# never loosened).
 COLLECTION_META: dict[str, CollectionMeta] = {
     "workspaces": CollectionMeta("workspaces", "backend", "lww", _DEFAULT_PRIVACY),
     "projects": CollectionMeta("projects", "backend", "lww", _DEFAULT_PRIVACY),
     "tickets": CollectionMeta("tickets", "backend", "lww", _DEFAULT_PRIVACY),
     "comments": CollectionMeta("comments", "backend", "append_only", _DEFAULT_PRIVACY),
+    # E12 v0.1: typed ticket relationships — an edge is created and tombstoned,
+    # never patched, so it converges lww like any backend collection.
+    "ticket_relationships": CollectionMeta(
+        "ticket_relationships", "backend", "lww", _DEFAULT_PRIVACY
+    ),
     "members": CollectionMeta("members", "backend", "lww", _DEFAULT_PRIVACY),
     "tokens": CollectionMeta("tokens", "local", "authoritative_tx", _DEFAULT_PRIVACY),
     "audit_events": CollectionMeta("audit_events", "backend", "append_only", _DEFAULT_PRIVACY),
@@ -78,5 +85,5 @@ COLLECTION_META: dict[str, CollectionMeta] = {
 
 
 def collection_names() -> tuple[str, ...]:
-    """The declared collection names, in declaration order (12 in v0.1)."""
+    """The declared collection names, in declaration order (13 in v0.1)."""
     return tuple(COLLECTION_META)

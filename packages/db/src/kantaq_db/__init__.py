@@ -28,6 +28,7 @@ from kantaq_db.models import (
     SyncCursor,
     TelemetryEvent,
     Ticket,
+    TicketRelationship,
     Token,
     Workspace,
 )
@@ -54,6 +55,7 @@ __all__ = [
     "SyncCursor",
     "TelemetryEvent",
     "Ticket",
+    "TicketRelationship",
     "Token",
     "Workspace",
     "__version__",
