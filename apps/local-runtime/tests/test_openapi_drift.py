@@ -41,6 +41,8 @@ EXPECTED_PATHS = (
     "/v1/devices/{device_id}/revoke",
     "/v1/sync/status",
     "/v1/export",
+    "/v1/agents/sessions",
+    "/v1/audit/range",
 )
 
 

@@ -20,6 +20,8 @@ from sqlalchemy.engine import Engine
 
 from kantaq_core.identity import TokenVerifier
 from kantaq_runtime import __version__
+from kantaq_runtime.agents_api import router as agents_router
+from kantaq_runtime.audit_api import router as audit_router
 from kantaq_runtime.config import Settings, get_settings
 from kantaq_runtime.devices_api import router as devices_router
 from kantaq_runtime.export_api import router as export_router
@@ -80,6 +82,8 @@ def create_app(
     app.include_router(tracker_router)
     app.include_router(export_router)
     app.include_router(memory_router)
+    app.include_router(agents_router)
+    app.include_router(audit_router)
 
     dist = _web_dist()
 
