@@ -1,21 +1,31 @@
-"""Untrusted-content tagging for MCP tool output (MOD-18, invoked by MOD-08/09).
+"""The MOD-18 security primitives the gateway and tools invoke.
 
-Every string an MCP tool returns that originated from a human, an external
-system, or an agent is wrapped with a provenance + trust marker before it
-reaches the model (PRD §15.1, FR-E10-4). The published system-prompt template
-tells the agent to treat marked content as data, never as instructions.
+Three layers of the injection defense live here (the rest — the fixed allowlist,
+rate limits, propose-first, the 8 checks — are enforced in MOD-08's gateway):
 
-The wrapper must survive its own payload: a ticket body that contains a
-literal ``</untrusted>`` (or a spoofed opening tag) must not be able to close
-or forge the fence, so any embedded marker is neutralized by HTML-escaping its
-``<`` before wrapping. The regression corpus in
-``packages/test_harness/fixtures/injection`` pins this for CI (the
-"untrusted marker must not drop" gate).
+1. **Untrusted-content tagging.** Every string an MCP tool returns that
+   originated from a human, an external system, or an agent is wrapped with a
+   provenance + trust marker before it reaches the model (PRD §15.1, FR-E10-4).
+   The wrapper must survive its own payload: a ticket body containing a literal
+   ``</untrusted>`` (or a spoofed opening tag) must not be able to close or forge
+   the fence, so any embedded marker is neutralized by HTML-escaping its ``<``
+   before wrapping. The regression corpus pins this for CI (the "marker must not
+   drop" gate).
+2. **Origin / loopback guards** (E08-T3 consolidation). The one place the
+   loopback-only and no-browser-origin rules are defined; the server applies
+   them at the door (DNS-rebind / CSRF hardening, FR-E08-7).
+3. **External-MCP allowlist** (E08-T3, FR-E08-6). The team-mode policy that an
+   external MCP server must be workspace-approved. v0.1 federates with nothing
+   (the gateway is loopback-only and proxies to no other server), so the policy
+   gates *configuration* — it is the seam external-MCP federation will enforce
+   against; there is deliberately no live external-MCP traffic path to enforce on.
 """
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
+from urllib.parse import urlsplit
 
 UNTRUSTED_TAG = "untrusted"
 
@@ -59,3 +69,82 @@ def tag_untrusted(text: str, source: str) -> str:
     if not _SOURCE_PATTERN.fullmatch(source):
         raise UntrustedSourceError(f"invalid untrusted-source slug: {source!r}")
     return f'<{UNTRUSTED_TAG} source="{source}">{neutralize_markers(text)}</{UNTRUSTED_TAG}>'
+
+
+# --------------------------------------------------- origin / loopback guards
+
+# The only hosts the agent gateway may bind/accept (FR-E08-7). There is no
+# "0.0.0.0 with opt-in" in v0.1 — localhost is the whole surface.
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost"})
+
+
+def is_loopback_host(host: str) -> bool:
+    """Whether ``host`` is a loopback interface the gateway may bind."""
+    return host in LOOPBACK_HOSTS
+
+
+def is_browser_origin(origin: str | None) -> bool:
+    """Whether a request carries a browser ``Origin`` — rejected on the agent port.
+
+    No web page has any business on the loopback agent port; a present ``Origin``
+    is the DNS-rebind / CSRF signal and is refused before the token is read.
+    Requests with no ``Origin`` (curl, the SDK client, agents) pass to token auth.
+    """
+    return origin is not None
+
+
+# --------------------------------------------------- external-MCP allowlist
+
+# Schemes an external MCP server URL may use (loopback stdio/proxy excluded).
+_MCP_SCHEMES = frozenset({"http", "https"})
+
+
+class ExternalMcpError(ValueError):
+    """An external MCP server URL is malformed or its scheme is not allowed."""
+
+
+def normalize_mcp_origin(url: str) -> str:
+    """The ``scheme://host[:port]`` origin an external MCP server is keyed by.
+
+    Path, query, and credentials are dropped — an allowlist entry approves a
+    *server*, not one of its endpoints — and the host is lower-cased so
+    ``HTTPS://Host`` and ``https://host`` are the same approval.
+    """
+    parts = urlsplit(url)
+    if parts.scheme.lower() not in _MCP_SCHEMES or not parts.hostname:
+        raise ExternalMcpError(f"not a valid external MCP server URL: {url!r}")
+    host = parts.hostname.lower()
+    netloc = f"{host}:{parts.port}" if parts.port is not None else host
+    return f"{parts.scheme.lower()}://{netloc}"
+
+
+@dataclass(frozen=True)
+class ExternalMcpAllowlist:
+    """The workspace's approved external MCP servers (team mode, FR-E08-6).
+
+    ``team_mode`` off (solo, single user, local trust — D-06) approves anything:
+    the user owns their own agent configuration. ``team_mode`` on approves only
+    origins on the list, so a workspace cannot be configured to send agent
+    context to an unapproved server. Origins are normalized on construction so
+    equality is by server, not by spelling.
+    """
+
+    team_mode: bool = False
+    origins: frozenset[str] = field(default_factory=frozenset)
+
+    @classmethod
+    def from_urls(cls, urls: object, *, team_mode: bool) -> ExternalMcpAllowlist:
+        items = urls if isinstance(urls, (list, tuple, set, frozenset)) else ()
+        return cls(team_mode=team_mode, origins=frozenset(normalize_mcp_origin(u) for u in items))
+
+    def approves(self, url: str) -> bool:
+        """Whether an external MCP server at ``url`` may be used (fails closed).
+
+        A malformed URL is never approved. In team mode the server's origin must
+        be on the list; in solo mode any well-formed server is approved.
+        """
+        try:
+            origin = normalize_mcp_origin(url)
+        except ExternalMcpError:
+            return False
+        return True if not self.team_mode else origin in self.origins
