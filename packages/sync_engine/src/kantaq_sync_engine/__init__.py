@@ -37,24 +37,47 @@ from kantaq_sync_engine.log import (
     row_to_event,
 )
 from kantaq_sync_engine.snapshot import compose_snapshot, fold_collection, parse_snapshot
+from kantaq_sync_engine.verify import (
+    INVALID_SIGNATURE,
+    POLICY_DENIED,
+    SCHEMA_VIOLATION,
+    STALE_BASE_REV,
+    UNSIGNED,
+    VERIFY_OK,
+    EventRejected,
+    EventVerification,
+    VerifyContext,
+    VerifyingBackend,
+    verify_event,
+)
 
 __version__: str = "0.0.5"
 
 __all__ = [
     "ALL_COLLECTIONS",
+    "INVALID_SIGNATURE",
+    "POLICY_DENIED",
+    "SCHEMA_VIOLATION",
+    "STALE_BASE_REV",
     "SYNCABLE_MODELS",
+    "UNSIGNED",
+    "VERIFY_OK",
     "BackendPort",
     "CommittedEvent",
     "DuplicateEventError",
     "Event",
     "EventLogSink",
+    "EventRejected",
     "EventSigner",
+    "EventVerification",
     "Op",
     "PullResult",
     "PushResult",
     "SigningRequiredError",
     "SyncEngine",
     "UnknownCollectionError",
+    "VerifyContext",
+    "VerifyingBackend",
     "__version__",
     "collection_rows",
     "compose_snapshot",
@@ -70,4 +93,5 @@ __all__ = [
     "pending_rows",
     "refold_entity",
     "row_to_event",
+    "verify_event",
 ]

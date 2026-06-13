@@ -323,6 +323,21 @@ def ensure_member_grant(
     )
 
 
+def local_grant_index(session: Session) -> tuple[dict[str, CapabilityGrant], set[str]]:
+    """The store's grant view for verified ingestion (E24-T5): every stored
+    grant as a protocol value, plus the ids the store knows are revoked.
+
+    Pairs with ``verification_roots`` (device id → verify key) to build the
+    ``VerifyContext`` the sync layer checks pulled events against. A grant the
+    store has never seen is simply absent — the verifier denies an event whose
+    ``policy_ref`` it cannot resolve.
+    """
+    rows = list(session.exec(select(CapabilityGrantRow)).all())
+    grants = {row.id: _to_protocol(row) for row in rows}
+    revoked = {row.id for row in rows if row.revoked_at is not None}
+    return grants, revoked
+
+
 def revoke_grants_for_member(
     session: Session,
     member_id: str,

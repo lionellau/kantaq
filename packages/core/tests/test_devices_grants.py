@@ -26,6 +26,7 @@ from kantaq_core.identity import (
     Role,
     ensure_device,
     ensure_member_grant,
+    local_grant_index,
     revoke_device,
     revoke_grants_for_device,
     verification_roots,
@@ -622,3 +623,26 @@ def test_ensure_member_grant_for_agent_uses_token_scopes(
         assert grant.verbs == ["tickets.write"]
         assert grant.subject == agent.member_id
         assert _grant_service(session, keychain, clock).verify(grant).ok
+
+
+def test_local_grant_index_exposes_grants_and_revocations(
+    engine: Engine, keychain: FakeKeychain, clock: FakeClock, owner_id: str
+) -> None:
+    """The verifier's grant view (E24-T5): every stored grant as a protocol
+    value, plus the ids the store knows are revoked."""
+    with Session(engine) as session:
+        ensure_device(session, keychain, member_id=owner_id, now=_now(clock)())
+        service = _grant_service(session, keychain, clock)
+        live = service.issue(
+            subject_member_id=owner_id, resource="ws", verbs=["tickets.write"], actor_id=owner_id
+        )
+        gone = service.issue(
+            subject_member_id=owner_id, resource="ws", verbs=["tickets.read"], actor_id=owner_id
+        )
+        service.revoke(gone.id, actor_id=owner_id)
+        session.commit()
+
+        grants, revoked = local_grant_index(session)
+        assert {live.id, gone.id} <= set(grants)
+        assert grants[live.id].subject == owner_id  # converted to the protocol value
+        assert revoked == {gone.id}
