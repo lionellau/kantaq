@@ -2042,6 +2042,55 @@
         ]
       }
     },
+    "/v1/export": {
+      "post": {
+        "description": "Produce the portable bundle; ``since`` exports only the committed delta.",
+        "operationId": "export_bundle_v1_export_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Bundle",
+        "tags": [
+          "export"
+        ]
+      }
+    },
     "/v1/grants": {
       "get": {
         "operationId": "list_grants_v1_grants_get",
