@@ -25,6 +25,7 @@ from kantaq_core.identity import (
     ensure_member_grant,
 )
 from kantaq_core.identity.devices import device_private_key
+from kantaq_core.memory import MemoryService
 from kantaq_core.tracker import LocalBlobStore, TrackerService
 from kantaq_db import new_ulid
 from kantaq_db.models import Member, Ticket
@@ -199,6 +200,30 @@ def test_blob_is_exported_and_content_addressed(engine: Engine, blob_store: Loca
     manifest = json.loads(files["blobs/manifest.json"])
     assert manifest[ref.blob_id]["sha256"] == ref.blob_id
     assert manifest[ref.blob_id]["filename"] == "notes.txt"
+
+
+def test_local_visibility_data_never_enters_the_bundle(
+    engine: Engine, blob_store: LocalBlobStore
+) -> None:
+    """The export is built from the event log, and a ``visibility=local`` entry
+    emits no event (NFR-E13-1) — so private content cannot leak into a bundle,
+    the same privacy seam that keeps it out of sync."""
+    keychain = FakeKeychain()
+    owner_id, _, _ = _seed(engine, keychain)
+    with Session(engine) as session:
+        grant = ensure_member_grant(session, keychain, owner_id)
+        signer = EventSigner(private_key=device_private_key(keychain), policy_ref=grant.id)
+        memory = MemoryService(
+            session,
+            actor_id=owner_id,
+            source="app",
+            sink=EventLogSink(session, owner_id, signer=signer),
+        )
+        memory.create_entry(title="local-secret-marker", visibility="local")
+        session.commit()
+
+    files = _members(_build(engine, keychain, blob_store))
+    assert b"local-secret-marker" not in b"".join(files.values())
 
 
 def test_bundle_is_byte_deterministic(engine: Engine, blob_store: LocalBlobStore) -> None:
