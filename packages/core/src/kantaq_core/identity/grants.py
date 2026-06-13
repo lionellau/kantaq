@@ -31,7 +31,7 @@ from kantaq_core.identity.devices import (
     verification_roots,
 )
 from kantaq_core.identity.keychain import Keychain
-from kantaq_core.identity.roles import Action, Role, can
+from kantaq_core.identity.roles import ROLE_PERMISSIONS, Action, Role, can
 from kantaq_core.identity.service import IdentityError, MemberNotFoundError
 from kantaq_db.models import CapabilityGrantRow, Member, Token
 from kantaq_protocol import (
@@ -255,6 +255,72 @@ class GrantService:
         )
         token = self._session.exec(statement).first()
         return token.id if token is not None else None
+
+
+def _grantable_verbs(session: Session, member: Member) -> list[str]:
+    """The verbs a member may be granted: the full capability of their role
+    (humans, ``ROLE_PERMISSIONS``) or their active token scopes (agents),
+    intersected with the known action vocabulary. Never widens the role (D-03).
+    """
+    if member.role == Role.agent.value:
+        scopes = {
+            scope
+            for token in session.exec(
+                select(Token).where(Token.member_id == member.id, col(Token.revoked_at).is_(None))
+            ).all()
+            for scope in token.scopes
+        }
+        return sorted(action.value for action in Action if action.value in scopes)
+    try:
+        role = Role(member.role)
+    except ValueError:
+        return []
+    return sorted(action.value for action in ROLE_PERMISSIONS.get(role, frozenset()))
+
+
+def ensure_member_grant(
+    session: Session,
+    keychain: Keychain,
+    member_id: str,
+    *,
+    now: Callable[[], datetime] | None = None,
+) -> CapabilityGrantRow:
+    """A live self-grant for a member's signed writes (E04-T4), idempotent.
+
+    Every event a member's runtime signs rides a capability grant (the
+    event's ``policy_ref``) that the verified-ingestion path (E24-T5) checks:
+    the grant authenticates the actor and is signed by a root device. This
+    reuses the member's newest live (signed, unrevoked, unexpired) workspace
+    grant and mints a fresh one — ``resource`` = the member's workspace,
+    ``verbs`` = their full role/scope capability, 24 h TTL — only when none is
+    live. Issuance routes through ``GrantService.issue``, so the grant never
+    widens the role (D-03) and a runtime with no device key fails closed.
+    """
+    clock = now or _utcnow
+    member = session.get(Member, member_id)
+    if member is None:
+        raise MemberNotFoundError(member_id)
+    resource = member.workspace_id
+    now_unix = _unix(clock())
+    service = GrantService(session, keychain, now=clock)
+    for row in service.list_for(member_id):
+        if (
+            row.resource == resource
+            and row.sig is not None
+            and row.revoked_at is None
+            and row.expires_at > now_unix
+        ):
+            return row
+    verbs = _grantable_verbs(session, member)
+    if not verbs:
+        raise GrantDeniedError(f"member {member.email} has no grantable capability to sign with")
+    return service.issue(
+        subject_member_id=member_id,
+        resource=resource,
+        verbs=verbs,
+        ttl_seconds=MAX_GRANT_TTL_SECONDS,
+        actor_id=member_id,
+    )
 
 
 def revoke_grants_for_member(
