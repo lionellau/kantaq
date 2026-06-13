@@ -194,6 +194,13 @@ was not needed.
 |---|---|---|---|
 | Lifecycle stage machine | **built from scratch** (`kantaq_core.lifecycle`, stdlib) | Apache-2.0 (ours) | Category: finite-state-machine / workflow library. No candidate clears the bar (checked 2026-06): **pytransitions/transitions** (6.5k★, MIT) fails the maintenance bar — last push 2025-09, ~9 months stale; **python-statemachine** (1.2k★) and **glyph/automat** (0.6k★) are below the star bar; **viewflow** is AGPL-3.0 (license bar). The shape is wrong too: FSM libraries model *enforced* per-instance machines with callbacks, while MOD-20 locks an advisory taxonomy persisted as a ticket column — membership-validated, free transitions, a pure recommend-next rule. One tuple of 9 frozen `Stage` records + two pure functions (~170 lines incl. docs), fully pinned by tests. |
 
+### E20 / MOD-12 Settings tree (v0.1)
+
+| Need | Chosen | License | Notes |
+|---|---|---|---|
+| Settings navigation tree + section pages | **built on the in-stack React + react-router + `web/src/lib/ui.ts` vocabulary** | Apache-2.0 (ours) | Category: a settings-UI / tree-view / headless-component kit. No candidate fits the shell: **Radix UI** (~15k★, MIT — navigation/accordion primitives) and **shadcn/ui** drag in a component system + a styling approach (Tailwind / CSS-in-JS) the web shell deliberately forgoes (RISK-08: no CSS framework, one inline-style vocabulary); **react-arborist** (~3k★) and **rc-tree** sit around/below the star bar and are the wrong shape (file-tree widgets, not a settings nav); **react-hook-form** (~42k★, MIT) is form-state machinery this read-mostly surface does not need. The tree is a static `react-router` route map rendered through the existing `ui.ts` style objects — identical to every prior web epic (E13/E18/E19/E21). No standard claimed (none exists for a settings IA). |
+| Settings interaction / focus polish | **~25-line hand-written base stylesheet** (`web/src/index.css`) | Apache-2.0 (ours) | The taste pass (Leonxlnx/taste-skill, minimalist profile) flagged the states inline styles cannot express — hover / active / `:focus-visible` / transitions. A tiny framework-free base layer adds them at zero specificity (`:where`) via `filter`/`transform`/`outline`, so it never overrides an inline `background`; that is base CSS, not a framework, so RISK-08 holds. DESIGN_VARIANCE and MOTION dials kept deliberately low to match the established editorial-minimal design system. |
+
 ## Consequences
 
 - Two toolchains in CI (Python + web). Keep total CI **under 10 minutes**
