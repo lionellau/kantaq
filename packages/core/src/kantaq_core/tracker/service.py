@@ -19,21 +19,52 @@ Timestamps are injectable (``now=``) so tests drive them with FakeClock.
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, TypeVar
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from kantaq_core import audit, lifecycle
 from kantaq_core.tracker.blobs import AttachmentRef
 from kantaq_core.tracker.events import DomainEvent, EventSink, Op
-from kantaq_db.models import AuditEvent, Comment, Member, Project, Ticket, Workspace
+from kantaq_db.models import (
+    AuditEvent,
+    Comment,
+    Member,
+    Project,
+    Ticket,
+    TicketRelationship,
+    Workspace,
+)
 
 # Ticket workflow status (architecture facts: todo/doing/done + lifecycle stage).
 TICKET_STATUSES: tuple[str, ...] = ("todo", "doing", "done")
 TICKET_PRIORITIES: tuple[str, ...] = ("low", "medium", "high", "urgent")
 PROJECT_STATUSES: tuple[str, ...] = ("active", "paused", "done")
+
+# Typed ticket relationships (MOD-03 v0.1 / FR-E12-3). Five types, two of them
+# symmetric (``related``/``duplicate``: an edge means the same fact from either
+# end) and two an inverse pair (``blocking`` ⇔ ``blocked-by``: "A blocking B" is
+# the same fact as "B blocked-by A"). ``caused-by`` is directed with no spelled
+# inverse in the set. Integrity is enforced over these semantics, not the raw
+# (from, to, type) triple — see ``_relation_key`` / ``_relation_arc``.
+RELATIONSHIP_TYPES: tuple[str, ...] = (
+    "related",
+    "blocked-by",
+    "blocking",
+    "duplicate",
+    "caused-by",
+)
+_SYMMETRIC_TYPES: frozenset[str] = frozenset({"related", "duplicate"})
+# The relation types contributing arcs to each directed dependency family. The
+# cycle check loads only the family it is testing (FR-E15-2 will read the same
+# graph for the dependency surface).
+_FAMILY_TYPES: dict[str, tuple[str, ...]] = {
+    "blocks": ("blocking", "blocked-by"),
+    "causes": ("caused-by",),
+}
 
 _TITLE_MAX = 500
 _LABEL_MAX = 64
@@ -71,6 +102,40 @@ def _naive_utc(ts: datetime) -> datetime:
     if ts.tzinfo is None:
         return ts
     return ts.astimezone(UTC).replace(tzinfo=None)
+
+
+def _relation_key(from_id: str, to_id: str, rel_type: str) -> tuple[Any, ...]:
+    """A canonical key for a relationship's *fact*, independent of spelling.
+
+    Two requests with the same key assert the same thing, so the key is what
+    the no-duplicate rule compares (a plain ``(from, to, type)`` triple would
+    let ``A blocking B`` and ``B blocked-by A`` — the same dependency — both be
+    stored). Symmetric types collapse the endpoint order; the inverse pair
+    collapses onto one directed ``blocks`` arc; ``caused-by`` onto a ``causes``
+    arc.
+    """
+    if rel_type in _SYMMETRIC_TYPES:
+        return (rel_type, frozenset({from_id, to_id}))
+    arc = _relation_arc(from_id, to_id, rel_type)
+    assert arc is not None  # every non-symmetric type yields an arc
+    return arc
+
+
+def _relation_arc(from_id: str, to_id: str, rel_type: str) -> tuple[str, str, str] | None:
+    """The directed arc a relationship contributes to its dependency graph.
+
+    Returns ``(family, src, dst)`` meaning ``src`` precedes ``dst`` in that
+    family — ``blocks`` (``src`` blocks ``dst``) or ``causes`` (``src`` causes
+    ``dst``) — or ``None`` for the symmetric types, which form no order and so
+    cannot create a cycle. The cycle check (``_would_cycle``) runs per family.
+    """
+    if rel_type == "blocking":  # from blocks to
+        return ("blocks", from_id, to_id)
+    if rel_type == "blocked-by":  # to blocks from
+        return ("blocks", to_id, from_id)
+    if rel_type == "caused-by":  # to caused (→ causes) from
+        return ("causes", to_id, from_id)
+    return None  # related / duplicate — symmetric, no direction
 
 
 class TrackerError(Exception):
@@ -290,6 +355,7 @@ class TrackerService:
         assignee: str | None = None,
         label: str | None = None,
         stage: str | None = None,
+        parent: str | None = None,
     ) -> list[Ticket]:
         statement = select(Ticket)
         if project_id is not None:
@@ -300,6 +366,9 @@ class TrackerService:
             statement = statement.where(Ticket.assignee == assignee)
         if stage is not None:
             statement = statement.where(Ticket.lifecycle_stage == stage)
+        if parent is not None:
+            # The sub-issue query (FR-E12-3): a parent's direct children.
+            statement = statement.where(Ticket.parent_id == parent)
         rows = list(self._session.exec(statement).all())
         if label is not None:
             # Generic JSON columns have no portable "list contains" in SQL;
@@ -330,6 +399,143 @@ class TrackerService:
     def _has_open_subtickets(self, ticket_id: str) -> bool:
         statement = select(Ticket).where(Ticket.parent_id == ticket_id, Ticket.status != "done")
         return self._session.exec(statement).first() is not None
+
+    # ------------------------------------------------------ relations (FR-E12-3)
+
+    def add_relation(self, from_id: str, to_id: str, rel_type: str) -> TicketRelationship:
+        """Create a typed edge between two tickets (FR-E12-3).
+
+        Integrity, fail-closed before anything is written: the type is one of
+        the five; no self-link; no duplicate (the symmetric or inverse spelling
+        of an existing edge is the same fact); no cycle in the dependency
+        families (``blocks`` from blocking/blocked-by, ``causes`` from
+        caused-by). Both endpoints must be tickets in the same workspace — typed
+        edges may cross projects (an app ticket blocked-by an infra ticket),
+        unlike the same-project parent/sub containment. The activity row lands
+        on the *from* ticket, so the edge shows in the feed of the ticket the
+        user acted on.
+        """
+        if rel_type not in RELATIONSHIP_TYPES:
+            raise TrackerValidationError(
+                f"unknown relationship type {rel_type!r}; expected one of {RELATIONSHIP_TYPES}"
+            )
+        if from_id == to_id:
+            raise TrackerValidationError("a ticket cannot relate to itself")
+        source = self.get_ticket(from_id)
+        target = self.get_ticket(to_id)
+        self._require_same_workspace(source, target)
+
+        key = _relation_key(from_id, to_id, rel_type)
+        for existing in self._relations_touching((from_id, to_id)):
+            if _relation_key(existing.from_id, existing.to_id, existing.type) == key:
+                raise TrackerValidationError(
+                    f"these tickets already have a {rel_type!r}-equivalent relationship"
+                )
+
+        arc = _relation_arc(from_id, to_id, rel_type)
+        if arc is not None and self._would_cycle(*arc):
+            family = arc[0]
+            raise TrackerValidationError(
+                f"a {rel_type!r} relationship here would create a {family} cycle"
+            )
+
+        ts = self._now()
+        relationship = TicketRelationship(
+            from_id=from_id,
+            to_id=to_id,
+            type=rel_type,
+            created_by=self._actor_id,
+            created_at=ts,
+            updated_at=ts,
+        )
+        self._session.add(relationship)
+        self._session.flush()
+        audit.write(
+            self._session,
+            actor_id=self._actor_id,
+            action="relation.create",
+            source=self._source,
+            object_ref=f"tickets/{from_id}",
+            after=audit.snapshot(relationship),
+            now=ts,
+        )
+        self._emit("ticket_relationships", relationship.id, "patch", audit.snapshot(relationship))
+        self._session.commit()
+        self._session.refresh(relationship)
+        return relationship
+
+    def remove_relation(self, relationship_id: str) -> None:
+        """Delete a typed edge — the only mutation a relationship has."""
+        relationship = self._session.get(TicketRelationship, relationship_id)
+        if relationship is None:
+            raise TrackerNotFoundError("ticket_relationships", relationship_id)
+        ts = self._now()
+        audit.write(
+            self._session,
+            actor_id=self._actor_id,
+            action="relation.delete",
+            source=self._source,
+            object_ref=f"tickets/{relationship.from_id}",
+            before=audit.snapshot(relationship),
+            now=ts,
+        )
+        self._emit("ticket_relationships", relationship.id, "tombstone", {})
+        self._session.delete(relationship)
+        self._session.commit()
+
+    def relations_for(self, ticket_id: str) -> list[TicketRelationship]:
+        """Every typed relationship touching the ticket, from either end."""
+        self.get_ticket(ticket_id)
+        return sorted(self._relations_touching((ticket_id,)), key=lambda r: r.id)
+
+    def _relations_touching(self, ticket_ids: tuple[str, ...]) -> list[TicketRelationship]:
+        ids = set(ticket_ids)
+        statement = select(TicketRelationship).where(
+            col(TicketRelationship.from_id).in_(ids) | col(TicketRelationship.to_id).in_(ids)
+        )
+        return list(self._session.exec(statement).all())
+
+    def _require_same_workspace(self, a: Ticket, b: Ticket) -> None:
+        if self._ticket_workspace(a) != self._ticket_workspace(b):
+            raise TrackerValidationError("related tickets must belong to the same workspace")
+
+    def _ticket_workspace(self, ticket: Ticket) -> str:
+        project = self._session.get(Project, ticket.project_id)
+        # A ticket always has a project (FK); fall back defensively.
+        return project.workspace_id if project is not None else ticket.project_id
+
+    def _would_cycle(self, family: str, src: str, dst: str) -> bool:
+        """Would adding the arc ``src → dst`` close a cycle in ``family``?
+
+        A cycle forms iff ``dst`` already reaches ``src`` along existing arcs of
+        the family (the new arc is not yet stored), so BFS the current graph
+        from ``dst``. v0.1 relation counts are small; this stays in memory.
+        """
+        adjacency = self._family_adjacency(family)
+        seen = {dst}
+        queue = deque([dst])
+        while queue:
+            for nxt in adjacency.get(queue.popleft(), ()):
+                if nxt == src:
+                    return True
+                if nxt not in seen:
+                    seen.add(nxt)
+                    queue.append(nxt)
+        return False
+
+    def _family_adjacency(self, family: str) -> dict[str, list[str]]:
+        """Adjacency list of one dependency family, from the stored edges."""
+        statement = select(TicketRelationship).where(
+            col(TicketRelationship.type).in_(_FAMILY_TYPES[family])
+        )
+        adjacency: dict[str, list[str]] = {}
+        for relationship in self._session.exec(statement).all():
+            arc = _relation_arc(relationship.from_id, relationship.to_id, relationship.type)
+            if arc is None:  # pragma: no cover - the query restricts to arc types
+                continue
+            _, edge_src, edge_dst = arc
+            adjacency.setdefault(edge_src, []).append(edge_dst)
+        return adjacency
 
     # ---------------------------------------------------------------- comments
 

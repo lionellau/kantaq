@@ -18,6 +18,7 @@ from kantaq_core.tracker.events import (
 )
 from kantaq_core.tracker.service import (
     PROJECT_STATUSES,
+    RELATIONSHIP_TYPES,
     TICKET_PRIORITIES,
     TICKET_STATUSES,
     TrackerError,
@@ -29,6 +30,7 @@ from kantaq_core.tracker.service import (
 __all__ = [
     "MAX_ATTACHMENT_BYTES",
     "PROJECT_STATUSES",
+    "RELATIONSHIP_TYPES",
     "TICKET_PRIORITIES",
     "TICKET_STATUSES",
     "AttachmentRef",
