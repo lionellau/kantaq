@@ -10,10 +10,11 @@ import json
 
 from kantaq_runtime.openapi import read_artifact, render_spec
 
-# The tracker + members + memory + lifecycle surface the typed client is
-# generated for (MOD-03/06/19/20).
+# The tracker + members + memory + lifecycle + trust-surface (identity,
+# devices, sync) the typed client is generated for (MOD-03/06/12/19/20).
 EXPECTED_PATHS = (
     "/healthz",
+    "/v1/me",
     "/v1/members",
     "/v1/members/invite",
     "/v1/projects",
@@ -35,6 +36,9 @@ EXPECTED_PATHS = (
     "/v1/telemetry",
     "/v1/grants",
     "/v1/grants/{grant_id}/revoke",
+    "/v1/devices",
+    "/v1/devices/{device_id}/revoke",
+    "/v1/sync/status",
 )
 
 

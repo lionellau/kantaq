@@ -21,6 +21,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Devices */
+        get: operations["list_devices_v1_devices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/devices/{device_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke Device Route */
+        post: operations["revoke_device_route_v1_devices__device_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/grants": {
         parameters: {
             query?: never;
@@ -69,6 +103,31 @@ export interface paths {
          *     without hardcoding slugs, titles, or skill containers.
          */
         get: operations["lifecycle_stages_v1_lifecycle_stages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Me
+         * @description The signed-in member's own identity (E20-T2, Settings → Identity).
+         *
+         *     Self-scoped by construction: the member id comes from the verified token,
+         *     so there is no way to ask for someone else. ``scopes`` are the token's (a
+         *     human token carries none — the role decides; an agent token carries its
+         *     propose-first scopes).
+         */
+        get: operations["me_v1_me_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -314,6 +373,23 @@ export interface paths {
         put?: never;
         /** Reject Proposal */
         post: operations["reject_proposal_v1_proposals__proposal_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sync/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sync Status */
+        get: operations["sync_status_v1_sync_status_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -592,6 +668,33 @@ export interface components {
             /** Ticket Id */
             ticket_id: string;
         };
+        /**
+         * DeviceOut
+         * @description A device row — verify key only, never the private seed.
+         */
+        DeviceOut: {
+            /** Active */
+            active: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Is Current */
+            is_current: boolean;
+            /** Label */
+            label: string;
+            /** Member Email */
+            member_email: string | null;
+            /** Member Id */
+            member_id: string | null;
+            /** Public Key */
+            public_key: string;
+            /** Revoked At */
+            revoked_at: string | null;
+        };
         /** GrantIn */
         GrantIn: {
             /** Member Id */
@@ -672,6 +775,21 @@ export interface components {
         LinkedMemoryOut: {
             entry: components["schemas"]["MemoryOut"];
             link: components["schemas"]["MemoryLinkOut"];
+        };
+        /** MeOut */
+        MeOut: {
+            /** Email */
+            email: string;
+            /** Member Id */
+            member_id: string;
+            /** Role */
+            role: string;
+            /** Scopes */
+            scopes: string[];
+            /** Workspace Id */
+            workspace_id: string;
+            /** Workspace Name */
+            workspace_name: string;
         };
         /**
          * MemberOut
@@ -978,6 +1096,21 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** SyncStatusOut */
+        SyncStatusOut: {
+            /** Backend Configured */
+            backend_configured: boolean;
+            /** Committed Events */
+            committed_events: number;
+            /** Hub Mode */
+            hub_mode: string;
+            /** Last Committed At */
+            last_committed_at: string | null;
+            /** Pending Events */
+            pending_events: number;
+            /** Total Events */
+            total_events: number;
+        };
         /** TelemetryEventOut */
         TelemetryEventOut: {
             /**
@@ -1186,6 +1319,57 @@ export interface operations {
             };
         };
     };
+    list_devices_v1_devices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceOut"][];
+                };
+            };
+        };
+    };
+    revoke_device_route_v1_devices__device_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_grants_v1_grants_get: {
         parameters: {
             query?: {
@@ -1297,6 +1481,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LifecycleStageOut"][];
+                };
+            };
+        };
+    };
+    me_v1_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeOut"];
                 };
             };
         };
@@ -1885,6 +2089,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_status_v1_sync_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncStatusOut"];
                 };
             };
         };

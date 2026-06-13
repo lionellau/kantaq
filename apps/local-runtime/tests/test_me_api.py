@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel
 
-from kantaq_core.identity import IdentityService, TokenVerifier
+from kantaq_core.identity import IdentityService, Role, TokenVerifier
 from kantaq_runtime.app import create_app
 from kantaq_runtime.config import Settings
 from kantaq_runtime.me_api import TOKEN_PLACEHOLDER
@@ -69,6 +69,45 @@ def _write_discovery(db_dir: Path, *, url: str, pid: int) -> None:
 
 def test_snippet_requires_a_token(client: TestClient) -> None:
     assert client.get("/v1/me/agent-snippet").status_code == 401
+
+
+# ---------------------------------------------------------------- GET /v1/me
+
+
+def test_me_requires_a_token(client: TestClient) -> None:
+    assert client.get("/v1/me").status_code == 401
+
+
+def test_me_returns_the_callers_identity(client: TestClient, owner_token: str) -> None:
+    body = client.get("/v1/me", headers=_bearer(owner_token)).json()
+    assert body["email"] == "owner@local"
+    assert body["role"] == "Owner"
+    assert body["workspace_name"] == "Local Workspace"
+    assert body["member_id"]
+    assert body["workspace_id"]
+    # A human token carries no scopes — the role decides.
+    assert body["scopes"] == []
+
+
+def test_me_reflects_an_agent_tokens_scopes(
+    client: TestClient, engine: Engine, owner_token: str
+) -> None:
+    with Session(engine) as session:
+        minted = IdentityService(session).invite(
+            email="bot@example.com",
+            role=Role.agent,
+            scopes=["tickets.read", "proposals.write"],
+        )
+    body = client.get("/v1/me", headers=_bearer(minted.plaintext)).json()
+    assert body["email"] == "bot@example.com"
+    assert body["role"] == "Agent"
+    assert sorted(body["scopes"]) == ["proposals.write", "tickets.read"]
+
+
+def test_me_never_carries_a_secret(client: TestClient, owner_token: str) -> None:
+    """The token came in; nothing token-shaped goes back out."""
+    response = client.get("/v1/me", headers=_bearer(owner_token))
+    assert owner_token not in response.text
 
 
 def test_no_discovery_file_means_gateway_down(client: TestClient, owner_token: str) -> None:

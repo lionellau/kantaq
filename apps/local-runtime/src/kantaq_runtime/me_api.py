@@ -1,4 +1,11 @@
-"""Me API: the per-member agent snippet (E21-T2, MOD-13).
+"""Me API: the signed-in member and their loopback agent snippet (MOD-13/MOD-12).
+
+``GET /v1/me`` (E20-T2, MOD-12 Settings → Identity) returns who the bearer
+token belongs to — member id, email, role, the token's scopes, and the
+workspace it lives in. Read-only and self-scoped: the response is always the
+caller's own identity, never another member's, so no permission beyond a valid
+token is needed. It carries no secret (the token came in, nothing key-shaped
+goes out).
 
 ``GET /v1/me/agent-snippet`` returns the Claude Code-style MCP snippet for
 **this member's own loopback gateway** — the corrected, local-first onboarding
@@ -24,11 +31,13 @@ from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.engine import Engine
+from sqlmodel import Session
 
 from kantaq_core.identity import VerifiedActor
+from kantaq_db.models import Member, Workspace
 from kantaq_runtime.auth import get_engine_dep, require_actor
 from kantaq_runtime.config import Settings
 
@@ -133,3 +142,38 @@ def agent_snippet(actor: AnyActor, request: Request) -> AgentSnippetOut:
             f"{TOKEN_PLACEHOLDER} with your member token"
         ),
     )
+
+
+class MeOut(BaseModel):
+    member_id: str
+    email: str
+    role: str
+    scopes: list[str]
+    workspace_id: str
+    workspace_name: str
+
+
+@router.get("", response_model=MeOut)
+def me(actor: AnyActor, engine: EngineDep) -> MeOut:
+    """The signed-in member's own identity (E20-T2, Settings → Identity).
+
+    Self-scoped by construction: the member id comes from the verified token,
+    so there is no way to ask for someone else. ``scopes`` are the token's (a
+    human token carries none — the role decides; an agent token carries its
+    propose-first scopes).
+    """
+    with Session(engine) as session:
+        member = session.get(Member, actor.member_id)
+        if member is None:
+            # The token verified but its member row is gone (revoked + pruned):
+            # treat as unauthenticated rather than inventing an identity.
+            raise HTTPException(status_code=404, detail="member not found")
+        workspace = session.get(Workspace, member.workspace_id)
+        return MeOut(
+            member_id=member.id,
+            email=member.email,
+            role=member.role,
+            scopes=list(actor.scopes),
+            workspace_id=member.workspace_id,
+            workspace_name=workspace.name if workspace is not None else "",
+        )
