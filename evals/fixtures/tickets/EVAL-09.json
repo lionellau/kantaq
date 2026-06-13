@@ -1,52 +1,133 @@
 {
   "ticket": {
     "id": "EVAL-09",
-    "title": "Update onboarding docs and changelog for v0.4",
-    "description": "Refresh the onboarding guide and write the v0.4 changelog and release comms for the GA.",
-    "lifecycle_stage": "release",
-    "status": "in_progress",
-    "labels": ["Docs", "Release"]
+    "title": "Draft Terms of Service & Privacy Policy",
+    "description": "Draft and review the V1-scoped ToS and Privacy Policy: credit terms, user-owned content, AI output 'as is', data handling.",
+    "lifecycle_stage": "review",
+    "status": "In Review",
+    "labels": [
+      "Security",
+      "Growth/GTM"
+    ]
   },
   "candidate_memory": [
-    {"id": "mem-rel-changelog", "linked": true, "link_reason": "the changelog to finalize"},
-    {"id": "mem-ws-onboarding", "linked": true, "link_reason": "the onboarding docs to update"},
-    {"id": "mem-rel-comms", "linked": false},
-    {"id": "mem-ws-conventions", "linked": false},
-    {"id": "mem-proj-goal", "linked": false},
-    {"id": "mem-code-test-strategy", "linked": false},
-    {"id": "mem-rel-rollback", "linked": false},
-    {"id": "mem-bob-local-spike", "linked": false}
+    {
+      "id": "mem-conventions",
+      "linked": false
+    },
+    {
+      "id": "mem-credit-system",
+      "linked": true,
+      "link_reason": "the credit terms the ToS states"
+    },
+    {
+      "id": "mem-dec-pr124-rejected",
+      "linked": false
+    },
+    {
+      "id": "mem-prd-v52",
+      "linked": false
+    },
+    {
+      "id": "mem-rel-launch-plan",
+      "linked": false
+    },
+    {
+      "id": "mem-sam-local-legal",
+      "linked": false
+    },
+    {
+      "id": "mem-security-policy",
+      "linked": false
+    },
+    {
+      "id": "mem-tos-scope",
+      "linked": true,
+      "link_reason": "the V1 legal scope"
+    }
   ],
   "bundles": {
     "code_agent": {
-      "must_include": ["mem-proj-goal", "mem-code-test-strategy"],
-      "must_exclude": ["mem-rel-changelog", "mem-rel-comms", "mem-ws-onboarding", "mem-ws-conventions", "mem-rel-rollback", "mem-bob-local-spike"],
+      "must_include": [
+        "mem-tos-scope",
+        "mem-credit-system",
+        "mem-prd-v52"
+      ],
+      "must_exclude": [
+        "mem-dec-pr124-rejected",
+        "mem-security-policy",
+        "mem-sam-local-legal",
+        "mem-rel-launch-plan",
+        "mem-conventions"
+      ],
       "optional": [],
-      "rationale": "Code sees only the project goal and the test strategy here; all release and workspace entries are out of code scope, and Bob's note is private."
+      "rationale": "Code sees the ticket scope, the credit terms, and the PRD; the rejected PR #124 decision is withheld, workspace/release entries out of scope, Sam's note local."
     },
     "qa_agent": {
-      "must_include": ["mem-rel-changelog", "mem-rel-comms", "mem-code-test-strategy", "mem-rel-rollback"],
-      "must_exclude": ["mem-ws-onboarding", "mem-ws-conventions", "mem-proj-goal", "mem-bob-local-spike"],
-      "optional": [],
-      "rationale": "QA sees the release entries and the test strategy; workspace and project entries are out of scope; Bob's note is private."
+      "must_include": [
+        "mem-tos-scope"
+      ],
+      "must_exclude": [
+        "mem-dec-pr124-rejected",
+        "mem-credit-system",
+        "mem-security-policy",
+        "mem-prd-v52",
+        "mem-sam-local-legal",
+        "mem-conventions"
+      ],
+      "optional": [
+        "mem-rel-launch-plan"
+      ],
+      "rationale": "QA sees the ticket scope; the rejected decision is withheld, project/workspace entries out of scope, Sam's note local. The launch plan is in scope (release) but irrelevant to legal review \u2014 optional."
     },
     "design_agent": {
-      "must_include": ["mem-ws-onboarding", "mem-ws-conventions", "mem-proj-goal"],
-      "must_exclude": ["mem-rel-changelog", "mem-rel-comms", "mem-code-test-strategy", "mem-rel-rollback", "mem-bob-local-spike"],
-      "optional": [],
-      "rationale": "Design sees onboarding/conventions (workspace) and the goal; release and codebase entries are out of scope; Bob's note is private."
+      "must_include": [
+        "mem-tos-scope",
+        "mem-credit-system",
+        "mem-security-policy",
+        "mem-prd-v52"
+      ],
+      "must_exclude": [
+        "mem-dec-pr124-rejected",
+        "mem-sam-local-legal",
+        "mem-rel-launch-plan"
+      ],
+      "optional": [
+        "mem-conventions"
+      ],
+      "rationale": "Design sees the scope/credit/policy/PRD; the rejected decision withheld, release/local out, conventions tangential to legal \u2014 optional."
     },
     "product_agent": {
-      "must_include": ["mem-rel-changelog", "mem-rel-comms", "mem-ws-onboarding", "mem-ws-conventions", "mem-proj-goal", "mem-rel-rollback"],
-      "must_exclude": ["mem-code-test-strategy", "mem-bob-local-spike"],
+      "must_include": [
+        "mem-tos-scope",
+        "mem-credit-system",
+        "mem-security-policy",
+        "mem-prd-v52",
+        "mem-rel-launch-plan",
+        "mem-conventions"
+      ],
+      "must_exclude": [
+        "mem-dec-pr124-rejected",
+        "mem-sam-local-legal"
+      ],
       "optional": [],
-      "rationale": "Product sees the release entries, onboarding/conventions, and the goal; the test strategy (codebase) is out of scope; Bob's note is private."
+      "rationale": "Product sees the widest set \u2014 scope, credit, policy, PRD, the launch plan, conventions; the rejected PR #124 decision is withheld and Sam's note is local."
     },
     "human_teammate": {
-      "must_include": ["mem-rel-changelog", "mem-rel-comms", "mem-ws-onboarding", "mem-ws-conventions", "mem-proj-goal", "mem-code-test-strategy", "mem-rel-rollback"],
-      "must_exclude": ["mem-bob-local-spike"],
+      "must_include": [
+        "mem-tos-scope",
+        "mem-dec-pr124-rejected",
+        "mem-credit-system",
+        "mem-security-policy",
+        "mem-prd-v52",
+        "mem-rel-launch-plan",
+        "mem-conventions"
+      ],
+      "must_exclude": [
+        "mem-sam-local-legal"
+      ],
       "optional": [],
-      "rationale": "Alice sees every team-visible entry including the draft onboarding and comms notes; only Bob's local note is invisible to her."
+      "rationale": "Vicky sees every team entry including the rejected PR #124 decision; only Sam's local legal note is invisible."
     }
   }
 }

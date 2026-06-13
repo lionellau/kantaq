@@ -1,52 +1,132 @@
 {
   "ticket": {
     "id": "EVAL-02",
-    "title": "Design the interview scheduling flow",
-    "description": "Shape the UX for booking an interview slot: pick a time, confirm timezone, avoid double-booking. Define screens and acceptance.",
+    "title": "Colour pass: replace navy/amber with forest/yellow in feature components",
+    "description": "1:1 token substitutions across four feature components; remove retired navy/amber and hardcoded colours.",
     "lifecycle_stage": "design",
-    "status": "in_progress",
-    "labels": ["Frontend", "Design", "Scheduling"]
+    "status": "Done",
+    "labels": [
+      "Frontend",
+      "Design"
+    ]
   },
   "candidate_memory": [
-    {"id": "mem-tkt-sched-accept", "linked": true, "link_reason": "the scheduling acceptance criteria"},
-    {"id": "mem-dec-design-tokens", "linked": true, "link_reason": "the tokens the screens must use"},
-    {"id": "mem-proj-personas", "linked": true, "link_reason": "the users this flow serves"},
-    {"id": "mem-dec-tz", "linked": false},
-    {"id": "mem-ws-brand", "linked": false},
-    {"id": "mem-code-arch", "linked": false},
-    {"id": "mem-dec-rejected-vendor", "linked": false},
-    {"id": "mem-carol-local-pricing", "linked": false}
+    {
+      "id": "mem-agent-trace",
+      "linked": false
+    },
+    {
+      "id": "mem-beta-goal",
+      "linked": false
+    },
+    {
+      "id": "mem-color-tokens",
+      "linked": true,
+      "link_reason": "the token palette this enforces"
+    },
+    {
+      "id": "mem-conventions",
+      "linked": false
+    },
+    {
+      "id": "mem-prd-v52",
+      "linked": false
+    },
+    {
+      "id": "mem-sam-local-legal",
+      "linked": false
+    },
+    {
+      "id": "mem-security-policy",
+      "linked": false
+    },
+    {
+      "id": "mem-vicky-codex-local",
+      "linked": true,
+      "link_reason": "Vicky's own Codex prompt for this ticket"
+    }
   ],
   "bundles": {
     "code_agent": {
-      "must_include": ["mem-tkt-sched-accept", "mem-dec-tz", "mem-dec-design-tokens", "mem-proj-personas", "mem-code-arch"],
-      "must_exclude": ["mem-ws-brand", "mem-dec-rejected-vendor", "mem-carol-local-pricing"],
+      "must_include": [
+        "mem-beta-goal",
+        "mem-prd-v52"
+      ],
+      "must_exclude": [
+        "mem-color-tokens",
+        "mem-conventions",
+        "mem-security-policy",
+        "mem-vicky-codex-local",
+        "mem-agent-trace",
+        "mem-sam-local-legal"
+      ],
       "optional": [],
-      "rationale": "Code sees acceptance, the timezone and tokens decisions, personas, and architecture. Brand is workspace (out of scope); the rejected vendor decision is withheld (review_status); Carol's pricing note is private."
+      "rationale": "A colour pass gives code little in scope: the design tokens it would need are workspace (out of scope), as are conventions/policy; the three local notes are private. Only the project goal/PRD remain."
     },
     "qa_agent": {
-      "must_include": ["mem-tkt-sched-accept", "mem-dec-tz", "mem-code-arch"],
-      "must_exclude": ["mem-ws-brand", "mem-proj-personas", "mem-dec-rejected-vendor", "mem-carol-local-pricing"],
-      "optional": ["mem-dec-design-tokens"],
-      "rationale": "QA needs acceptance, the timezone rule, and the architecture under test; personas/brand are out of scope, the rejected decision is withheld, Carol's note is private. The design-tokens decision is in scope but not behavior to verify — optional."
+      "must_include": [],
+      "must_exclude": [
+        "mem-color-tokens",
+        "mem-conventions",
+        "mem-security-policy",
+        "mem-beta-goal",
+        "mem-prd-v52",
+        "mem-vicky-codex-local",
+        "mem-agent-trace",
+        "mem-sam-local-legal"
+      ],
+      "optional": [],
+      "rationale": "QA's scope (ticket/release/codebase/decision) matches nothing in this design-only candidate set; workspace/project entries are out of scope and the local notes are private \u2014 a deliberate negative case."
     },
     "design_agent": {
-      "must_include": ["mem-tkt-sched-accept", "mem-dec-tz", "mem-dec-design-tokens", "mem-ws-brand", "mem-proj-personas"],
-      "must_exclude": ["mem-code-arch", "mem-dec-rejected-vendor", "mem-carol-local-pricing"],
-      "optional": [],
-      "rationale": "Design needs acceptance, both decisions, the brand guide, and personas; codebase architecture is out of scope; the rejected decision is withheld; Carol's note is private."
+      "must_include": [
+        "mem-color-tokens",
+        "mem-conventions",
+        "mem-beta-goal"
+      ],
+      "must_exclude": [
+        "mem-vicky-codex-local",
+        "mem-agent-trace",
+        "mem-sam-local-legal"
+      ],
+      "optional": [
+        "mem-security-policy",
+        "mem-prd-v52"
+      ],
+      "rationale": "Design needs the colour tokens, the conventions, and who it serves (beta goal); security policy and the async PRD are in scope but tangential to a colour pass \u2014 optional. The local notes are private."
     },
     "product_agent": {
-      "must_include": ["mem-tkt-sched-accept", "mem-dec-tz", "mem-dec-design-tokens", "mem-ws-brand", "mem-proj-personas"],
-      "must_exclude": ["mem-code-arch", "mem-dec-rejected-vendor", "mem-carol-local-pricing"],
-      "optional": [],
-      "rationale": "Product sees the same business/design context; codebase is out of scope; the rejected decision is withheld; Carol's note is private."
+      "must_include": [
+        "mem-color-tokens",
+        "mem-conventions",
+        "mem-beta-goal",
+        "mem-prd-v52"
+      ],
+      "must_exclude": [
+        "mem-vicky-codex-local",
+        "mem-agent-trace",
+        "mem-sam-local-legal"
+      ],
+      "optional": [
+        "mem-security-policy"
+      ],
+      "rationale": "Product sees tokens/conventions/goal/PRD; security policy is tangential here (optional); the three local notes are private."
     },
     "human_teammate": {
-      "must_include": ["mem-tkt-sched-accept", "mem-dec-tz", "mem-dec-design-tokens", "mem-ws-brand", "mem-proj-personas", "mem-code-arch", "mem-dec-rejected-vendor"],
-      "must_exclude": ["mem-carol-local-pricing"],
+      "must_include": [
+        "mem-color-tokens",
+        "mem-conventions",
+        "mem-security-policy",
+        "mem-beta-goal",
+        "mem-prd-v52",
+        "mem-vicky-codex-local"
+      ],
+      "must_exclude": [
+        "mem-agent-trace",
+        "mem-sam-local-legal"
+      ],
       "optional": [],
-      "rationale": "Alice sees every team-visible entry including the rejected decision (flagged, not hidden from people); only Carol's local note is invisible to her."
+      "rationale": "Vicky sees every team entry AND her own local Codex note; Leo's agent scratch and Sam's local note never reached her \u2014 the baseline-owner asymmetry."
     }
   }
 }

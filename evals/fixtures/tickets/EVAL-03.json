@@ -1,52 +1,132 @@
 {
   "ticket": {
     "id": "EVAL-03",
-    "title": "Build full-text search for candidates",
-    "description": "Implement candidate search over name, role, and notes using Postgres full-text search, with pagination and ranking.",
+    "title": "Implement Company Research Agent (Strands SDK + tools)",
+    "description": "Build the company_research agent on Strands + Sonnet 4 with web tools and a company cache; application-level memory scope.",
     "lifecycle_stage": "implementation",
-    "status": "in_progress",
-    "labels": ["Backend", "Search"]
+    "status": "Done",
+    "labels": [
+      "Security",
+      "AI/Agents",
+      "Backend"
+    ]
   },
   "candidate_memory": [
-    {"id": "mem-tkt-search-edge", "linked": true, "link_reason": "the edge cases this ticket must cover"},
-    {"id": "mem-code-search-impl", "linked": true, "link_reason": "the chosen search implementation"},
-    {"id": "mem-code-arch", "linked": false},
-    {"id": "mem-code-perf-budget", "linked": false},
-    {"id": "mem-agent-summary", "linked": false},
-    {"id": "mem-agent-scratch", "linked": false},
-    {"id": "mem-proj-personas", "linked": false},
-    {"id": "mem-ws-conventions", "linked": false}
+    {
+      "id": "mem-agent-stack",
+      "linked": true,
+      "link_reason": "the agent being built"
+    },
+    {
+      "id": "mem-agent-summary",
+      "linked": false
+    },
+    {
+      "id": "mem-agent-trace",
+      "linked": false
+    },
+    {
+      "id": "mem-dec-browser-rejected",
+      "linked": false
+    },
+    {
+      "id": "mem-memory-arch",
+      "linked": false
+    },
+    {
+      "id": "mem-prd-v52",
+      "linked": false
+    },
+    {
+      "id": "mem-rel-smoke-pass",
+      "linked": false
+    },
+    {
+      "id": "mem-security-policy",
+      "linked": true,
+      "link_reason": "the injection/isolation rules it must follow"
+    }
   ],
   "bundles": {
     "code_agent": {
-      "must_include": ["mem-tkt-search-edge", "mem-code-search-impl", "mem-code-arch", "mem-code-perf-budget"],
-      "must_exclude": ["mem-agent-summary", "mem-agent-scratch", "mem-ws-conventions"],
-      "optional": ["mem-proj-personas"],
-      "rationale": "Code needs the edge cases (draft is fine for agents), the search impl, architecture, and the perf budget. The agent_run summary and scratch are out of code scope (and the scratch is private); workspace conventions are out of scope. Personas is in scope but only loosely relevant to building search — optional."
+      "must_include": [
+        "mem-agent-stack",
+        "mem-memory-arch",
+        "mem-prd-v52"
+      ],
+      "must_exclude": [
+        "mem-security-policy",
+        "mem-dec-browser-rejected",
+        "mem-agent-summary",
+        "mem-agent-trace",
+        "mem-rel-smoke-pass"
+      ],
+      "optional": [],
+      "rationale": "Code needs the agent build, the memory architecture, and the PRD; the security policy is workspace (out of scope), the rejected browser decision is withheld, the agent_run summary/trace and the smoke-test release note are out of scope (and the trace is local)."
     },
     "qa_agent": {
-      "must_include": ["mem-tkt-search-edge", "mem-code-search-impl", "mem-code-arch", "mem-code-perf-budget"],
-      "must_exclude": ["mem-agent-summary", "mem-agent-scratch", "mem-proj-personas", "mem-ws-conventions"],
+      "must_include": [
+        "mem-agent-stack",
+        "mem-memory-arch",
+        "mem-rel-smoke-pass"
+      ],
+      "must_exclude": [
+        "mem-security-policy",
+        "mem-dec-browser-rejected",
+        "mem-agent-summary",
+        "mem-agent-trace",
+        "mem-prd-v52"
+      ],
       "optional": [],
-      "rationale": "QA verifies the edge cases against the impl, architecture, and perf budget; agent_run entries, personas (project), and conventions (workspace) are all out of scope."
+      "rationale": "QA swaps the PRD for the smoke-test release note; the rejected decision is withheld, agent_run entries and the workspace policy are out of scope, the trace is local."
     },
     "design_agent": {
-      "must_include": ["mem-tkt-search-edge", "mem-proj-personas", "mem-ws-conventions"],
-      "must_exclude": ["mem-code-search-impl", "mem-code-arch", "mem-code-perf-budget", "mem-agent-summary", "mem-agent-scratch"],
+      "must_include": [
+        "mem-security-policy",
+        "mem-prd-v52"
+      ],
+      "must_exclude": [
+        "mem-agent-stack",
+        "mem-memory-arch",
+        "mem-dec-browser-rejected",
+        "mem-agent-summary",
+        "mem-agent-trace",
+        "mem-rel-smoke-pass"
+      ],
       "optional": [],
-      "rationale": "Design sees the ticket's edge cases, personas, and conventions; all codebase and agent_run entries are out of scope."
+      "rationale": "Design sees the workspace policy and the PRD; codebase, release, and agent_run entries are out of scope, the rejected decision is withheld, the trace is local."
     },
     "product_agent": {
-      "must_include": ["mem-tkt-search-edge", "mem-proj-personas", "mem-ws-conventions"],
-      "must_exclude": ["mem-code-search-impl", "mem-code-arch", "mem-code-perf-budget", "mem-agent-summary", "mem-agent-scratch"],
+      "must_include": [
+        "mem-security-policy",
+        "mem-prd-v52",
+        "mem-rel-smoke-pass"
+      ],
+      "must_exclude": [
+        "mem-agent-stack",
+        "mem-memory-arch",
+        "mem-dec-browser-rejected",
+        "mem-agent-summary",
+        "mem-agent-trace"
+      ],
       "optional": [],
-      "rationale": "Product sees the ticket, personas, and conventions; codebase and agent_run entries are out of scope."
+      "rationale": "Product sees policy/PRD/release; codebase and agent_run entries are out of scope, the rejected decision is withheld, the trace is local."
     },
     "human_teammate": {
-      "must_include": ["mem-tkt-search-edge", "mem-code-search-impl", "mem-code-arch", "mem-code-perf-budget", "mem-agent-summary", "mem-proj-personas", "mem-ws-conventions"],
-      "must_exclude": ["mem-agent-scratch"],
+      "must_include": [
+        "mem-agent-stack",
+        "mem-security-policy",
+        "mem-memory-arch",
+        "mem-dec-browser-rejected",
+        "mem-agent-summary",
+        "mem-prd-v52",
+        "mem-rel-smoke-pass"
+      ],
+      "must_exclude": [
+        "mem-agent-trace"
+      ],
       "optional": [],
-      "rationale": "Alice sees every team-visible entry including the agent's team-shared run summary; only the agent's private (local) scratch is invisible."
+      "rationale": "Vicky sees every team entry \u2014 including the rejected browser decision and the team-shared agent run summary; only Leo's local agent trace is invisible to her."
     }
   }
 }
