@@ -13,6 +13,7 @@ import pytest
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel
 
+from kantaq_core import lifecycle
 from kantaq_core.tracker import TrackerService
 from kantaq_db.models import Project, Ticket, Workspace
 from kantaq_test_harness.random import SeededRandom
@@ -20,7 +21,7 @@ from kantaq_test_harness.random import SeededRandom
 BACKLOG_SIZE = 269
 STATUSES = ("todo", "doing", "done")
 PRIORITIES = ("low", "medium", "high", "urgent")
-STAGES = ("intake", "design", "build", "review", "done")
+STAGES = lifecycle.STAGE_SLUGS  # the locked MOD-20 taxonomy
 LABEL_POOL = ("bug", "ux", "infra", "docs", "agent", "sync")
 
 

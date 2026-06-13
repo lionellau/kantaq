@@ -23,6 +23,7 @@ from sqlalchemy import func
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, col, select
 
+from kantaq_core import lifecycle
 from kantaq_core.identity import Action, VerifiedActor
 from kantaq_core.telemetry import TelemetryService
 from kantaq_core.tracker import (
@@ -139,13 +140,25 @@ class TicketOut(BaseModel):
     # NULL), "committed" once the backend has acked them all.
     sync_state: str
     pending_proposals: int
+    # E14 (MOD-20): the locked recommended-next rule, computed per row.
+    recommended_next_stages: list[str]
 
     @classmethod
     def from_row(
-        cls, row: Ticket, *, sync_state: str = "committed", pending_proposals: int = 0
+        cls,
+        row: Ticket,
+        *,
+        sync_state: str = "committed",
+        pending_proposals: int = 0,
+        recommended_next_stages: list[str] | None = None,
     ) -> TicketOut:
         return cls.model_validate(
-            {**row.model_dump(), "sync_state": sync_state, "pending_proposals": pending_proposals}
+            {
+                **row.model_dump(),
+                "sync_state": sync_state,
+                "pending_proposals": pending_proposals,
+                "recommended_next_stages": recommended_next_stages or [],
+            }
         )
 
 
@@ -179,16 +192,41 @@ def _pending_proposal_counts(session: Session, ticket_ids: list[str]) -> dict[st
     return dict(session.exec(statement).all())
 
 
+def _open_subticket_parents(session: Session, ticket_ids: list[str]) -> set[str]:
+    """The tickets among ``ticket_ids`` that still have open (not-done) children."""
+    if not ticket_ids:
+        return set()
+    statement = (
+        select(Ticket.parent_id)
+        .where(col(Ticket.parent_id).in_(ticket_ids), Ticket.status != "done")
+        .distinct()
+    )
+    return {parent for parent in session.exec(statement).all() if parent is not None}
+
+
+def _recommended_next(row: Ticket, open_parents: set[str]) -> list[str]:
+    if not lifecycle.is_stage(row.lifecycle_stage):
+        return []  # legacy row predating the locked taxonomy (fail-soft, MOD-20)
+    return list(
+        lifecycle.recommend_next(
+            row.lifecycle_stage, has_open_subtickets=row.id in open_parents
+        )
+    )
+
+
 def tickets_out(session: Session, rows: list[Ticket]) -> list[TicketOut]:
-    """Decorate ticket rows with their sync + proposal badges (two queries)."""
+    """Decorate ticket rows with sync + proposal badges and the recommended
+    next stages (three batched queries, MOD-11 + MOD-20)."""
     ids = [row.id for row in rows]
     drafts = _draft_ticket_ids(session, ids)
     counts = _pending_proposal_counts(session, ids)
+    open_parents = _open_subticket_parents(session, ids)
     return [
         TicketOut.from_row(
             row,
             sync_state="draft" if row.id in drafts else "committed",
             pending_proposals=counts.get(row.id, 0),
+            recommended_next_stages=_recommended_next(row, open_parents),
         )
         for row in rows
     ]
@@ -260,6 +298,16 @@ class ActivityOut(BaseModel):
     @classmethod
     def from_row(cls, row: AuditEvent) -> ActivityOut:
         return cls.model_validate(row, from_attributes=True)
+
+
+class LifecycleStageOut(BaseModel):
+    """One locked lifecycle stage (MOD-20): identity, labels, canonical order."""
+
+    slug: str
+    title: str
+    purpose: str
+    containers: list[str]
+    order: int
 
 
 # ------------------------------------------------------------- error mapping
@@ -425,6 +473,25 @@ def add_comment(
         except (TrackerNotFoundError, TrackerValidationError) as exc:
             raise _domain(exc) from exc
         return CommentOut.from_row(row)
+
+
+# ---------------------------------------------------------- lifecycle (MOD-20)
+
+
+@router.get("/lifecycle/stages", response_model=list[LifecycleStageOut])
+def lifecycle_stages(actor: ReaderActor) -> list[LifecycleStageOut]:
+    """The locked 9-stage taxonomy (E14), so UIs and agents render it
+    without hardcoding slugs, titles, or skill containers."""
+    return [
+        LifecycleStageOut(
+            slug=stage.slug,
+            title=stage.title,
+            purpose=stage.purpose,
+            containers=list(stage.containers),
+            order=index,
+        )
+        for index, stage in enumerate(lifecycle.stages())
+    ]
 
 
 # ----------------------------------------------------------------- activity

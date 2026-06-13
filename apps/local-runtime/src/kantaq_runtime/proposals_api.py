@@ -212,7 +212,9 @@ def approve_proposal(proposal_id: str, actor: WriterActor, engine: EngineDep) ->
         session.refresh(proposal)
         return ApproveOut(
             proposal=ProposalOut.from_row(proposal, ticket_title=ticket.title),
-            ticket=TicketOut.from_row(ticket),
+            ticket=TicketOut.from_row(
+                ticket, recommended_next_stages=service.recommended_next(ticket)
+            ),
         )
 
 

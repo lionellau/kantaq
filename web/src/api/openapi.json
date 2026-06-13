@@ -398,6 +398,43 @@
         "title": "InviteOut",
         "type": "object"
       },
+      "LifecycleStageOut": {
+        "description": "One locked lifecycle stage (MOD-20): identity, labels, canonical order.",
+        "properties": {
+          "containers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Containers",
+            "type": "array"
+          },
+          "order": {
+            "title": "Order",
+            "type": "integer"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "title",
+          "purpose",
+          "containers",
+          "order"
+        ],
+        "title": "LifecycleStageOut",
+        "type": "object"
+      },
       "LinkedMemoryOut": {
         "description": "One linked entry on a ticket: the link (reason) plus the entry\n(with provenance) \u2014 what the ticket page renders (E13-T3).",
         "properties": {
@@ -1449,6 +1486,13 @@
             "title": "Project Id",
             "type": "string"
           },
+          "recommended_next_stages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recommended Next Stages",
+            "type": "array"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -1485,7 +1529,8 @@
           "created_at",
           "updated_at",
           "sync_state",
-          "pending_proposals"
+          "pending_proposals",
+          "recommended_next_stages"
         ],
         "title": "TicketOut",
         "type": "object"
@@ -1812,6 +1857,32 @@
         "summary": "Revoke Grant",
         "tags": [
           "grants"
+        ]
+      }
+    },
+    "/v1/lifecycle/stages": {
+      "get": {
+        "description": "The locked 9-stage taxonomy (E14), so UIs and agents render it\nwithout hardcoding slugs, titles, or skill containers.",
+        "operationId": "lifecycle_stages_v1_lifecycle_stages_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LifecycleStageOut"
+                  },
+                  "title": "Response Lifecycle Stages V1 Lifecycle Stages Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Lifecycle Stages",
+        "tags": [
+          "tracker"
         ]
       }
     },
