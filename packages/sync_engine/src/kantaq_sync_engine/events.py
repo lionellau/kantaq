@@ -1,10 +1,12 @@
 """Protocol events and the backend port (MOD-04, architecture §6 / PRD §13.9).
 
 ``Event`` is the wire object: what the local log stores, what push submits,
-what pull receives. Field-for-field it matches the MOD-30 harness model, so
-``FakeBackend`` (the contract the sync engine tests target) accepts production
-events without adapters. Ed25519 ``sig`` and ``base_rev`` semantics arrive in
-v0.1 with MOD-17; the fields ride along from day one so nothing reshapes.
+what pull receives. As of E04-T4 it is **the** canonical ``kantaq_protocol``
+``Event`` — re-exported here, not re-declared — so signing (``sign``/``verify``
+over ``signing_bytes``) and the backend's verified ingestion (E24-T5) speak the
+exact same nominal type and the exact same canonical bytes. One Event, one
+codec, or signatures break (MOD-17). The MOD-30 harness re-exports this same
+type, so ``FakeBackend`` accepts production events without adapters.
 
 ``BackendPort`` is the v0.0.5 cut of the §13.9 adapter contract — the three
 calls online sync needs (submit, stream-since-cursor, snapshot). MOD-05
@@ -15,26 +17,18 @@ satisfies it structurally.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol
+from dataclasses import dataclass
+from typing import Any, Protocol
 
-Op = Literal["patch", "append", "tombstone"]
+from kantaq_protocol import Event, Op
 
-
-@dataclass(frozen=True)
-class Event:
-    """One committed-or-pending protocol event."""
-
-    event_id: str
-    collection: str
-    entity_id: str
-    actor_id: str
-    actor_seq: int
-    op: Op = "patch"
-    base_rev: int | None = None
-    policy_ref: str | None = None
-    payload: dict[str, Any] = field(default_factory=dict)
-    sig: str | None = None
+__all__ = [
+    "BackendPort",
+    "CommittedEvent",
+    "Event",
+    "Op",
+    "fold_events",
+]
 
 
 @dataclass(frozen=True)

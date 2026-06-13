@@ -25,11 +25,12 @@ from kantaq_core.identity import (
     IdentityService,
     Role,
     ensure_device,
+    ensure_member_grant,
     revoke_device,
     revoke_grants_for_device,
     verification_roots,
 )
-from kantaq_db.models import AuditEvent, CapabilityGrantRow, Device, EventLog
+from kantaq_db.models import AuditEvent, CapabilityGrantRow, Device, EventLog, Member
 from kantaq_protocol import GRANT_OK
 from kantaq_test_harness.clock import FakeClock
 from kantaq_test_harness.keychain import FakeKeychain
@@ -539,3 +540,85 @@ def test_revoke_grants_for_device_cascades_only_its_own(
         assert grant.revoked_at is not None
         # A second pass finds nothing live to revoke.
         assert revoke_grants_for_device(session, device.id, actor_id=owner_id) == 0
+
+
+# ----------------------------------------------- self-grant (E04-T4 signing)
+
+
+def test_ensure_member_grant_issues_role_scoped_signed_grant(
+    engine: Engine, keychain: FakeKeychain, clock: FakeClock, owner_id: str
+) -> None:
+    """A member's runtime mints a signed self-grant scoped to its workspace,
+    carrying the role's full capability — the policy_ref every signed event
+    rides (E04-T4). It verifies offline against the device root."""
+    with Session(engine) as session:
+        ensure_device(session, keychain, member_id=owner_id, now=_now(clock)())
+        workspace_id = session.get(Member, owner_id).workspace_id  # type: ignore[union-attr]
+        grant = ensure_member_grant(session, keychain, owner_id, now=_now(clock))
+        session.commit()
+
+        assert grant.subject == owner_id
+        assert grant.resource == workspace_id
+        assert grant.sig is not None
+        # Owner holds the full matrix; the grant never widens it (D-03).
+        assert "tickets.write" in grant.verbs
+        assert "members.invite" in grant.verbs
+        assert _grant_service(session, keychain, clock).verify(grant).ok
+        # 24 h TTL keeps the policy_ref stable for a day rather than per-hour.
+        assert grant.expires_at - grant.issued_at == MAX_GRANT_TTL_SECONDS
+
+
+def test_ensure_member_grant_is_idempotent_while_live(
+    engine: Engine, keychain: FakeKeychain, clock: FakeClock, owner_id: str
+) -> None:
+    """A live self-grant is reused, not re-minted — the policy_ref is stable
+    and the log does not fill with a grant per write."""
+    with Session(engine) as session:
+        ensure_device(session, keychain, member_id=owner_id, now=_now(clock)())
+        first = ensure_member_grant(session, keychain, owner_id, now=_now(clock))
+        session.commit()
+        second = ensure_member_grant(session, keychain, owner_id, now=_now(clock))
+        session.commit()
+        assert first.id == second.id
+        assert len(_grant_service(session, keychain, clock).list_for(owner_id)) == 1
+
+
+def test_ensure_member_grant_reissues_after_expiry(
+    engine: Engine, keychain: FakeKeychain, clock: FakeClock, owner_id: str
+) -> None:
+    """Once the live grant expires, the next write mints a fresh one."""
+    with Session(engine) as session:
+        ensure_device(session, keychain, member_id=owner_id, now=_now(clock)())
+        first = ensure_member_grant(session, keychain, owner_id, now=_now(clock))
+        session.commit()
+        clock.advance(MAX_GRANT_TTL_SECONDS + 1)
+        second = ensure_member_grant(session, keychain, owner_id, now=_now(clock))
+        session.commit()
+        assert first.id != second.id
+
+
+def test_ensure_member_grant_without_device_fails_closed(
+    engine: Engine, keychain: FakeKeychain, clock: FakeClock, owner_id: str
+) -> None:
+    """No device key, no grant — issuance fails closed rather than minting an
+    unsigned capability (the cutover's local invariant, E04-T4)."""
+    with Session(engine) as session, pytest.raises(GrantDeniedError):
+        ensure_member_grant(session, keychain, owner_id, now=_now(clock))
+
+
+def test_ensure_member_grant_for_agent_uses_token_scopes(
+    engine: Engine, keychain: FakeKeychain, clock: FakeClock, owner_id: str
+) -> None:
+    """An agent's self-grant derives from its token scopes, not a role row —
+    it never widens what the token allows (D-03)."""
+    with Session(engine) as session:
+        ensure_device(session, keychain, member_id=owner_id, now=_now(clock)())
+        agent = IdentityService(session).invite(
+            email="agent@example.com", role=Role.agent, scopes=["tickets.write"]
+        )
+        session.commit()
+        grant = ensure_member_grant(session, keychain, agent.member_id, now=_now(clock))
+        session.commit()
+        assert grant.verbs == ["tickets.write"]
+        assert grant.subject == agent.member_id
+        assert _grant_service(session, keychain, clock).verify(grant).ok

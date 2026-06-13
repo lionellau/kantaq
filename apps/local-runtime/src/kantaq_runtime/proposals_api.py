@@ -37,15 +37,18 @@ from kantaq_core.telemetry import TelemetryService
 from kantaq_core.tracker import TrackerNotFoundError, TrackerService, TrackerValidationError
 from kantaq_core.tracker.events import DomainEvent
 from kantaq_db.models import AgentProposal, Ticket
-from kantaq_runtime.auth import get_engine_dep, require_action
+from kantaq_runtime.auth import get_engine_dep, get_event_signer, require_action
 from kantaq_runtime.tracker_api import TicketOut, TicketPatch, _domain
-from kantaq_sync_engine import EventLogSink
+from kantaq_sync_engine import EventLogSink, EventSigner
 
 router = APIRouter(prefix="/v1/proposals", tags=["proposals"])
 
 EngineDep = Annotated[Engine, Depends(get_engine_dep)]
 ReaderActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_read))]
 WriterActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_write))]
+# A decision (approve/reject) is a write, so it carries the signer: the
+# agent_proposals event is signed by and attributed to the human approver (E04-T4).
+SignerDep = Annotated[EventSigner | None, Depends(get_event_signer)]
 
 PROPOSAL_STATUSES = ("pending", "approved", "rejected")
 
@@ -102,7 +105,13 @@ def _ticket_title(session: Session, ticket_id: str) -> str | None:
 
 
 def _flip_status(
-    session: Session, proposal: AgentProposal, *, actor_id: str, status: str, ts: datetime
+    session: Session,
+    proposal: AgentProposal,
+    *,
+    actor_id: str,
+    status: str,
+    ts: datetime,
+    signer: EventSigner | None = None,
 ) -> None:
     """Stage the status flip with its audit row and sync event — no commit.
 
@@ -139,7 +148,7 @@ def _flip_status(
         now=ts,
     )
     # The decision syncs to every replica (FR-E20-1: one queue, synced).
-    EventLogSink(session, actor_id).emit(
+    EventLogSink(session, actor_id, signer=signer).emit(
         DomainEvent(
             collection="agent_proposals",
             entity_id=proposal.id,
@@ -183,7 +192,9 @@ def list_proposals(
 
 
 @router.post("/{proposal_id}/approve", response_model=ApproveOut)
-def approve_proposal(proposal_id: str, actor: WriterActor, engine: EngineDep) -> ApproveOut:
+def approve_proposal(
+    proposal_id: str, actor: WriterActor, engine: EngineDep, signer: SignerDep
+) -> ApproveOut:
     with Session(engine) as session:
         proposal = _get_pending(session, proposal_id)
 
@@ -200,8 +211,10 @@ def approve_proposal(proposal_id: str, actor: WriterActor, engine: EngineDep) ->
         changes = patch.model_dump(exclude_unset=True)
 
         ts = _now()
-        _flip_status(session, proposal, actor_id=actor.member_id, status="approved", ts=ts)
-        sink = EventLogSink(session, actor.member_id)
+        _flip_status(
+            session, proposal, actor_id=actor.member_id, status="approved", ts=ts, signer=signer
+        )
+        sink = EventLogSink(session, actor.member_id, signer=signer)
         service = TrackerService(session, actor_id=actor.member_id, source="app", sink=sink)
         try:
             # Commits the staged status flip and the ticket patch together.
@@ -219,10 +232,19 @@ def approve_proposal(proposal_id: str, actor: WriterActor, engine: EngineDep) ->
 
 
 @router.post("/{proposal_id}/reject", response_model=ProposalOut)
-def reject_proposal(proposal_id: str, actor: WriterActor, engine: EngineDep) -> ProposalOut:
+def reject_proposal(
+    proposal_id: str, actor: WriterActor, engine: EngineDep, signer: SignerDep
+) -> ProposalOut:
     with Session(engine) as session:
         proposal = _get_pending(session, proposal_id)
-        _flip_status(session, proposal, actor_id=actor.member_id, status="rejected", ts=_now())
+        _flip_status(
+            session,
+            proposal,
+            actor_id=actor.member_id,
+            status="rejected",
+            ts=_now(),
+            signer=signer,
+        )
         session.commit()
         session.refresh(proposal)
         return ProposalOut.from_row(

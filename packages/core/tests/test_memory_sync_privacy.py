@@ -15,6 +15,7 @@ sink for local rows), so the proof has two layers:
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
@@ -102,7 +103,7 @@ def test_push_carries_team_but_never_local(alice: Replica, backend: FakeBackend)
     alice.sync.push()
 
     pushed = backend.pull(collection=None, since=0)
-    payload_dump = json.dumps([entry.event.__dict__ for entry in pushed], default=str)
+    payload_dump = json.dumps([asdict(entry.event) for entry in pushed], default=str)
     assert "local-secret-marker" not in payload_dump
     assert "local-body-marker" not in payload_dump
     assert "local-reason-marker" not in payload_dump

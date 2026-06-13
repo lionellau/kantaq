@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     local_mcp_port: str = "auto"
     supabase_url: str | None = None
     supabase_anon_key: str | None = None
+    # The signing cutover switch (E04-T4 / FR-E04-6). Off until a workspace
+    # deliberately cuts over to signed sync; the cutover is a recorded,
+    # one-way decision (dev-planning D-15) because pre-cutover events stay
+    # unsigned-but-immutable history. When on, every new event the runtime
+    # writes is Ed25519-signed under the member's capability grant and an
+    # unsigned write fails closed locally; the backend then rejects unsigned
+    # or grant-less events past the cutover revision (E24-T5).
+    sign_events: bool = False
 
 
 def get_settings() -> Settings:

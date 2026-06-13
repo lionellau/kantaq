@@ -9,6 +9,9 @@ dependencies = [
     # the fold/audit semantics are shared with the tracker domain (MOD-03).
     "kantaq-db",
     "kantaq-core",
+    # The wire ``Event`` is the canonical protocol entity and signing rides the
+    # protocol codec (E04-T4 / MOD-17): one nominal type, one codec.
+    "kantaq-protocol",
     "sqlmodel>=0.0.22",
 ]
 

@@ -23,6 +23,7 @@ from kantaq_core.identity.grants import (
     GrantDeniedError,
     GrantNotFoundError,
     GrantService,
+    ensure_member_grant,
     revoke_grants_for_device,
     revoke_grants_for_member,
 )
@@ -65,6 +66,7 @@ __all__ = [
     "TokenVerifier",
     "device_private_key",
     "ensure_device",
+    "ensure_member_grant",
     "local_device",
     "revoke_device",
     "revoke_grants_for_device",
