@@ -24,6 +24,7 @@ from kantaq_core.identity.grants import (
     GrantNotFoundError,
     GrantService,
     ensure_member_grant,
+    local_grant_index,
     revoke_grants_for_device,
     revoke_grants_for_member,
 )
@@ -68,6 +69,7 @@ __all__ = [
     "ensure_device",
     "ensure_member_grant",
     "local_device",
+    "local_grant_index",
     "revoke_device",
     "revoke_grants_for_device",
     "revoke_grants_for_member",
