@@ -21,6 +21,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agents/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sessions
+         * @description Live agent sessions, derived from the workspace's capability grants.
+         *
+         *     ``tokens.rotate`` holders see every agent; everyone else sees only grants
+         *     subjected to themselves. Newest grant first. No cache: a revoked grant flips
+         *     ``active`` to false on the next poll, the same instant the revocation commits.
+         *
+         *     Completeness over neatness (NFR-E20-1 — "every agent session is here"): a
+         *     grant is shown when its subject is an Agent member, **or** its subject has
+         *     any gateway activity (it is being used as a session even if its role isn't
+         *     Agent), **or** its subject member row is missing (an anomaly the overseer
+         *     must see, never a silent drop). Only a pure human signing self-grant that was
+         *     never used as a session is omitted — it is not a session.
+         */
+        get: operations["list_sessions_v1_agents_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/audit/range": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Audit Range
+         * @description Most-recent-first audit rows, live off the append-only log (no cache).
+         *
+         *     ``member`` scopes to one actor's trail (defaults to the caller; the whole
+         *     workspace only for ``tokens.rotate`` holders). ``action="tool.deny"`` +
+         *     ``source="mcp"`` is the denied-calls view. ``limit`` is capped at 200.
+         */
+        get: operations["audit_range_v1_audit_range_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/devices": {
         parameters: {
             query?: never;
@@ -654,6 +709,33 @@ export interface components {
             /** Id */
             id: string;
         };
+        /** AgentSessionOut */
+        AgentSessionOut: {
+            /** Active */
+            active: boolean;
+            /** Expires At */
+            expires_at: number;
+            /** Grant Id */
+            grant_id: string;
+            /** Issued At */
+            issued_at: number;
+            /** Owner Email */
+            owner_email: string | null;
+            /** Owner Member Id */
+            owner_member_id: string;
+            /** Owner Role */
+            owner_role: string | null;
+            /** Reason */
+            reason: string;
+            /** Resource */
+            resource: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Verbs */
+            verbs: string[];
+            /** Write Mode */
+            write_mode: string;
+        };
         /** AgentSnippetOut */
         AgentSnippetOut: {
             /** Gateway Live */
@@ -686,6 +768,30 @@ export interface components {
             media_type: string;
             /** Size Bytes */
             size_bytes: number;
+        };
+        /** AuditEventOut */
+        AuditEventOut: {
+            /** Action */
+            action: string;
+            /** Actor Id */
+            actor_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Detail */
+            detail: string | null;
+            /** Id */
+            id: string;
+            /** Object Ref */
+            object_ref: string | null;
+            /** Reason */
+            reason: string | null;
+            /** Session Id */
+            session_id: string | null;
+            /** Source */
+            source: string;
         };
         /** Body_upload_attachment_v1_tickets__ticket_id__attachments_post */
         Body_upload_attachment_v1_tickets__ticket_id__attachments_post: {
@@ -1388,6 +1494,60 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    list_sessions_v1_agents_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSessionOut"][];
+                };
+            };
+        };
+    };
+    audit_range_v1_audit_range_get: {
+        parameters: {
+            query?: {
+                member?: string | null;
+                action?: string | null;
+                source?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEventOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

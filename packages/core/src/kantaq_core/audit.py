@@ -194,6 +194,49 @@ def write(
     return row
 
 
+def read_range(
+    session: Session,
+    *,
+    actor_id: str | None = None,
+    action: str | None = None,
+    source: str | None = None,
+    limit: int = 100,
+) -> list[AuditEvent]:
+    """Most-recent-first audit rows, optionally filtered (E20-T3 trust surface).
+
+    A live read straight off the append-only log — the Agents page and the
+    Inbox's denied-calls tab call it on every poll, never a cache (NFR-E20-1),
+    so a denial is visible the instant it is written. ``actor_id`` scopes to one
+    member's trail; ``action`` narrows to one kind (``"tool.deny"`` for denied
+    calls); ``source`` to one origin (``"mcp"`` for agent calls). Newest first by
+    ``created_at`` with the ULID ``id`` as a stable tiebreak; ``limit`` is clamped
+    by the caller (the API caps it) so a range read cannot scan the whole log.
+    """
+    stmt = select(AuditEvent)
+    if actor_id is not None:
+        stmt = stmt.where(col(AuditEvent.actor_id) == actor_id)
+    if action is not None:
+        stmt = stmt.where(col(AuditEvent.action) == action)
+    if source is not None:
+        stmt = stmt.where(col(AuditEvent.source) == source)
+    stmt = stmt.order_by(col(AuditEvent.created_at).desc(), col(AuditEvent.id).desc()).limit(limit)
+    return list(session.exec(stmt).all())
+
+
+def mcp_actor_ids(session: Session) -> set[str]:
+    """Distinct actors that have made an MCP gateway call (``source="mcp"``).
+
+    The Agents page uses this for completeness (NFR-E20-1): a capability grant
+    whose subject has *any* gateway activity is a real session and must be
+    shown — even if the subject's member role isn't Agent, or its member row is
+    gone. Completeness over neatness: a used grant is never hidden.
+    """
+    rows = session.exec(
+        select(col(AuditEvent.actor_id)).where(col(AuditEvent.source) == "mcp").distinct()
+    ).all()
+    return set(rows)
+
+
 def verify_chain(
     session: Session,
     *,

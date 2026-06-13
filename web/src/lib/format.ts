@@ -13,3 +13,11 @@ export function fmtDateTime(iso: string | null | undefined): string {
   const date = new Date(iso.endsWith("Z") || iso.includes("+") ? iso : `${iso}Z`);
   return Number.isNaN(date.getTime()) ? iso : formatter.format(date);
 }
+
+/** A capability grant's `expires_at` is unix seconds (the signed-bytes shape). */
+export function fmtEpoch(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined) {
+    return "—";
+  }
+  return formatter.format(new Date(seconds * 1000));
+}

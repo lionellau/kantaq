@@ -1,10 +1,12 @@
 /**
- * E19-T2 (MOD-11) — the ticket page.
+ * E19-T2/T4 (MOD-11) — the ticket page.
  *
  * Three regions (FR-E19-3): the header (title + field chips), the body
  * (markdown description, the combined comments-and-activity timeline, the
- * attachments), and the right rail (sync badge, pending proposals, and — behind
- * the VITE_RECO_PANEL flag — the E17-T2 role/skill recommendation panel).
+ * attachments), and the right rail. E19-T4 completes the rail: the E17-T2
+ * role/skill recommendation panel (ungated now E16/E17 are green), the
+ * recommended-next lifecycle stage, the sync badge, pending proposals, and the
+ * active MCP sessions — the rail's window onto the Agents trust surface.
  *
  * The description is untrusted human text (PRD §15): react-markdown renders
  * it to React elements — no innerHTML anywhere, and raw HTML inside the
@@ -17,11 +19,10 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { Link, useParams } from "react-router-dom";
 import { api, authFetch } from "../api/client";
-import type { Activity, Comment, LinkedMemory, Ticket } from "../api/types";
+import type { Activity, AgentSession, Comment, LinkedMemory, Ticket } from "../api/types";
 import ProposalChip from "../components/ProposalChip";
 import RecoPanel from "../components/RecoPanel";
 import SyncBadge, { type SyncState } from "../components/SyncBadge";
-import { recoPanelEnabled } from "../lib/flags";
 import { fmtDateTime } from "../lib/format";
 import { useSession } from "../lib/session";
 import * as ui from "../lib/ui";
@@ -62,6 +63,7 @@ export default function TicketPage() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [activity, setActivity] = useState<Activity[]>([]);
   const [linkedMemory, setLinkedMemory] = useState<LinkedMemory[]>([]);
+  const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [projectName, setProjectName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,11 +72,12 @@ export default function TicketPage() {
       return;
     }
     const path = { params: { path: { ticket_id: ticketId } } };
-    const [ticketRes, commentsRes, activityRes, memoryRes] = await Promise.all([
+    const [ticketRes, commentsRes, activityRes, memoryRes, sessionsRes] = await Promise.all([
       api.GET("/v1/tickets/{ticket_id}", path),
       api.GET("/v1/tickets/{ticket_id}/comments", path),
       api.GET("/v1/tickets/{ticket_id}/activity", path),
       api.GET("/v1/tickets/{ticket_id}/memory", path),
+      api.GET("/v1/agents/sessions"),
     ]);
     if (ticketRes.error !== undefined) {
       setError("could not load the ticket");
@@ -85,6 +88,7 @@ export default function TicketPage() {
     setComments(commentsRes.data ?? []);
     setActivity(activityRes.data ?? []);
     setLinkedMemory(memoryRes.data ?? []);
+    setSessions(sessionsRes.data ?? []);
   }, [connected, ticketId]);
 
   useEffect(() => {
@@ -216,9 +220,10 @@ export default function TicketPage() {
 
       <aside
         aria-label="Ticket status rail"
-        style={{ width: recoPanelEnabled() ? 260 : 200, flexShrink: 0, display: "grid", gap: 12 }}
+        style={{ width: 260, flexShrink: 0, display: "grid", gap: 12 }}
       >
-        {recoPanelEnabled() && <RecoPanel ticketId={ticket.id} />}
+        <RecoPanel ticketId={ticket.id} />
+        <RecommendedNext stages={ticket.recommended_next_stages} current={ticket.lifecycle_stage} />
         <div>
           <div style={ui.label}>Sync</div>
           <SyncBadge state={ticket.sync_state as SyncState} />
@@ -233,6 +238,7 @@ export default function TicketPage() {
             <span style={ui.muted}>none pending</span>
           )}
         </div>
+        <ActiveSessions sessions={sessions} />
         <div>
           <div style={ui.label}>Created</div>
           <span style={ui.muted}>{fmtDateTime(ticket.created_at)}</span>
@@ -243,6 +249,45 @@ export default function TicketPage() {
         </div>
       </aside>
     </section>
+  );
+}
+
+/** The lifecycle stage(s) this ticket is recommended to move to next (MOD-20,
+ * already computed server-side in `TicketOut.recommended_next_stages`). */
+function RecommendedNext({ stages, current }: { stages: string[]; current: string }) {
+  return (
+    <div>
+      <div style={ui.label}>Recommended next</div>
+      {stages.length === 0 ? (
+        <span style={ui.muted}>{current} — no suggested next stage</span>
+      ) : (
+        <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+          {stages.map((stage) => (
+            <span key={stage} style={ui.chip}>
+              {stage}
+            </span>
+          ))}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Active MCP agent sessions for the workspace (E19-T4 / FR-E19-3), a count and
+ * a link into the Agents trust surface — the rail's window onto live agents. */
+function ActiveSessions({ sessions }: { sessions: AgentSession[] }) {
+  const active = sessions.filter((s) => s.active).length;
+  return (
+    <div>
+      <div style={ui.label}>Active sessions</div>
+      {active === 0 ? (
+        <span style={ui.muted}>none active</span>
+      ) : (
+        <Link to="/agents" style={{ fontSize: "0.875rem" }}>
+          {active} agent session{active === 1 ? "" : "s"}
+        </Link>
+      )}
+    </div>
   );
 }
 

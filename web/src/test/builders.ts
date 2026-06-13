@@ -6,7 +6,9 @@
 
 import type {
   Activity,
+  AgentSession,
   AgentSnippet,
+  AuditCall,
   Comment,
   Device,
   Grant,
@@ -187,6 +189,39 @@ export function buildGrant(overrides: Partial<Grant> = {}): Grant {
     sig: "ab12",
     valid: true,
     reason: "ok",
+    ...overrides,
+  };
+}
+
+export function buildAgentSession(overrides: Partial<AgentSession> = {}): AgentSession {
+  return {
+    grant_id: "grant-1",
+    owner_member_id: "agent-1",
+    owner_email: "bot@example.com",
+    owner_role: "Agent",
+    resource: "workspace/main",
+    verbs: ["tickets.read", "proposals.write"],
+    write_mode: "propose_only",
+    issued_at: 1_767_225_600,
+    expires_at: 1_767_229_200,
+    revoked_at: null,
+    active: true,
+    reason: "ok",
+    ...overrides,
+  };
+}
+
+export function buildAuditCall(overrides: Partial<AuditCall> = {}): AuditCall {
+  return {
+    id: "aud-1",
+    actor_id: "agent-1",
+    action: "tool.deny",
+    object_ref: "tools/ticket_search",
+    source: "mcp",
+    created_at: T0,
+    reason: "tool_allowlist",
+    detail: "ticket_search is not in this session's allowlist",
+    session_id: "sess-1",
     ...overrides,
   };
 }

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearToken, setToken } from "../lib/session";
 import {
   buildActivity,
+  buildAgentSession,
   buildComment,
   buildLinkedMemory,
   buildMemoryEntry,
@@ -23,7 +24,10 @@ beforeEach(() => {
     .on("GET /v1/projects/{project_id}", buildProject())
     .on("GET /v1/tickets/{ticket_id}/comments", [])
     .on("GET /v1/tickets/{ticket_id}/activity", [])
-    .on("GET /v1/tickets/{ticket_id}/memory", []);
+    .on("GET /v1/tickets/{ticket_id}/memory", [])
+    // E19-T4 rail: the recommendation panel and the active-sessions list.
+    .on("GET /v1/tickets/{ticket_id}/recommendations", [])
+    .on("GET /v1/agents/sessions", []);
 });
 
 afterEach(() => {
@@ -159,5 +163,22 @@ describe("the ticket page", () => {
     renderApp("/tickets/tick-1");
     await screen.findByRole("heading", { level: 1, name: "Fix the flux capacitor" });
     expect(screen.getByText(/Link context from the Memory page/)).toBeDefined();
+  });
+
+  it("E19-T4: the rail shows the recommended-next stage and active sessions", async () => {
+    server.on(
+      "GET /v1/tickets/{ticket_id}",
+      buildTicket({ lifecycle_stage: "build", recommended_next_stages: ["review", "release"] }),
+    );
+    server.on("GET /v1/agents/sessions", [buildAgentSession({ active: true })]);
+    renderApp("/tickets/tick-1");
+
+    await screen.findByRole("heading", { level: 1, name: "Fix the flux capacitor" });
+    // Recommended-next stage chips (from TicketOut.recommended_next_stages).
+    expect(screen.getByText("Recommended next")).toBeDefined();
+    expect(screen.getByText("review")).toBeDefined();
+    expect(screen.getByText("release")).toBeDefined();
+    // Active MCP sessions: a count linking into the Agents trust surface.
+    expect(await screen.findByRole("link", { name: /1 agent session/ })).toBeDefined();
   });
 });
