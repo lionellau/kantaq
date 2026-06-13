@@ -25,12 +25,21 @@ from sqlmodel import Session, col, select
 
 from kantaq_core import audit
 from kantaq_core.identity.keychain import Keychain
+from kantaq_core.identity.service import IdentityError
 from kantaq_core.tracker.events import DomainEvent, EventSink
 from kantaq_db.models import Device
 from kantaq_protocol import generate_keypair, public_key_of
 
 # The keychain entry holding this runtime's Ed25519 private seed (hex).
 DEVICE_KEY_NAME = "device-key"
+
+
+class DeviceNotFoundError(IdentityError):
+    """No device row matches the given id."""
+
+    def __init__(self, device_id: str) -> None:
+        super().__init__(f"no such device: {device_id}")
+        self.device_id = device_id
 
 
 def ensure_device(
@@ -122,3 +131,43 @@ def verification_roots(session: Session) -> dict[str, str]:
     """Active device id -> verify key: the offline-verification root map."""
     rows = session.exec(select(Device).where(col(Device.revoked_at).is_(None))).all()
     return {row.id: row.public_key for row in rows}
+
+
+def revoke_device(
+    session: Session,
+    device_id: str,
+    *,
+    actor_id: str,
+    now: datetime | None = None,
+) -> Device:
+    """Decommission a device: drop it from the root-of-trust map (E20-T2).
+
+    Idempotent — a device already carrying ``revoked_at`` is returned unchanged
+    (no second audit row). Once revoked, the row leaves ``verification_roots``
+    (which filters on ``revoked_at IS NULL``), so every grant the device signed
+    fails offline verification as ``unknown_root`` the instant the revocation
+    commits; the caller cascade-revokes those grants for a clean audit trail
+    (``revoke_grants_for_device``). Decommissioning the runtime's *own* active
+    device would strand grant issuance until a re-key, so that guard lives at
+    the API layer and this primitive stays policy-free.
+    """
+    device = session.get(Device, device_id)
+    if device is None:
+        raise DeviceNotFoundError(device_id)
+    if device.revoked_at is None:
+        ts = now or datetime.now(UTC).replace(tzinfo=None)
+        before = audit.snapshot(device)
+        device.revoked_at = ts
+        device.updated_at = ts
+        session.add(device)
+        audit.write(
+            session,
+            actor_id=actor_id,
+            action="device.revoke",
+            source="app",
+            object_ref=f"devices/{device.id}",
+            before=before,
+            after=audit.snapshot(device),
+            now=ts,
+        )
+    return device

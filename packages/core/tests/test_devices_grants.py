@@ -19,11 +19,14 @@ from kantaq_core.identity import (
     DEFAULT_GRANT_TTL_SECONDS,
     DEVICE_KEY_NAME,
     MAX_GRANT_TTL_SECONDS,
+    DeviceNotFoundError,
     GrantDeniedError,
     GrantService,
     IdentityService,
     Role,
     ensure_device,
+    revoke_device,
+    revoke_grants_for_device,
     verification_roots,
 )
 from kantaq_db.models import AuditEvent, CapabilityGrantRow, Device, EventLog
@@ -474,3 +477,65 @@ def test_a_grant_for_a_revoked_subject_fails_verify(
         # Doubly dead (rotation hook + subject backstop) — and provably dead
         # even if the revocation hook were somehow skipped.
         assert service.verify(row).reason == "revoked"
+
+
+# ----------------------------------------------------- device decommission
+
+
+def test_revoke_device_audits_and_leaves_the_root_map(
+    engine: Engine, keychain: FakeKeychain, clock: FakeClock, owner_id: str
+) -> None:
+    with Session(engine) as session:
+        device = ensure_device(session, keychain, member_id=owner_id, now=_now(clock)())
+        session.commit()
+        assert device.id in verification_roots(session)
+
+        revoked = revoke_device(session, device.id, actor_id=owner_id, now=_now(clock)())
+        session.commit()
+        assert revoked.revoked_at is not None
+        # Once revoked it is no longer a verification root.
+        assert device.id not in verification_roots(session)
+        actions = [r.action for r in session.exec(select(AuditEvent)).all()]
+        assert actions.count("device.revoke") == 1
+
+
+def test_revoke_device_is_idempotent(
+    engine: Engine, keychain: FakeKeychain, clock: FakeClock, owner_id: str
+) -> None:
+    with Session(engine) as session:
+        device = ensure_device(session, keychain, member_id=owner_id, now=_now(clock)())
+        session.commit()
+        revoke_device(session, device.id, actor_id=owner_id, now=_now(clock)())
+        revoke_device(session, device.id, actor_id=owner_id, now=_now(clock)())
+        session.commit()
+        # The second call is a no-op: exactly one revoke audit row.
+        actions = [r.action for r in session.exec(select(AuditEvent)).all()]
+        assert actions.count("device.revoke") == 1
+
+
+def test_revoke_unknown_device_raises(engine: Engine, owner_id: str) -> None:
+    with Session(engine) as session, pytest.raises(DeviceNotFoundError):
+        revoke_device(session, "no-such-device", actor_id=owner_id)
+
+
+def test_revoke_grants_for_device_cascades_only_its_own(
+    engine: Engine, keychain: FakeKeychain, clock: FakeClock, owner_id: str
+) -> None:
+    with Session(engine) as session:
+        device = ensure_device(session, keychain, member_id=owner_id, now=_now(clock)())
+        service = _grant_service(session, keychain, clock)
+        grant = service.issue(
+            subject_member_id=owner_id,
+            resource="workspace/main",
+            verbs=["tickets.read"],
+            actor_id=owner_id,
+        )
+        session.commit()
+
+        count = revoke_grants_for_device(session, device.id, actor_id=owner_id, now=_now(clock)())
+        session.commit()
+        assert count == 1
+        session.refresh(grant)
+        assert grant.revoked_at is not None
+        # A second pass finds nothing live to revoke.
+        assert revoke_grants_for_device(session, device.id, actor_id=owner_id) == 0
