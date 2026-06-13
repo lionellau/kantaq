@@ -170,7 +170,11 @@ def test_list_tickets_filters(
 ) -> None:
     member = _member(session, workspace)
     t1 = service.create_ticket(
-        project_id=project_id, title="A", status="todo", labels=["bug"], lifecycle_stage="build"
+        project_id=project_id,
+        title="A",
+        status="todo",
+        labels=["bug"],
+        lifecycle_stage="implementation",
     )
     t2 = service.create_ticket(
         project_id=project_id, title="B", status="doing", assignee=member.id, labels=["ux"]
@@ -182,8 +186,82 @@ def test_list_tickets_filters(
     assert [t.id for t in service.list_tickets(status="doing")] == [t2.id]
     assert [t.id for t in service.list_tickets(assignee=member.id)] == [t2.id]
     assert [t.id for t in service.list_tickets(label="bug")] == [t1.id]
-    assert [t.id for t in service.list_tickets(stage="build")] == [t1.id]
+    assert [t.id for t in service.list_tickets(stage="implementation")] == [t1.id]
     assert service.list_tickets(project_id=project_id, status="todo", label="ux") == []
+
+
+# ----------------------------------------------------------- lifecycle (MOD-20)
+
+
+def test_ticket_carries_its_current_stage(service: TrackerService, project_id: str) -> None:
+    ticket = service.create_ticket(project_id=project_id, title="T")
+    assert ticket.lifecycle_stage == "intake"  # the taxonomy's entry stage
+    moved = service.update_ticket(ticket.id, {"lifecycle_stage": "discovery"})
+    assert moved.lifecycle_stage == "discovery"
+    assert service.get_ticket(ticket.id).lifecycle_stage == "discovery"
+
+
+def test_stage_transition_writes_activity(service: TrackerService, project_id: str) -> None:
+    """A transition is an ordinary patch, so the audit row IS the activity."""
+    ticket = service.create_ticket(project_id=project_id, title="T")
+    service.update_ticket(ticket.id, {"lifecycle_stage": "discovery"})
+    service.update_ticket(ticket.id, {"lifecycle_stage": "planning"})
+
+    feed = service.activity(ticket.id)
+    transitions = [
+        (entry.before["lifecycle_stage"], entry.after["lifecycle_stage"])
+        for entry in feed
+        if entry.action == "ticket.update" and entry.before is not None and entry.after is not None
+    ]
+    assert transitions == [("intake", "discovery"), ("discovery", "planning")]
+
+
+def test_unknown_stage_is_rejected_at_create_and_patch(
+    service: TrackerService, project_id: str
+) -> None:
+    with pytest.raises(TrackerValidationError, match="unknown lifecycle stage"):
+        service.create_ticket(project_id=project_id, title="T", lifecycle_stage="build")
+    ticket = service.create_ticket(project_id=project_id, title="T")
+    with pytest.raises(TrackerValidationError, match="expected one of"):
+        service.update_ticket(ticket.id, {"lifecycle_stage": "shipping"})
+
+
+def test_stage_jumps_are_valid_in_both_directions(
+    service: TrackerService, project_id: str
+) -> None:
+    """Ordering is advisory: a QA bounce-back and an import-style jump both land."""
+    ticket = service.create_ticket(project_id=project_id, title="T", lifecycle_stage="qa")
+    assert service.update_ticket(
+        ticket.id, {"lifecycle_stage": "implementation"}
+    ).lifecycle_stage == "implementation"
+    assert service.update_ticket(ticket.id, {"lifecycle_stage": "learn"}).lifecycle_stage == "learn"
+
+
+def test_recommended_next_gates_release_on_open_subtickets(
+    service: TrackerService, project_id: str
+) -> None:
+    parent = service.create_ticket(project_id=project_id, title="P", lifecycle_stage="qa")
+    child = service.create_ticket(project_id=project_id, title="C", parent_id=parent.id)
+
+    # an open child (status todo) withholds "release"
+    assert service.recommended_next(parent) == ["implementation"]
+    service.update_ticket(child.id, {"status": "done"})
+    assert service.recommended_next(parent) == ["release", "implementation"]
+    # a ticket with no children is never gated
+    solo = service.create_ticket(project_id=project_id, title="S", lifecycle_stage="intake")
+    assert service.recommended_next(solo) == ["discovery"]
+
+
+def test_recommended_next_is_failsoft_on_legacy_stages(
+    service: TrackerService, session: Session, project_id: str
+) -> None:
+    """A pre-taxonomy row (before migration 0008) recommends nothing."""
+    ticket = service.create_ticket(project_id=project_id, title="T")
+    ticket.lifecycle_stage = "build"  # bypass validation: simulate legacy data
+    session.add(ticket)
+    session.commit()
+    session.refresh(ticket)
+    assert service.recommended_next(ticket) == []
 
 
 # ---------------------------------------------------------------- comments
