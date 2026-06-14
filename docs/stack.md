@@ -86,6 +86,21 @@ re-affirmed: the existing stdlib doc gates (link resolution, command drift) stay
 the right tools; nothing external clears the bar for *hermetic internal* checks.
 lychee for external-URL spot checks remains the v0.1-launch revisit.
 
+**E29-T2 (v0.1 launch docs, 2026-06-14) — the lychee revisit, now resolved.** With
+external-facing docs published (protocol/security/mcp/compatibility + the README +
+wedge post), the launch wants the *external* URLs spot-checked. Candidates for
+external-URL link checking: **lychee** (~17k★, MIT/Apache-2.0, Rust, actively
+maintained, async, handles redirects/fragments/mailto — clears the bar);
+**muffet** (~2.8k★, MIT, Go — below the star bar); **markdown-link-check** (npm,
+<5k★, network-first — below the bar); **linkchecker** (GPL-3.0 — license bar).
+**Decision:** keep CI **hermetic** (the stdlib internal-link gate stays the only
+link gate that blocks a PR — network checks are flaky and would feed RISK-05 gate
+fatigue), and add lychee behind an **opt-in `make linkcheck`** for release-time
+external-URL spot checks. lychee is a *system tool the releaser installs*, not a
+repo dependency — it never enters `pyproject`/`uv.lock`, so the fresh-clone gate is
+untouched. So: internal links → built-from-scratch hermetic gate (blocking);
+external links → lychee, opt-in, manual at release.
+
 ### E24 / MOD-05 Supabase backend
 
 | Need | Chosen | License | Notes |
