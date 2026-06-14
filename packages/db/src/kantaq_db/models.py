@@ -152,7 +152,11 @@ class AuditEvent(CollectionBase, table=True):
     object_ref: str | None = Field(default=None, index=True)
     before: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     after: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
-    source: str = Field(default="app", max_length=16)
+    # Required, no default: a misattributed audit row is worse than none, so the
+    # writer must always name the source (SEC finding S4). ``audit.write`` enforces
+    # ``source in SOURCES``; dropping the model default keeps a direct
+    # ``AuditEvent(...)`` from silently attributing a write to "app".
+    source: str = Field(max_length=16)
     chain_hash: str | None = Field(default=None)  # hash chain arrives in v0.1 (E07)
 
 

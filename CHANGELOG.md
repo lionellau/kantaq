@@ -38,6 +38,14 @@ release line (v0.0.5 → v0.3) described in the project docs.
 
 ### Fixed
 
+- **Schema alignment (doc↔code audit):** removed the `AuditEvent.source` model
+  default (`"app"`) so a direct construct can't silently misattribute an audit row
+  (SEC S4; `audit.write` already required `source`). Aligned migrations
+  `0005/0007/0009` FK id columns to the model (unbounded `VARCHAR`, matching
+  `0001`) and added a **length-aware model↔migration gate**
+  (`test_migration_string_lengths_match_models`) that caught 8 `VARCHAR(26)`
+  drifts Alembic's SQLite `compare_type` was blind to; the dialect-parity
+  fingerprint now includes column length.
 - **Flaky Vitest teardown** (DEBT-19): `usePolling` now owns and catches the
   refresh promise, so a poll that fails (a transient network error, or a test
   tearing down its fetch mock mid-interval) no longer surfaces as an unhandled
