@@ -66,7 +66,7 @@ export default function Agents() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-  usePolling(() => void refresh(), 2000, connected);
+  usePolling(refresh, 2000, connected);
 
   async function revoke(session: AgentSession) {
     setBusy(session.grant_id);

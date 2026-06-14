@@ -4,6 +4,7 @@ import Agents from "./routes/Agents";
 import Backlog from "./routes/Backlog";
 import Inbox from "./routes/Inbox";
 import Memory from "./routes/Memory";
+import Onboarding from "./routes/Onboarding";
 import Settings from "./routes/Settings";
 import TicketPage from "./routes/TicketPage";
 import Devices from "./routes/settings/Devices";
@@ -23,6 +24,7 @@ export const routes: RouteObject[] = [
     element: <Layout />,
     children: [
       { index: true, element: <Backlog /> },
+      { path: "onboarding", element: <Onboarding /> },
       { path: "tickets/:ticketId", element: <TicketPage /> },
       { path: "memory", element: <Memory /> },
       { path: "inbox", element: <Inbox /> },
