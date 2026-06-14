@@ -65,7 +65,7 @@ export default function Backlog() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-  usePolling(() => void refresh(), 2000, connected);
+  usePolling(refresh, 2000, connected);
 
   useEffect(() => {
     if (!connected) {

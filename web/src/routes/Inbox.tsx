@@ -84,7 +84,7 @@ export default function Inbox() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-  usePolling(() => void refresh(), 2000, connected);
+  usePolling(refresh, 2000, connected);
 
   async function decide(proposal: Proposal, decision: "approve" | "reject") {
     setBusy(proposal.id);

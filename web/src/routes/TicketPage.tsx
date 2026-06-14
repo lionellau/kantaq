@@ -94,7 +94,7 @@ export default function TicketPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-  usePolling(() => void refresh(), 2000, connected);
+  usePolling(refresh, 2000, connected);
 
   const projectId = ticket?.project_id ?? null;
   useEffect(() => {
