@@ -54,8 +54,8 @@ def upgrade() -> None:
     op.create_table(
         "ticket_relationships",
         *_envelope(),
-        sa.Column("from_id", sa.String(length=26), nullable=False),
-        sa.Column("to_id", sa.String(length=26), nullable=False),
+        sa.Column("from_id", sa.String(), nullable=False),
+        sa.Column("to_id", sa.String(), nullable=False),
         sa.Column("type", sa.String(length=16), nullable=False),
         sa.Column("created_by", sa.String(), nullable=True),
         sa.ForeignKeyConstraint(["from_id"], ["tickets.id"]),

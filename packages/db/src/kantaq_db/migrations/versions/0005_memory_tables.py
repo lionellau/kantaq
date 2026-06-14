@@ -53,8 +53,8 @@ def upgrade() -> None:
     op.create_table(
         "memory_links",
         *_envelope(),
-        sa.Column("ticket_id", sa.String(length=26), nullable=False),
-        sa.Column("memory_id", sa.String(length=26), nullable=False),
+        sa.Column("ticket_id", sa.String(), nullable=False),
+        sa.Column("memory_id", sa.String(), nullable=False),
         sa.Column("reason", sa.String(), nullable=False),
         sa.Column("created_by", sa.String(), nullable=True),
         sa.ForeignKeyConstraint(["ticket_id"], ["tickets.id"]),

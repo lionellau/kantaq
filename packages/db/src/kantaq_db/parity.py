@@ -51,6 +51,9 @@ def _table_structure(table: Any, dialect: Dialect) -> dict[str, Any]:
         col.type.compile(dialect=dialect)
         columns[col.name] = {
             "type": _affinity(col.type),
+            # Declared character length, so a VARCHAR(N) vs unbounded divergence
+            # is part of the fingerprint (it would otherwise be invisible).
+            "length": getattr(col.type, "length", None),
             "nullable": bool(col.nullable),
             "primary_key": bool(col.primary_key),
         }

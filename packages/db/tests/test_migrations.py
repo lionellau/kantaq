@@ -64,6 +64,48 @@ def test_migration_matches_models(tmp_path: Path) -> None:
     assert _compare_metadata(get_engine(url)) == []
 
 
+def _string_lengths(columns: object) -> dict[str, int | None]:
+    # Character columns expose ``.length`` (String/VARCHAR and SQLModel's
+    # AutoString — which is NOT a sqlalchemy.String subclass, so isinstance would
+    # silently skip every model column); Integer/DateTime/JSON do not.
+    out: dict[str, int | None] = {}
+    for col in columns:  # type: ignore[attr-defined]
+        coltype = col.type if hasattr(col, "type") else col["type"]
+        name = col.name if hasattr(col, "name") else col["name"]
+        if hasattr(coltype, "length"):
+            out[name] = coltype.length
+    return out
+
+
+def test_migration_string_lengths_match_models(tmp_path: Path) -> None:
+    """VARCHAR length parity model vs migration (D-07).
+
+    Alembic's ``compare_type`` is length-blind on SQLite (VARCHAR(26) == VARCHAR),
+    so ``test_migration_matches_models`` misses a hand-written migration that
+    bounds a column the model leaves unbounded (or vice versa). SQLite *reflection*
+    does preserve the declared length, so we compare it directly: the one model
+    definition (D-07) must render the same column length the migration builds.
+    """
+    url = _url(tmp_path)
+    migrations.upgrade(url)
+    inspector = inspect(get_engine(url))
+
+    model_lengths: dict[tuple[str, str], int | None] = {}
+    for table in SQLModel.metadata.sorted_tables:
+        for name, length in _string_lengths(table.columns).items():
+            model_lengths[(table.name, name)] = length
+
+    drifts: list[tuple[str, str, int | None, int | None]] = []
+    for table_name in inspector.get_table_names():
+        built = _string_lengths(inspector.get_columns(table_name))
+        for name, built_length in built.items():
+            key = (table_name, name)
+            if key in model_lengths and model_lengths[key] != built_length:
+                drifts.append((table_name, name, model_lengths[key], built_length))
+
+    assert drifts == [], f"VARCHAR length drift (model_len, migration_len): {sorted(drifts)}"
+
+
 def test_up_down_up_leaves_zero_drift(tmp_path: Path) -> None:
     url = _url(tmp_path)
     engine = get_engine(url)
