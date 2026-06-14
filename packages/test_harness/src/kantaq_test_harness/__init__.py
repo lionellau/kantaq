@@ -60,6 +60,14 @@ if TYPE_CHECKING:
         Token,
         Workspace,
     )
+    from kantaq_test_harness.red_team import (
+        ATTACK_CATALOG,
+        Attack,
+        AttackCategory,
+        AttackOutcome,
+        attempt,
+        categories_covered,
+    )
 
 __version__ = "0.0.5"
 
@@ -76,6 +84,14 @@ _LAZY: dict[str, str] = {
     "FakeMCPClient": "kantaq_test_harness.mcp:FakeMCPClient",
     "InjectionFixture": "kantaq_test_harness.injection:InjectionFixture",
     "load_injection_corpus": "kantaq_test_harness.injection:load_injection_corpus",
+    # The red-team battery rides the lazy path too (it imports the gateway):
+    # keep the pytest-plugin import lean so kantaq_mcp stays in coverage.
+    "ATTACK_CATALOG": "kantaq_test_harness.red_team:ATTACK_CATALOG",
+    "Attack": "kantaq_test_harness.red_team:Attack",
+    "AttackCategory": "kantaq_test_harness.red_team:AttackCategory",
+    "AttackOutcome": "kantaq_test_harness.red_team:AttackOutcome",
+    "attempt": "kantaq_test_harness.red_team:attempt",
+    "categories_covered": "kantaq_test_harness.red_team:categories_covered",
     "AgentProposal": "kantaq_test_harness.models:AgentProposal",
     "AuditEvent": "kantaq_test_harness.models:AuditEvent",
     "Comment": "kantaq_test_harness.models:Comment",
@@ -121,8 +137,12 @@ def __dir__() -> list[str]:
 
 
 __all__ = [
+    "ATTACK_CATALOG",
     "DEFAULT_BUDGET_SECONDS",
     "AgentProposal",
+    "Attack",
+    "AttackCategory",
+    "AttackOutcome",
     "AuditCapture",
     "AuditEvent",
     "Comment",
@@ -145,6 +165,7 @@ __all__ = [
     "TicketRelationship",
     "Token",
     "Workspace",
+    "attempt",
     "build_agent_proposal",
     "build_audit_event",
     "build_comment",
@@ -157,5 +178,6 @@ __all__ = [
     "build_ticket_relationship",
     "build_token",
     "build_workspace",
+    "categories_covered",
     "load_injection_corpus",
 ]
