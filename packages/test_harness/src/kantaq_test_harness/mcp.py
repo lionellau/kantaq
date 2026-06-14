@@ -56,11 +56,17 @@ class FakeMCPClient:
         token: str | None,
         url: str = DEFAULT_MCP_URL,
         run_lifespan: bool = True,
+        extra_headers: dict[str, str] | None = None,
     ) -> None:
         self._app = app
         self._token = token
         self._url = url
         self._run_lifespan = run_lifespan
+        # Extra connection headers a real agent sends to bind a capability grant
+        # (``mcp-grant-id`` / ``mcp-agent-role``, E09-T3) — set on every request
+        # alongside the bearer, so a grant-derived session can be exercised over
+        # the real wire (the compatibility profile's Tier-1 path, E11-T2).
+        self._extra_headers = dict(extra_headers or {})
         self._sync_stack = ExitStack()
         self._session: ClientSession | None = None
         self._get_session_id: Any = None
@@ -75,7 +81,9 @@ class FakeMCPClient:
         async with AsyncExitStack() as stack:
             if self._run_lifespan:
                 await stack.enter_async_context(self._app.router.lifespan_context(self._app))
-            headers = {"Authorization": f"Bearer {self._token}"} if self._token else {}
+            headers = dict(self._extra_headers)
+            if self._token:
+                headers["Authorization"] = f"Bearer {self._token}"
             http_client = await stack.enter_async_context(
                 httpx.AsyncClient(
                     transport=httpx.ASGITransport(app=self._app),
