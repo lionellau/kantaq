@@ -7,10 +7,12 @@ caller's own identity, never another member's, so no permission beyond a valid
 token is needed. It carries no secret (the token came in, nothing key-shaped
 goes out).
 
-``GET /v1/me/agent-snippet`` returns the Claude Code-style MCP snippet for
-**this member's own loopback gateway** — the corrected, local-first onboarding
-(FR-E21-3). The gateway's bound URL comes from the ``mcp.json`` discovery file
-the gateway publishes beside the local database (MOD-08); its ``pid`` field is
+``GET /v1/me/agent-snippet`` returns the MCP connection snippets for **this
+member's own loopback gateway** — one per compatible client (Claude Code,
+Cursor, Codex; E11/MOD-24), with the bare ``snippet`` field kept as the Claude
+Code config for back-compat — the corrected, local-first onboarding (FR-E21-3).
+The gateway's bound URL comes from the ``mcp.json`` discovery file the gateway
+publishes beside the local database (MOD-08); its ``pid`` field is
 liveness-checked so a stale file from a hard kill does not hand out a dead URL.
 
 SEC contract (second-review surface): this response **never carries a token**.
@@ -56,20 +58,40 @@ _START_GATEWAY = (
 )
 
 
-class AgentClientSnippet(BaseModel):
-    """One Tier-1 client's copy-paste MCP config (E11-T2, MOD-24 Tier-1).
+# Codex reads its MCP bearer from an env var (never the config file) — the
+# token stays out of `~/.codex/config.toml` entirely.
+CODEX_TOKEN_ENV = "KANTAQ_AGENT_TOKEN"
 
-    The same loopback URL + placeholder bearer, shaped for each client's config
-    file. Claude Code reads ``.mcp.json`` (``type: http`` + ``url``); Cursor
-    reads ``.cursor/mcp.json`` (``url`` for a remote/streamable-HTTP server).
-    Like the parent response, this **never** carries a token — only the
-    placeholder the web client substitutes locally.
+FORMAT_MCP_JSON = "mcp_json"
+FORMAT_TOML = "toml"
+
+
+class AgentClientSnippet(BaseModel):
+    """One compatible client's copy-paste MCP config (E11, MOD-24).
+
+    The same loopback URL, shaped for each client's config file and auth style:
+
+    - **Claude Code** — ``.mcp.json`` (``type: http`` + ``url`` + an inline
+      ``Authorization`` bearer).
+    - **Cursor** — ``.cursor/mcp.json`` (bare ``url`` for a remote server + the
+      inline bearer).
+    - **Codex** — ``~/.codex/config.toml`` (`[mcp_servers.kantaq]` with ``url``
+      + ``bearer_token_env_var``); the token rides an **env var**, never the
+      file (``setup`` carries the export).
+
+    ``text`` is the exact string to paste, rendered for ``format`` (``mcp_json``
+    or ``toml``). Like the parent response, nothing here carries a real token —
+    only the placeholder the web client substitutes locally, wherever it appears
+    (``text`` for the header clients, ``setup`` for Codex).
     """
 
     client: str
     label: str
     config: dict[str, Any]
+    format: str
+    text: str
     save_as: str
+    setup: str | None
     instructions: str
 
 
@@ -128,21 +150,48 @@ def _live_gateway_url(discovery_path: Path) -> str | None:
     return url
 
 
-def _client_snippets(url: str) -> list[AgentClientSnippet]:
-    """The Tier-1 clients' MCP configs for a live loopback gateway (E11-T2).
+def _mcp_json(config: dict[str, Any]) -> str:
+    """Render an mcp.json config as the exact string a client config file holds."""
+    return json.dumps(config, indent=2)
 
-    One server entry per client, differing only where the client's config schema
-    differs: Claude Code's ``.mcp.json`` names the transport (``type: http``);
-    Cursor's ``.cursor/mcp.json`` takes a bare ``url`` for a remote server. Both
-    carry the placeholder bearer, never a real token.
+
+def _codex_toml(url: str) -> str:
+    """Render the Codex `[mcp_servers.kantaq]` TOML table (no token — env-var auth).
+
+    The loopback URL has no TOML-special characters; the bearer rides
+    ``CODEX_TOKEN_ENV`` (the ``setup`` export), never the file.
+    """
+    return f'[mcp_servers.kantaq]\nurl = "{url}"\nbearer_token_env_var = "{CODEX_TOKEN_ENV}"'
+
+
+def _client_snippets(url: str) -> list[AgentClientSnippet]:
+    """Each compatible client's MCP config for a live loopback gateway (E11).
+
+    One entry per client, differing only where the client's config schema and
+    auth style differ: Claude Code's ``.mcp.json`` names the transport
+    (``type: http``) with an inline bearer; Cursor's ``.cursor/mcp.json`` takes a
+    bare ``url`` + inline bearer; Codex's ``~/.codex/config.toml`` takes a
+    ``[mcp_servers.kantaq]`` table and reads the bearer from an env var (the
+    token never touches the file). None carries a real token — only the
+    placeholder.
     """
     bearer = {"Authorization": f"Bearer {TOKEN_PLACEHOLDER}"}
+    claude_config: dict[str, Any] = {
+        "mcpServers": {"kantaq": {"type": "http", "url": url, "headers": bearer}}
+    }
+    cursor_config: dict[str, Any] = {"mcpServers": {"kantaq": {"url": url, "headers": bearer}}}
+    codex_config: dict[str, Any] = {
+        "mcp_servers": {"kantaq": {"url": url, "bearer_token_env_var": CODEX_TOKEN_ENV}}
+    }
     return [
         AgentClientSnippet(
             client="claude_code",
             label="Claude Code",
-            config={"mcpServers": {"kantaq": {"type": "http", "url": url, "headers": bearer}}},
+            config=claude_config,
+            format=FORMAT_MCP_JSON,
+            text=_mcp_json(claude_config),
             save_as=".mcp.json",
+            setup=None,
             instructions=(
                 "save as .mcp.json in your project (Claude Code reads it on start), "
                 f"replacing {TOKEN_PLACEHOLDER} with your member token"
@@ -151,11 +200,27 @@ def _client_snippets(url: str) -> list[AgentClientSnippet]:
         AgentClientSnippet(
             client="cursor",
             label="Cursor",
-            config={"mcpServers": {"kantaq": {"url": url, "headers": bearer}}},
+            config=cursor_config,
+            format=FORMAT_MCP_JSON,
+            text=_mcp_json(cursor_config),
             save_as=".cursor/mcp.json",
+            setup=None,
             instructions=(
                 "save as .cursor/mcp.json in your project (or ~/.cursor/mcp.json for every "
                 f"project), then replace {TOKEN_PLACEHOLDER} with your member token"
+            ),
+        ),
+        AgentClientSnippet(
+            client="codex",
+            label="Codex",
+            config=codex_config,
+            format=FORMAT_TOML,
+            text=_codex_toml(url),
+            save_as="~/.codex/config.toml",
+            setup=f"export {CODEX_TOKEN_ENV}={TOKEN_PLACEHOLDER}",
+            instructions=(
+                "add this table to ~/.codex/config.toml, then export your member token as "
+                f"{CODEX_TOKEN_ENV} (Codex reads the bearer from the env var, never the file)"
             ),
         ),
     ]

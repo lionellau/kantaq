@@ -275,6 +275,10 @@ export function buildSnippet(overrides: Partial<AgentSnippet> = {}): AgentSnippe
   // the page substitutes it client-side, so no token ever round-trips.
   const headers = { Authorization: "Bearer ${KANTAQ_MEMBER_TOKEN}" };
   const claudeConfig = { mcpServers: { kantaq: { type: "http", url, headers } } };
+  const cursorConfig = { mcpServers: { kantaq: { url, headers } } };
+  const codexConfig = {
+    mcp_servers: { kantaq: { url, bearer_token_env_var: "KANTAQ_AGENT_TOKEN" } },
+  };
   return {
     member_id: "member-1",
     gateway_url: url,
@@ -286,15 +290,31 @@ export function buildSnippet(overrides: Partial<AgentSnippet> = {}): AgentSnippe
         client: "claude_code",
         label: "Claude Code",
         config: claudeConfig,
+        format: "mcp_json",
+        text: JSON.stringify(claudeConfig, null, 2),
         save_as: ".mcp.json",
+        setup: null,
         instructions: "save as .mcp.json",
       },
       {
         client: "cursor",
         label: "Cursor",
-        config: { mcpServers: { kantaq: { url, headers } } },
+        config: cursorConfig,
+        format: "mcp_json",
+        text: JSON.stringify(cursorConfig, null, 2),
         save_as: ".cursor/mcp.json",
+        setup: null,
         instructions: "save as .cursor/mcp.json",
+      },
+      {
+        client: "codex",
+        label: "Codex",
+        config: codexConfig,
+        format: "toml",
+        text: `[mcp_servers.kantaq]\nurl = "${url}"\nbearer_token_env_var = "KANTAQ_AGENT_TOKEN"`,
+        save_as: "~/.codex/config.toml",
+        setup: "export KANTAQ_AGENT_TOKEN=${KANTAQ_MEMBER_TOKEN}",
+        instructions: "add to ~/.codex/config.toml; export KANTAQ_AGENT_TOKEN",
       },
     ],
     instructions: "save as .mcp.json",

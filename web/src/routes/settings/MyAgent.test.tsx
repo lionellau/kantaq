@@ -33,7 +33,7 @@ describe("Settings → My Agent", () => {
     expect(snippet.textContent).toContain("http://127.0.0.1:54321/v1/mcp");
   });
 
-  it("switches between the Claude Code and Cursor snippets (E11-T2)", async () => {
+  it("switches between the Claude Code, Cursor, and Codex snippets (E11)", async () => {
     server.on("GET /v1/me/agent-snippet", buildSnippet());
     renderApp("/settings/my-agent");
 
@@ -41,13 +41,27 @@ describe("Settings → My Agent", () => {
     const snippet = await screen.findByTestId("agent-snippet");
     expect(snippet.textContent).toContain('"type": "http"');
     expect(screen.getByText(/Save this as/).textContent).toContain(".mcp.json");
+    // The session token is substituted, never the placeholder.
+    expect(snippet.textContent).toContain("Bearer kq_session.token");
+    expect(screen.queryByTestId("agent-setup")).toBeNull(); // header clients need no env export
 
     // Switching to Cursor renders the .cursor/mcp.json shape (bare url, no type).
     fireEvent.click(screen.getByRole("tab", { name: "Cursor" }));
     expect(screen.getByTestId("agent-snippet").textContent).not.toContain('"type"');
     expect(screen.getByText(/Save this as/).textContent).toContain(".cursor/mcp.json");
-    // Either way the session token is substituted, never the placeholder.
     expect(screen.getByTestId("agent-snippet").textContent).toContain("Bearer kq_session.token");
+
+    // Switching to Codex renders the TOML table + the env-var export (token out
+    // of the file: it rides the env var, which carries the substituted token).
+    fireEvent.click(screen.getByRole("tab", { name: "Codex" }));
+    const codex = screen.getByTestId("agent-snippet");
+    expect(codex.textContent).toContain("[mcp_servers.kantaq]");
+    expect(codex.textContent).toContain('bearer_token_env_var = "KANTAQ_AGENT_TOKEN"');
+    expect(codex.textContent).not.toContain("kq_session.token"); // never in the file
+    expect(screen.getByText(/Then add this to/).textContent).toContain("~/.codex/config.toml");
+    expect(screen.getByTestId("agent-setup").textContent).toContain(
+      "export KANTAQ_AGENT_TOKEN=kq_session.token",
+    );
   });
 
   it("refuses to render a non-loopback gateway URL (FR-E21-3)", async () => {

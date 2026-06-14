@@ -64,10 +64,25 @@ projects) and takes a bare `url` for a remote/streamable-HTTP server:
 }
 ```
 
-Settings → **My Agent** generates both of these for your own live gateway with
-the token filled in (it never round-trips a secret — the page substitutes your
-token client-side). Which clients are tested, and the tier they earn, is the
-published matrix: [`docs/clients/compatibility.md`](clients/compatibility.md).
+**Codex** reads `~/.codex/config.toml`. It connects over the same streamable
+HTTP, but keeps the bearer **out of the config file** — the table names an env
+var (`bearer_token_env_var`) and Codex reads the token from it:
+
+```toml
+[mcp_servers.kantaq]
+url = "http://127.0.0.1:<port>/v1/mcp"
+bearer_token_env_var = "KANTAQ_AGENT_TOKEN"
+```
+
+```bash
+export KANTAQ_AGENT_TOKEN="<member token>"   # the bearer lives here, never the file
+```
+
+Settings → **My Agent** generates all three for your own live gateway with the
+token filled in (it never round-trips a secret — the page substitutes your token
+client-side; for Codex it fills the `export`, not the file). Which clients are
+tested, and the tier they earn, is the published matrix:
+[`docs/clients/compatibility.md`](clients/compatibility.md).
 
 ## Sessions
 

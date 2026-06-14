@@ -115,10 +115,19 @@ function SnippetPanel({ snippet, onReload }: { snippet: AgentSnippet; onReload: 
 
   const selected = snippet.clients.find((c) => c.client === clientId) ?? snippet.clients[0];
   const token = getToken();
-  const rendered = JSON.stringify(selected.config, null, 2).replaceAll(
-    snippet.token_placeholder,
-    token ?? snippet.token_placeholder,
-  );
+  const sub = (text: string) =>
+    text.replaceAll(snippet.token_placeholder, token ?? snippet.token_placeholder);
+  const rendered = sub(selected.text);
+  // Codex keeps the bearer out of the config file and reads it from an env var;
+  // `setup` carries that export (with the token substituted in).
+  const setup = selected.setup !== null ? sub(selected.setup) : null;
+
+  const preStyle = {
+    background: ui.palette.surface,
+    padding: "0.75rem",
+    overflowX: "auto",
+    fontSize: "0.8rem",
+  } as const;
 
   return (
     <div style={ui.card}>
@@ -136,25 +145,29 @@ function SnippetPanel({ snippet, onReload }: { snippet: AgentSnippet; onReload: 
           </button>
         ))}
       </div>
+      {setup !== null && (
+        <>
+          <p style={{ marginBottom: 0 }}>First, export your token in the shell that runs Codex:</p>
+          <pre data-testid="agent-setup" style={preStyle}>
+            {setup}
+          </pre>
+        </>
+      )}
       <p style={{ marginBottom: 0 }}>
-        Save this as <code>{selected.save_as}</code> ({selected.label}):
+        {setup !== null ? "Then add this to " : "Save this as "}
+        <code>{selected.save_as}</code> ({selected.label}):
       </p>
-      <pre
-        data-testid="agent-snippet"
-        style={{
-          background: ui.palette.surface,
-          padding: "0.75rem",
-          overflowX: "auto",
-          fontSize: "0.8rem",
-        }}
-      >
+      <pre data-testid="agent-snippet" style={preStyle}>
         {rendered}
       </pre>
       <p style={ui.muted}>
-        Gateway: <code>{snippet.gateway_url}</code> (your machine only). The snippet carries your
-        member token — treat the file like a credential. Rotate it from Members if it leaks.
+        Gateway: <code>{snippet.gateway_url}</code> (your machine only).{" "}
+        {setup !== null
+          ? "The config file carries no token — your token rides the KANTAQ_AGENT_TOKEN env var above; treat that like a credential."
+          : "The snippet carries your member token — treat the file like a credential."}{" "}
+        Rotate it from Members if it leaks.
       </p>
-      <CopySnippet text={rendered} />
+      <CopySnippet text={setup !== null ? `${setup}\n\n${rendered}` : rendered} />
     </div>
   );
 }

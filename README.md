@@ -16,11 +16,11 @@ This repository holds the **code**. Product, architecture, and planning docs are
 
 [![Tier-1 compatibility: scripted 8/8](https://img.shields.io/badge/Tier--1%20compatibility-scripted%208%2F8-blue)](docs/clients/compatibility.md)
 
-kantaq targets **Tier-1 (Reference)** MCP clients — **Claude Code** and **Cursor**, over HTTP. The eight Tier-1 acceptance tests (first connection, role-aware read, propose + approve, permission denial, token rotation, untrusted-content tagging, session expiry, audit completeness) pass **8 / 8 against the official MCP SDK client in CI** (`make compat`), and a **real agent (Codex) connects, reads, and proposes end to end** through the opt-in harness (`make verify-agent`). Per the badge rule (FR-E11-4), a tier is advertised as **certified** only once the real GUI clients pass all eight at a pinned version — those runs are the release step and are recorded, with client version and date, in the matrix:
+kantaq supports three HTTP MCP clients — **Claude Code**, **Cursor**, and **Codex** — each with a generated connection snippet. The eight Tier-1 acceptance tests (first connection, role-aware read, propose + approve, permission denial, token rotation, untrusted-content tagging, session expiry, audit completeness) pass **8 / 8 against the official MCP SDK client in CI** (`make compat`), and a **real agent (Codex) connects, reads, and proposes end to end** through the opt-in harness (`make verify-agent`). Per the badge rule (FR-E11-4), the Tier-1 (Reference) badge is advertised as **certified** only once a real client passes all eight at a pinned version — those runs are the release step, recorded with client version and date in the matrix:
 
 **→ [docs/clients/compatibility.md](docs/clients/compatibility.md)** — tiers, the 8 tests, client version, last-verified date, pass rate.
 
-Connect your agent from Settings → **My Agent**: it generates the `.mcp.json` (Claude Code) or `.cursor/mcp.json` (Cursor) snippet for your own loopback gateway. See [docs/mcp.md](docs/mcp.md#connecting).
+Connect your agent from Settings → **My Agent**: it generates the snippet for your own loopback gateway — `.mcp.json` (Claude Code), `.cursor/mcp.json` (Cursor), or `~/.codex/config.toml` (Codex). See [docs/mcp.md](docs/mcp.md#connecting).
 
 ## Quickstart
 
