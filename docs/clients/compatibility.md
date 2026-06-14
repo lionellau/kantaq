@@ -20,9 +20,27 @@ the next README.
 | **Tier 2 — Supported** | Verified, documented; regressions are P1. | 6 (S1–S6), stdio transport — v0.3 |
 | **Tier 3 — Adapter** | A starter HTTP adapter + curl proof. | 3 (H1–H3) — v0.3 |
 
-v0.1 ships **Tier 1** (Claude Code + Cursor, HTTP). Tier 2 (Codex, stdio) and
-Tier 3 (custom HTTP) are v0.3 — though Codex already connects over HTTP today
-(see the real-agent layer below).
+v0.1 supports **three HTTP clients — Claude Code, Cursor, and Codex** — each with
+a generated connection snippet (Settings → **My Agent**). Claude Code + Cursor
+are the named Tier-1 (Reference) clients; **Codex also connects over HTTP today**
+(streamable HTTP + bearer, verified end to end — see the real-agent layer) and
+gets the same first-class snippet, so all three are "bring your own agent"–ready.
+Codex's *stdio* Tier-2 surface (the 6 S-tests) and Tier-3 (custom HTTP, curl)
+remain v0.3; the PRD §8.11 row that lists Codex as stdio-only is refreshed for the
+as-built HTTP support (tracked as DEBT-22).
+
+## Connect (the three snippets)
+
+Settings → **My Agent** generates each client's exact config for *your own* live
+loopback gateway, with your token filled in client-side (no secret round-trips):
+
+| Client | Config file | Auth | Shape |
+|---|---|---|---|
+| **Claude Code** | `.mcp.json` (project) | inline `Authorization` bearer | `mcpServers` JSON, `type: http` |
+| **Cursor** | `.cursor/mcp.json` (project or `~/.cursor/`) | inline `Authorization` bearer | `mcpServers` JSON, bare `url` |
+| **Codex** | `~/.codex/config.toml` | `KANTAQ_AGENT_TOKEN` **env var** (never in the file) | `[mcp_servers.kantaq]` TOML, `bearer_token_env_var` |
+
+The full snippets are in [`docs/mcp.md`](../mcp.md#connecting).
 
 ## Two layers of evidence
 
@@ -71,19 +89,21 @@ through the identical harness (only the CLI invocation differs), but in the
 sandbox used for this run `claude -p` could not reach its model-API credentials;
 run `make verify-agent` where `claude` is signed in and it fills in.
 
-### Tier-1 published-badge target (full 8/8, real GUI client)
+### Full-8 badge target (all 8 tests, real client)
 
 | Client | Transport | Tier (target) | Last verified | Client version | Pass rate | Notes |
 |---|---|---|---|---|---|---|
 | **Claude Code** (CLI + IDE) | HTTP | Tier 1 | _pending full real-client run_ | 2.1.145 (connect core) | — / 8 | Snippet: `.mcp.json` (`type: http`). Server side proven (scripted 8/8); real connect T1–T3 harness-ready. |
 | **Cursor** | HTTP | Tier 1 | _pending real-client run_ | _pin at run_ | — / 8 | Snippet: `.cursor/mcp.json` (bare `url`). Server side proven (scripted 8/8). |
+| **Codex** (CLI) | HTTP | Tier 1 (HTTP) | _T1–T3 real ✅; full 8 pending_ | 0.130.0 (connect core) | 3 → / 8 | Snippet: `~/.codex/config.toml` (env-var bearer). Server side proven (scripted 8/8); real connect/read/propose **verified** (~31 s). |
 
-> **v0.1 status.** The scripted Tier-1 acceptance is **8/8, green in CI**, and a
-> **real agent (Codex) connects, reads, and proposes** end to end. The full
-> eight-test run *through each real GUI client* (Claude Code, Cursor, pinned
-> versions) is the release checklist's manual step — until it is recorded here
-> with a date and version, the README does **not** advertise the Tier-1 badge as
-> certified. Fill the two target rows by running the procedure below.
+> **v0.1 status.** The scripted Tier-1 acceptance is **8/8, green in CI**, all
+> three clients have generated connection snippets, and a **real agent (Codex)
+> connects, reads, and proposes** end to end. The full eight-test run *through
+> each real client* at a pinned version is the release checklist's manual step —
+> until it is recorded here with a date and version, the README does **not**
+> advertise the Tier-1 badge as certified. Fill the target rows by running the
+> procedure below.
 
 ## The 8 Tier-1 tests (PRD §20.4 — T1–T8)
 

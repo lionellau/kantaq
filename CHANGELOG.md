@@ -54,11 +54,15 @@ release line (v0.0.5 → v0.3) described in the project docs.
   runtime API (`tests/compat`). `scripts/compat_check.py` reproduces the matrix
   pass rate in one command. **Scripted: 8/8**; the real Claude Code / Cursor
   runs against pinned versions are the manual release step (FR-E11-2).
-- **Cursor connection snippet** (E11-T2, MOD-13): Settings → My Agent and
-  `GET /v1/me/agent-snippet` now offer **both** the Claude Code (`.mcp.json`,
-  `type: http`) and Cursor (`.cursor/mcp.json`, bare `url`) configs; the bare
-  `snippet` field stays the Claude Code config for back-compat. No token ever
-  round-trips (NFR-E06-1).
+- **Connection snippets for all three clients** (E11-T2, MOD-13): Settings → My
+  Agent and `GET /v1/me/agent-snippet` now generate configs for **Claude Code**
+  (`.mcp.json`, `type: http`), **Cursor** (`.cursor/mcp.json`, bare `url`), and
+  **Codex** (`~/.codex/config.toml`, `[mcp_servers.kantaq]` with
+  `bearer_token_env_var` — the token rides the `KANTAQ_AGENT_TOKEN` env var,
+  never the file). Each entry carries `format`/`text`/`setup`; the bare `snippet`
+  field stays the Claude Code config for back-compat. No token round-trips
+  (NFR-E06-1). Codex connects over the same streamable HTTP and was verified end
+  to end by `make verify-agent`.
 - **Published compatibility matrix** (E11-T3, MOD-24/MOD-16): `docs/clients/
   compatibility.md` records tier, client version, last-verified date, and pass
   rate, with the README badge rule — advertise a tier only when fully passing
