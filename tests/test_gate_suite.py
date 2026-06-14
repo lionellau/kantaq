@@ -9,6 +9,7 @@ A gate that has never failed is not known to work (the MOD-30 Platform/CI rule:
   3. revocation / grant expiry  (MOD-06)  — `make test` / packages/core+protocol
   4. context-eval ±5 points     (MOD-21)  — `make eval` (kantaq eval, py.yml)
   5. hero-flow timing < 15 min  (MOD-15)  — tests/e2e/test_hero_flow_timing.py
+  6. red-team containment       (MOD-18)  — `make test` / packages/mcp (E08-T5)
   + conformance smoke           (MOD-17)  — tests/test_conformance_smoke.py (E27-T4)
 
 Each gate is wired in CI by its owning module. This module is the single
@@ -175,3 +176,117 @@ def test_hero_flow_gate_trips_when_slow() -> None:
         pass
     with pytest.raises(HeroFlowTooSlow):
         timer.assert_under_budget()
+
+
+# ------------------------------------------------------- gate 6: red-team containment
+
+
+def test_red_team_gate_trips_when_an_attack_escapes(temp_sqlite: object) -> None:
+    """The containment gate's teeth: a queue-skip attempt the catalog expects
+    denied must be *bounded* (denied + audited). The real battery lives in
+    packages/mcp/tests/test_red_team.py; this proves its predicate bites — a
+    session widened (a simulated regression) so it can self-approve actually
+    applies the change, which the `bounded` predicate reports as a scope escape
+    and which fails the build.
+    """
+    from sqlalchemy.engine import Engine
+    from sqlmodel import Session, SQLModel, select
+
+    from kantaq_core.identity import IdentityService, Role, TokenVerifier
+    from kantaq_core.tracker.service import TrackerService
+    from kantaq_db.models import AuditEvent, Ticket, Workspace
+    from kantaq_mcp.gateway import Gateway
+    from kantaq_mcp.session import AUDIT_POLICY_STANDARD, GatewaySession
+    from kantaq_test_harness.clock import FakeClock
+    from kantaq_test_harness.red_team import attempt
+
+    assert isinstance(temp_sqlite, Engine)
+    SQLModel.metadata.create_all(temp_sqlite)
+    clock = FakeClock()
+    now = clock.now().replace(tzinfo=None)
+    with Session(temp_sqlite) as db:
+        agent = IdentityService(db).bootstrap_owner()
+    assert agent is not None
+    gateway = Gateway(
+        temp_sqlite, verifier=TokenVerifier(temp_sqlite, now=clock.monotonic), now=clock.now
+    )
+    actor = gateway.authenticate(agent.plaintext)
+    assert actor is not None
+
+    def denials() -> int:
+        with Session(temp_sqlite) as db:
+            return len([r for r in db.exec(select(AuditEvent)).all() if r.action == "tool.deny"])
+
+    def _session(*, suffix: str, verbs: tuple[str, ...], tools: tuple[str, ...]) -> GatewaySession:
+        return GatewaySession(
+            session_id=f"gate6-{suffix}",
+            member_id=agent.member_id,
+            role=Role.agent.value,
+            token_id="g6",
+            scopes=verbs,
+            allowed_tools=tools,
+            write_mode="propose_only",
+            created_at=now,
+            expires_at=now.replace(year=2030),
+            granted_verbs=verbs,
+            agent_role="code_agent",
+            audit_policy=AUDIT_POLICY_STANDARD,
+        )
+
+    # Seed a ticket and queue a real proposal through the gateway (the legitimate
+    # propose-only path), so there is something to (illegitimately) approve.
+    with Session(temp_sqlite) as db:
+        ws = Workspace(name="ws")
+        db.add(ws)
+        db.commit()
+        tracker = TrackerService(db, actor_id=agent.member_id, source="app", now=clock.now)
+        project = tracker.create_project(workspace_id=ws.id, name="p")
+        ticket_id = tracker.create_ticket(project_id=project.id, title="t").id
+    propose = _session(
+        suffix="propose",
+        verbs=("tickets.read", "proposals.write"),
+        tools=("ticket_get", "agent_action_propose"),
+    )
+    queued = attempt(
+        gateway,
+        actor=actor,
+        session=propose,
+        tool="agent_action_propose",
+        args={"ticket_id": ticket_id, "changes": {"status": "done"}},
+        count_denials=denials,
+    )
+    assert queued.result is not None
+    proposal_id = queued.result["proposal"]["id"]
+
+    # Correctly-scoped agent: approve is denied + audited → bounded (gate passes).
+    contained = attempt(
+        gateway,
+        actor=actor,
+        session=propose,
+        tool="agent_action_approve",
+        args={"proposal_id": proposal_id},
+        count_denials=denials,
+    )
+    assert contained.bounded, "a correctly-scoped agent must be bounded on self-approve"
+    with Session(temp_sqlite) as db:
+        assert db.get(Ticket, ticket_id).status == "todo"  # type: ignore[union-attr]
+
+    # Simulated regression: the agent was widened to tickets.write with approve in
+    # its allowlist — the call is NOT denied; it actually applies. The gate's
+    # `bounded` predicate is False (a real scope escape), which fails the build.
+    widened = _session(
+        suffix="widened",
+        verbs=("tickets.read", "tickets.write", "proposals.write"),
+        tools=("ticket_get", "agent_action_propose", "agent_action_approve"),
+    )
+    escaped = attempt(
+        gateway,
+        actor=actor,
+        session=widened,
+        tool="agent_action_approve",
+        args={"proposal_id": proposal_id},
+        count_denials=denials,
+    )
+    assert not escaped.bounded, "the gate must report an un-denied attack as a scope escape"
+    with Session(temp_sqlite) as db:
+        assert db.get(Ticket, ticket_id).status == "done"  # type: ignore[union-attr]
