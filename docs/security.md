@@ -72,12 +72,36 @@ layered defenses (land with E08/E09/E10, regression-tested in CI):
 Out of scope for MVP (the user's agent owns these): model-level guardrails, training-data
 filtering, side-channel detection.
 
+### Red-team containment proof (NFR-E08-1, E08-T5)
+
+The eight defenses are not only unit-tested in isolation — a **scripted fully-malicious model
+session** drives the real gateway end to end and proves containment as a whole. The battery
+(`kantaq_test_harness.red_team` + `packages/mcp/tests/test_red_team.py`) runs the four attack
+classes the threat model names and asserts every attempt is **bounded, denied, and audited**:
+
+| Attack class | What the malicious session tries | What stops it (deny check) |
+|---|---|---|
+| **Escalation** | call a tool outside the allowlist (`agent_action_approve`); invent a tool (`ticket_update`, `audit_log_read`); approve via a drifted allowlist; resolve another role's context; bind a foreign member's grant | `tool_allowlist`, `verb_match`, `memory_policy`, `identity` |
+| **Exfiltration** | read a private `local` note, an out-of-scope or `stale` entry, memory with no role declared; reach the memory collection under a tickets-only grant; enumerate a private id via the preview's excluded list | `memory_policy`, `collection_scope`; the gather seam keeps private ids out of preview (NFR-E16-1) |
+| **Bulk writes** | flood proposals to mass-mutate | rate-limit kill (`rate_limit`); **no bulk-mutate tool exists** — every mutate tool takes one id |
+| **Queue-skipping** | propose in a read-only session; self-approve a queued proposal | `write_mode`, `tool_allowlist`; `direct_write` is unreachable in v0.1 |
+
+The session ends with **zero scope escapes**: the ticket never moved, no proposal was
+self-approved, no agent comment was written, and every denial is in the audit log naming its
+check. The injection corpus replays through the malicious session (it reads each hostile payload
+back fenced and acts on none), so the red-team script **joins the corpus as a permanent
+regression** — a new `Attack` record is a new CI regression, with the manifest cross-checked
+against the executed battery so the two cannot drift. Because kantaq runs **no model**, the proof
+is structural (data/instruction separation + least privilege + human-in-the-loop), not a
+classifier — the OWASP LLM01 layered pattern applied server-side.
+
 ## CI security gates (MOD-15)
 
 | Gate | Lands | Proven by |
 |---|---|---|
 | Crypto golden vectors (sign/verify/canonical encoding) | v0.1 (E03) | tamper a vector → build fails |
 | Prompt-injection regression (untrusted markers never drop) | v0.1 (E08) | drop a marker → build fails |
+| Red-team containment (NFR-E08-1: malicious session stays in-scope) | v0.1 (E08-T5) | a scope escape (a denied attack that applies / is unaudited) → build fails |
 | Grant revocation propagates < 5s | v0.1 (E06) | timed integration test |
 | Hero-flow timing < 15 min | now (stub) → v0.1 | `HeroFlowTimer`; over budget → fail (`test_hero_flow.py`) |
 | Adversarial + security review on protocol/gateway/grant PRs | now | required check on protected paths |
