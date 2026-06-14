@@ -94,6 +94,19 @@ export default function Backlog() {
     <section>
       <h1>Backlog</h1>
 
+      {projects.length === 0 && (
+        <p
+          style={{
+            ...ui.card,
+            background: ui.palette.surface,
+            margin: "0 0 1rem",
+          }}
+        >
+          New here? <Link to="/onboarding">Start the setup wizard</Link> to create your first
+          project and connect your agent.
+        </p>
+      )}
+
       <form aria-label="Filters" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <label style={ui.label}>
           Project
