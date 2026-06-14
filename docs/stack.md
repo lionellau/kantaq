@@ -245,6 +245,14 @@ genuinely new capability was introduced.
 | Conformance smoke (E27-T4) | **the in-stack protocol + `VerifyingBackend` + `FakeBackend`** | Assembled from shipped seams; no new dependency. |
 | Onboarding wizard (E21-T3) | **React + react-router + `ui.ts` + existing endpoints** | A guided wrapper over `POST /v1/projects` + `POST /v1/memory` + the My Agent snippet; same shape as every prior web epic. No new dependency. |
 
+### E11 / MOD-24 client compatibility — Tier-1 (v0.1)
+
+| Need | Chosen | License | Notes |
+|---|---|---|---|
+| Scripted Tier-1 compatibility client | **official Python MCP SDK client** (`mcp`, already in the stack) via `FakeAgent` (`kantaq_test_harness.compat`) | MIT (SDK) / Apache-2.0 (ours) | Golden-rule run 2026-06-14. The capability is "drive the 8 Tier-1 acceptance tests with the *same client library Claude Code and Cursor embed*." Candidates evaluated: (1) the **official `mcp` SDK** (Anthropic + the MCP org; ADR-0001's MCP choice; ~18k★ across the MCP repos; already a runtime dependency) — its streamable-HTTP client *is* the real Tier-1 client half, so testing against it satisfies the "fake honors the real contract" rule by construction; (2) third-party MCP test harnesses (**mcp-use**, **wong2/mcp-cli**, various `mcp-test-*`) — all below the 5k-star bar and immature; (3) **build a protocol fake from scratch** — rejected, because a hand-rolled client would prove nothing about the contract real clients run under (the explicit MOD-30 anti-pattern). So `FakeAgent` thinly wraps the existing `FakeMCPClient` (real SDK over in-process ASGI) with the grant/role connect headers; zero new dependency. |
+| Tier-1 acceptance suite + runner | **pytest + the in-stack runtime/gateway** (`tests/compat`, `scripts/compat_check.py`) | Apache-2.0 (ours) | The 8 tests (PRD §20.4) run the scripted client against the real gateway app + the runtime API (approve/rotate) over one engine + `FakeClock` — the same hermetic-harness pattern as E27's timed hero flow. No new tooling; the runner reuses `pytest.main` to emit the matrix `Pass rate`. |
+| Cursor / Claude Code connection snippets | **config strings, built in-stack** (`/v1/me/agent-snippet`, Settings → My Agent) | Apache-2.0 (ours) | Per-client MCP `mcpServers` configs (Claude Code `.mcp.json` with `type: http`; Cursor `.cursor/mcp.json` with a bare `url`) — documented config formats, not a library. The generator never round-trips a token (NFR-E06-1); the URL is loopback-asserted. No standard claimed beyond MCP's own config convention, which we follow. |
+
 ## Consequences
 
 - Two toolchains in CI (Python + web). Keep total CI **under 10 minutes**

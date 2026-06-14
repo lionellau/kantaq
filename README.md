@@ -12,6 +12,16 @@ This repository holds the **code**. Product, architecture, and planning docs are
 
 `v0.0.5` — the walking-skeleton core. On the Sprint 1 foundation (repo/env, data layer + migrations, local runtime + run modes, web shell, quality gates + shared test harness, identity + token-gated loopback auth), Sprint 2 adds the full hero loop: online sync through Supabase (E04/E24), the loopback MCP gateway with propose-first tools (E09/E10), and the screens — backlog, ticket page, Inbox, Members, My Agent (E19/E20/E21). End to end: create → sync → an agent proposes → a human approves → sync. See [QUICKSTART.md](QUICKSTART.md#the-full-loop-end-to-end).
 
+## Compatibility
+
+[![Tier-1 compatibility: scripted 8/8](https://img.shields.io/badge/Tier--1%20compatibility-scripted%208%2F8-blue)](docs/clients/compatibility.md)
+
+kantaq targets **Tier-1 (Reference)** MCP clients — **Claude Code** and **Cursor**, over HTTP. The eight Tier-1 acceptance tests (first connection, role-aware read, propose + approve, permission denial, token rotation, untrusted-content tagging, session expiry, audit completeness) pass **8 / 8 against the official MCP SDK client in CI** (`make compat`), and a **real agent (Codex) connects, reads, and proposes end to end** through the opt-in harness (`make verify-agent`). Per the badge rule (FR-E11-4), a tier is advertised as **certified** only once the real GUI clients pass all eight at a pinned version — those runs are the release step and are recorded, with client version and date, in the matrix:
+
+**→ [docs/clients/compatibility.md](docs/clients/compatibility.md)** — tiers, the 8 tests, client version, last-verified date, pass rate.
+
+Connect your agent from Settings → **My Agent**: it generates the `.mcp.json` (Claude Code) or `.cursor/mcp.json` (Cursor) snippet for your own loopback gateway. See [docs/mcp.md](docs/mcp.md#connecting).
+
 ## Quickstart
 
 **→ [QUICKSTART.md](QUICKSTART.md)** — solo mode (zero backend) and team mode (shared Supabase, see [docs/setup-supabase.md](docs/setup-supabase.md)).
