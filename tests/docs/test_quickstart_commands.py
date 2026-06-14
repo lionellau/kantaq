@@ -20,6 +20,7 @@ DOCS_WITH_COMMANDS = [
     REPO_ROOT / "QUICKSTART.md",
     REPO_ROOT / "README.md",
     REPO_ROOT / "docs" / "setup-supabase.md",
+    REPO_ROOT / "docs" / "mcp.md",  # E29-T2: the gateway doc is drift-protected too
 ]
 
 # Match EVERY fence (any language tag) so blocks pair correctly — a ```sql

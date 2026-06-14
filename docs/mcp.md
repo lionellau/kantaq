@@ -95,7 +95,8 @@ escalate by changing headers mid-session. There are two ways to derive one:
   (agents), the scope is the whole workspace, there is no agent context role,
   and the session expires in 1 hour.
 - **Grant-derived (full, v0.1).** Also present `mcp-grant-id` (a capability
-  grant, MOD-06) and optionally `mcp-agent-role`. The grant's **verbs** narrow
+  grant — MOD-06, specified in [protocol.md §4](protocol.md#4-capability-grants))
+  and optionally `mcp-agent-role`. The grant's **verbs** narrow
   the allowlist and write mode (a grant never widens your role), the grant's
   **resource** is the collection scope, and the grant's own **expiry** is the
   session's. The agent role selects the **memory policy** applied to reads.
@@ -200,3 +201,9 @@ preview. A `local`-visibility entry is never returned (NFR-E16-1).
 
 Tool errors are structured `{"error": {code, message}}` with codes `not_found`,
 `validation`, or `conflict` (a proposal already decided).
+
+## See also
+
+- [protocol.md](protocol.md) — the entities, canonical codec, signing, and grants the gateway derives a session from.
+- [security.md](security.md) — the threat model and the prompt-injection defenses behind the eight checks and the untrusted fence.
+- [clients/compatibility.md](clients/compatibility.md) — which clients are tested against this gateway, and the tier they earn.

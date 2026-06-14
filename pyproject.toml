@@ -1,6 +1,6 @@
 [project]
 name = "kantaq"
-version = "0.0.5"
+version = "0.1.0"
 description = "kantaq — local-first, agent-native issue tracker (workspace umbrella + CLI)"
 readme = "README.md"
 requires-python = ">=3.12"

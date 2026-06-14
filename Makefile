@@ -1,4 +1,4 @@
-.PHONY: help setup dev migrate test coverage lint typecheck eval mcp-dev e2e compat verify-agent clean
+.PHONY: help setup dev migrate test coverage lint typecheck eval mcp-dev e2e compat verify-agent linkcheck clean
 
 help: ## show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -43,6 +43,10 @@ compat: ## run the scripted Tier-1 compatibility suite (T1-T8, MCP SDK client) +
 
 verify-agent: ## drive a REAL coding agent (Claude Code/Codex) against the gateway — opt-in, needs the agent signed in (E11-T2)
 	uv run python scripts/verify_agent.py
+
+linkcheck: ## spot-check external doc URLs at release time (opt-in; needs lychee)
+	@command -v lychee >/dev/null 2>&1 || { echo "lychee not installed — see https://github.com/lycheeverse/lychee (brew install lychee / cargo install lychee). Internal links are already covered hermetically by 'make test'."; exit 1; }
+	lychee --no-progress README.md CHANGELOG.md QUICKSTART.md docs
 
 clean: ## remove build artifacts and caches
 	rm -rf web/dist web/node_modules .venv \
