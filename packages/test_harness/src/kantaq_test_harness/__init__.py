@@ -38,6 +38,7 @@ if TYPE_CHECKING:
         build_token,
         build_workspace,
     )
+    from kantaq_test_harness.compat import FakeAgent, ToolCall, is_untrusted_wrapped
     from kantaq_test_harness.hero_flow import (
         DEFAULT_BUDGET_SECONDS,
         HeroFlowTimer,
@@ -82,6 +83,11 @@ _LAZY: dict[str, str] = {
     # FakeMCPClient pulls the MCP SDK + httpx; the corpus loader is stdlib but
     # rides the same lazy path so the plugin import stays lean (coverage rule).
     "FakeMCPClient": "kantaq_test_harness.mcp:FakeMCPClient",
+    # FakeAgent (the Compatibility profile's scripted Tier-1 client, E11-T2)
+    # wraps FakeMCPClient, so it rides the same lazy path (coverage rule).
+    "FakeAgent": "kantaq_test_harness.compat:FakeAgent",
+    "ToolCall": "kantaq_test_harness.compat:ToolCall",
+    "is_untrusted_wrapped": "kantaq_test_harness.compat:is_untrusted_wrapped",
     "InjectionFixture": "kantaq_test_harness.injection:InjectionFixture",
     "load_injection_corpus": "kantaq_test_harness.injection:load_injection_corpus",
     # The red-team battery rides the lazy path too (it imports the gateway):
@@ -148,6 +154,7 @@ __all__ = [
     "Comment",
     "CommittedEvent",
     "Event",
+    "FakeAgent",
     "FakeBackend",
     "FakeClock",
     "FakeKeychain",
@@ -164,6 +171,7 @@ __all__ = [
     "Ticket",
     "TicketRelationship",
     "Token",
+    "ToolCall",
     "Workspace",
     "attempt",
     "build_agent_proposal",
@@ -179,5 +187,6 @@ __all__ = [
     "build_token",
     "build_workspace",
     "categories_covered",
+    "is_untrusted_wrapped",
     "load_injection_corpus",
 ]

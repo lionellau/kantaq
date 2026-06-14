@@ -709,6 +709,30 @@ export interface components {
             /** Id */
             id: string;
         };
+        /**
+         * AgentClientSnippet
+         * @description One Tier-1 client's copy-paste MCP config (E11-T2, MOD-24 Tier-1).
+         *
+         *     The same loopback URL + placeholder bearer, shaped for each client's config
+         *     file. Claude Code reads ``.mcp.json`` (``type: http`` + ``url``); Cursor
+         *     reads ``.cursor/mcp.json`` (``url`` for a remote/streamable-HTTP server).
+         *     Like the parent response, this **never** carries a token — only the
+         *     placeholder the web client substitutes locally.
+         */
+        AgentClientSnippet: {
+            /** Client */
+            client: string;
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /** Instructions */
+            instructions: string;
+            /** Label */
+            label: string;
+            /** Save As */
+            save_as: string;
+        };
         /** AgentSessionOut */
         AgentSessionOut: {
             /** Active */
@@ -738,6 +762,8 @@ export interface components {
         };
         /** AgentSnippetOut */
         AgentSnippetOut: {
+            /** Clients */
+            clients: components["schemas"]["AgentClientSnippet"][];
             /** Gateway Live */
             gateway_live: boolean;
             /** Gateway Url */

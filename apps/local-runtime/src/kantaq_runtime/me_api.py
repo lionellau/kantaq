@@ -56,12 +56,33 @@ _START_GATEWAY = (
 )
 
 
+class AgentClientSnippet(BaseModel):
+    """One Tier-1 client's copy-paste MCP config (E11-T2, MOD-24 Tier-1).
+
+    The same loopback URL + placeholder bearer, shaped for each client's config
+    file. Claude Code reads ``.mcp.json`` (``type: http`` + ``url``); Cursor
+    reads ``.cursor/mcp.json`` (``url`` for a remote/streamable-HTTP server).
+    Like the parent response, this **never** carries a token — only the
+    placeholder the web client substitutes locally.
+    """
+
+    client: str
+    label: str
+    config: dict[str, Any]
+    save_as: str
+    instructions: str
+
+
 class AgentSnippetOut(BaseModel):
     member_id: str
     gateway_url: str | None
     gateway_live: bool
     token_placeholder: str
+    # Back-compat: the Claude Code config (== the ``claude_code`` entry of
+    # ``clients``). Kept so existing consumers keep working; new clients read
+    # ``clients`` to offer every Tier-1 target.
     snippet: dict[str, Any] | None
+    clients: list[AgentClientSnippet]
     instructions: str
 
 
@@ -107,6 +128,39 @@ def _live_gateway_url(discovery_path: Path) -> str | None:
     return url
 
 
+def _client_snippets(url: str) -> list[AgentClientSnippet]:
+    """The Tier-1 clients' MCP configs for a live loopback gateway (E11-T2).
+
+    One server entry per client, differing only where the client's config schema
+    differs: Claude Code's ``.mcp.json`` names the transport (``type: http``);
+    Cursor's ``.cursor/mcp.json`` takes a bare ``url`` for a remote server. Both
+    carry the placeholder bearer, never a real token.
+    """
+    bearer = {"Authorization": f"Bearer {TOKEN_PLACEHOLDER}"}
+    return [
+        AgentClientSnippet(
+            client="claude_code",
+            label="Claude Code",
+            config={"mcpServers": {"kantaq": {"type": "http", "url": url, "headers": bearer}}},
+            save_as=".mcp.json",
+            instructions=(
+                "save as .mcp.json in your project (Claude Code reads it on start), "
+                f"replacing {TOKEN_PLACEHOLDER} with your member token"
+            ),
+        ),
+        AgentClientSnippet(
+            client="cursor",
+            label="Cursor",
+            config={"mcpServers": {"kantaq": {"url": url, "headers": bearer}}},
+            save_as=".cursor/mcp.json",
+            instructions=(
+                "save as .cursor/mcp.json in your project (or ~/.cursor/mcp.json for every "
+                f"project), then replace {TOKEN_PLACEHOLDER} with your member token"
+            ),
+        ),
+    ]
+
+
 @router.get("/agent-snippet", response_model=AgentSnippetOut)
 def agent_snippet(actor: AnyActor, request: Request) -> AgentSnippetOut:
     settings: Settings = request.app.state.settings
@@ -120,27 +174,20 @@ def agent_snippet(actor: AnyActor, request: Request) -> AgentSnippetOut:
             gateway_live=False,
             token_placeholder=TOKEN_PLACEHOLDER,
             snippet=None,
+            clients=[],
             instructions=_START_GATEWAY,
         )
 
+    clients = _client_snippets(url)
+    claude_code = clients[0]
     return AgentSnippetOut(
         member_id=actor.member_id,
         gateway_url=url,
         gateway_live=True,
         token_placeholder=TOKEN_PLACEHOLDER,
-        snippet={
-            "mcpServers": {
-                "kantaq": {
-                    "type": "http",
-                    "url": url,
-                    "headers": {"Authorization": f"Bearer {TOKEN_PLACEHOLDER}"},
-                }
-            }
-        },
-        instructions=(
-            "save as .mcp.json in your project (Claude Code), replacing "
-            f"{TOKEN_PLACEHOLDER} with your member token"
-        ),
+        snippet=claude_code.config,  # back-compat: the Claude Code config
+        clients=clients,
+        instructions=claude_code.instructions,
     )
 
 

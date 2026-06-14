@@ -26,6 +26,10 @@ kantaq mcp dev
   token is read; the transport also enforces loopback `Host` headers
   (DNS-rebinding protection).
 
+The two Tier-1 clients differ only in where the config lives and how the
+transport is named. **Claude Code** reads `.mcp.json` in your project and names
+the transport (`"type": "http"`):
+
 ```json
 {
   "mcpServers": {
@@ -41,6 +45,29 @@ kantaq mcp dev
   }
 }
 ```
+
+**Cursor** reads `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (all
+projects) and takes a bare `url` for a remote/streamable-HTTP server:
+
+```json
+{
+  "mcpServers": {
+    "kantaq": {
+      "url": "http://127.0.0.1:<port>/v1/mcp",
+      "headers": {
+        "Authorization": "Bearer <member token>",
+        "mcp-grant-id": "<capability grant id>",
+        "mcp-agent-role": "code_agent"
+      }
+    }
+  }
+}
+```
+
+Settings → **My Agent** generates both of these for your own live gateway with
+the token filled in (it never round-trips a secret — the page substitutes your
+token client-side). Which clients are tested, and the tier they earn, is the
+published matrix: [`docs/clients/compatibility.md`](clients/compatibility.md).
 
 ## Sessions
 

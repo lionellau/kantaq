@@ -1,4 +1,4 @@
-.PHONY: help setup dev migrate test coverage lint typecheck eval mcp-dev e2e verify-agent clean
+.PHONY: help setup dev migrate test coverage lint typecheck eval mcp-dev e2e compat verify-agent clean
 
 help: ## show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -37,6 +37,9 @@ e2e: ## run the Playwright hero-flow end-to-end (builds the UI first)
 	pnpm -C web build
 	pnpm -C web exec playwright install chromium
 	pnpm -C web test:e2e
+
+compat: ## run the scripted Tier-1 compatibility suite (T1-T8, MCP SDK client) + matrix line (E11-T2)
+	uv run python scripts/compat_check.py
 
 verify-agent: ## drive a REAL coding agent (Claude Code/Codex) against the gateway — opt-in, needs the agent signed in (E11-T2)
 	uv run python scripts/verify_agent.py

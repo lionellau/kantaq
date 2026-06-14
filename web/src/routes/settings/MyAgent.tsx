@@ -79,7 +79,16 @@ export default function MyAgent() {
 }
 
 function SnippetPanel({ snippet, onReload }: { snippet: AgentSnippet; onReload: () => void }) {
-  if (!snippet.gateway_live || snippet.gateway_url === null || snippet.snippet === null) {
+  // The selected Tier-1 client; default to the first the runtime offered
+  // (Claude Code). Hooks must run before any early return.
+  const [clientId, setClientId] = useState<string>(snippet.clients[0]?.client ?? "claude_code");
+
+  if (
+    !snippet.gateway_live ||
+    snippet.gateway_url === null ||
+    snippet.snippet === null ||
+    snippet.clients.length === 0
+  ) {
     return (
       <div style={ui.card}>
         <p style={{ marginTop: 0 }}>
@@ -104,16 +113,31 @@ function SnippetPanel({ snippet, onReload }: { snippet: AgentSnippet; onReload: 
     );
   }
 
+  const selected = snippet.clients.find((c) => c.client === clientId) ?? snippet.clients[0];
   const token = getToken();
-  const rendered = JSON.stringify(snippet.snippet, null, 2).replaceAll(
+  const rendered = JSON.stringify(selected.config, null, 2).replaceAll(
     snippet.token_placeholder,
     token ?? snippet.token_placeholder,
   );
 
   return (
     <div style={ui.card}>
-      <p style={{ marginTop: 0 }}>
-        Save this as <code>.mcp.json</code> in your project (Claude Code reads it on start):
+      <div role="tablist" aria-label="Coding agent" style={{ display: "flex", gap: "0.5rem" }}>
+        {snippet.clients.map((client) => (
+          <button
+            key={client.client}
+            type="button"
+            role="tab"
+            aria-selected={client.client === selected.client}
+            style={client.client === selected.client ? ui.primaryButton : ui.button}
+            onClick={() => setClientId(client.client)}
+          >
+            {client.label}
+          </button>
+        ))}
+      </div>
+      <p style={{ marginBottom: 0 }}>
+        Save this as <code>{selected.save_as}</code> ({selected.label}):
       </p>
       <pre
         data-testid="agent-snippet"

@@ -46,6 +46,24 @@ release line (v0.0.5 → v0.3) described in the project docs.
   the agent's MCP calls via the real MCP SDK client (kantaq runs no LLM); a real
   LLM-backed agent is verified by the new `make verify-agent` harness.
 
+### Added — Sprint 5: client compatibility (E11, Tier-1)
+
+- **Tier-1 compatibility suite** (E11-T2, MOD-24/MOD-30): the 8 Tier-1 acceptance
+  tests (T1–T8, PRD §20.4) run in CI against `FakeAgent` — the official MCP SDK
+  client (the library Claude Code and Cursor embed) over the real gateway +
+  runtime API (`tests/compat`). `scripts/compat_check.py` reproduces the matrix
+  pass rate in one command. **Scripted: 8/8**; the real Claude Code / Cursor
+  runs against pinned versions are the manual release step (FR-E11-2).
+- **Cursor connection snippet** (E11-T2, MOD-13): Settings → My Agent and
+  `GET /v1/me/agent-snippet` now offer **both** the Claude Code (`.mcp.json`,
+  `type: http`) and Cursor (`.cursor/mcp.json`, bare `url`) configs; the bare
+  `snippet` field stays the Claude Code config for back-compat. No token ever
+  round-trips (NFR-E06-1).
+- **Published compatibility matrix** (E11-T3, MOD-24/MOD-16): `docs/clients/
+  compatibility.md` records tier, client version, last-verified date, and pass
+  rate, with the README badge rule — advertise a tier only when fully passing
+  (FR-E11-4). README gains a Compatibility section + badge.
+
 ### Added — Epic E01: Repo & environment bootstrap (v0.0.5)
 
 - **uv workspace** with packages `protocol`, `sync_engine`, `core`, `mcp`, `db`,

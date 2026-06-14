@@ -1,6 +1,6 @@
 /** E21-T2 (SEC) — My Agent: own-loopback snippet, client-side token, fail closed. */
 
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearToken, setToken } from "../../lib/session";
 import { buildSnippet } from "../../test/builders";
@@ -31,6 +31,23 @@ describe("Settings → My Agent", () => {
     expect(snippet.textContent).toContain("Bearer kq_session.token");
     expect(snippet.textContent).not.toContain("KANTAQ_MEMBER_TOKEN");
     expect(snippet.textContent).toContain("http://127.0.0.1:54321/v1/mcp");
+  });
+
+  it("switches between the Claude Code and Cursor snippets (E11-T2)", async () => {
+    server.on("GET /v1/me/agent-snippet", buildSnippet());
+    renderApp("/settings/my-agent");
+
+    // Defaults to Claude Code: the .mcp.json shape names the http transport.
+    const snippet = await screen.findByTestId("agent-snippet");
+    expect(snippet.textContent).toContain('"type": "http"');
+    expect(screen.getByText(/Save this as/).textContent).toContain(".mcp.json");
+
+    // Switching to Cursor renders the .cursor/mcp.json shape (bare url, no type).
+    fireEvent.click(screen.getByRole("tab", { name: "Cursor" }));
+    expect(screen.getByTestId("agent-snippet").textContent).not.toContain('"type"');
+    expect(screen.getByText(/Save this as/).textContent).toContain(".cursor/mcp.json");
+    // Either way the session token is substituted, never the placeholder.
+    expect(screen.getByTestId("agent-snippet").textContent).toContain("Bearer kq_session.token");
   });
 
   it("refuses to render a non-loopback gateway URL (FR-E21-3)", async () => {
