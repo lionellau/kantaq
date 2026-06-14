@@ -1,7 +1,7 @@
-"""Hero-flow timing gate (E27-T3, MOD-15) — the real end-to-end flow, timed.
+"""Hero-flow timing gate (E27-T3, MOD-15) — the kantaq-side flow, timed.
 
 The v0.1 release gate (roadmap §2): the hero flow runs end to end in under 15
-minutes. This wires the *real* loop a fresh teammate walks —
+minutes. This wires the loop a fresh teammate walks —
 
     join → first project → connect an agent that reads a ticket over MCP and
     proposes a change → approve it from the human side → the signed change
@@ -9,10 +9,24 @@ minutes. This wires the *real* loop a fresh teammate walks —
 
 through ``HeroFlowTimer`` and asserts it stays under budget. Every step moves
 through the real packages: the runtime app, the MCP gateway, the propose/approve
-path, and the sync engine. The agent is *scripted* (``FakeMCPClient`` over the
-in-process gateway), not a live LLM: this is the deterministic CI gate. The
-honest wall-clock run with a real agent and real Supabase is the release-demo
-measurement (exit criterion #1), separate from this hermetic gate.
+path, and the sync engine.
+
+What is real vs scripted (be precise — kantaq runs no LLM; the agent is the
+external, LLM-backed client):
+  - REAL here: the whole kantaq side. ``FakeMCPClient`` is the *actual* MCP SDK
+    client over real HTTP, so transport, bearer auth, session init, the tool
+    catalog, scopes, audit, signed events, approval, and signed sync are all
+    exercised.
+  - SCRIPTED here: the agent's *decisions*. A human wrote "call ticket_get then
+    agent_action_propose" instead of an LLM choosing them, so this gate is
+    deterministic and offline (no model API, no flakiness, no cost).
+
+A *real* LLM-backed agent (Claude Code / Codex) connecting, reading, and
+proposing is verified separately by ``scripts/verify_agent.py``
+(``make verify-agent``, recorded in docs/clients/compatibility.md) — opt-in,
+since a real agent needs auth + network and is non-deterministic. The honest
+wall-clock run with a real agent + real Supabase is the release-demo
+measurement (exit criterion #1).
 
 The gate's teeth are proven by ``test_hero_flow_gate_trips_when_slow`` — a gate
 that cannot fail is worthless (the MOD-30 failing-fixture rule).

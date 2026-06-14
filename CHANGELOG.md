@@ -29,12 +29,22 @@ release line (v0.0.5 → v0.3) described in the project docs.
   procedure. The public `POST /v1/import` endpoint and CI gate stay v0.2
   (DEBT-03).
 
+- **Real-agent compatibility harness** (E11-T2 Tier-1 core, MOD-24):
+  `scripts/verify_agent.py` (`make verify-agent`) boots the runtime + MCP gateway
+  and drives a real, LLM-backed agent (Claude Code / Codex) headless against the
+  gateway, asserting it connected, read a ticket, and proposed (then approves as
+  the Owner). Opt-in (a real agent needs auth + network), recorded in
+  `docs/clients/compatibility.md`. Codex 0.130.0 verified end to end.
+
 ### Fixed
 
 - **Flaky Vitest teardown** (DEBT-19): `usePolling` now owns and catches the
   refresh promise, so a poll that fails (a transient network error, or a test
   tearing down its fetch mock mid-interval) no longer surfaces as an unhandled
   rejection.
+- **Honest hero-flow gate wording:** clarified that the hero-flow CI gate scripts
+  the agent's MCP calls via the real MCP SDK client (kantaq runs no LLM); a real
+  LLM-backed agent is verified by the new `make verify-agent` harness.
 
 ### Added — Epic E01: Repo & environment bootstrap (v0.0.5)
 
