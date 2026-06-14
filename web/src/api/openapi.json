@@ -57,6 +57,41 @@
         "title": "ActivityOut",
         "type": "object"
       },
+      "AgentClientSnippet": {
+        "description": "One Tier-1 client's copy-paste MCP config (E11-T2, MOD-24 Tier-1).\n\nThe same loopback URL + placeholder bearer, shaped for each client's config\nfile. Claude Code reads ``.mcp.json`` (``type: http`` + ``url``); Cursor\nreads ``.cursor/mcp.json`` (``url`` for a remote/streamable-HTTP server).\nLike the parent response, this **never** carries a token \u2014 only the\nplaceholder the web client substitutes locally.",
+        "properties": {
+          "client": {
+            "title": "Client",
+            "type": "string"
+          },
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "instructions": {
+            "title": "Instructions",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "save_as": {
+            "title": "Save As",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client",
+          "label",
+          "config",
+          "save_as",
+          "instructions"
+        ],
+        "title": "AgentClientSnippet",
+        "type": "object"
+      },
       "AgentSessionOut": {
         "properties": {
           "active": {
@@ -151,6 +186,13 @@
       },
       "AgentSnippetOut": {
         "properties": {
+          "clients": {
+            "items": {
+              "$ref": "#/components/schemas/AgentClientSnippet"
+            },
+            "title": "Clients",
+            "type": "array"
+          },
           "gateway_live": {
             "title": "Gateway Live",
             "type": "boolean"
@@ -197,6 +239,7 @@
           "gateway_live",
           "token_placeholder",
           "snippet",
+          "clients",
           "instructions"
         ],
         "title": "AgentSnippetOut",

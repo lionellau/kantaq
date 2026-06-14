@@ -271,22 +271,32 @@ export function buildLinkedMemory(overrides: Partial<LinkedMemory> = {}): Linked
 
 export function buildSnippet(overrides: Partial<AgentSnippet> = {}): AgentSnippet {
   const url = "http://127.0.0.1:54321/v1/mcp";
+  // The literal "${KANTAQ_MEMBER_TOKEN}" is the server's placeholder contract —
+  // the page substitutes it client-side, so no token ever round-trips.
+  const headers = { Authorization: "Bearer ${KANTAQ_MEMBER_TOKEN}" };
+  const claudeConfig = { mcpServers: { kantaq: { type: "http", url, headers } } };
   return {
     member_id: "member-1",
     gateway_url: url,
     gateway_live: true,
     token_placeholder: "${KANTAQ_MEMBER_TOKEN}",
-    snippet: {
-      mcpServers: {
-        kantaq: {
-          type: "http",
-          url,
-          // The literal "${KANTAQ_MEMBER_TOKEN}" is the server's placeholder
-          // contract — the page substitutes it client-side.
-          headers: { Authorization: "Bearer ${KANTAQ_MEMBER_TOKEN}" },
-        },
+    snippet: claudeConfig,
+    clients: [
+      {
+        client: "claude_code",
+        label: "Claude Code",
+        config: claudeConfig,
+        save_as: ".mcp.json",
+        instructions: "save as .mcp.json",
       },
-    },
+      {
+        client: "cursor",
+        label: "Cursor",
+        config: { mcpServers: { kantaq: { url, headers } } },
+        save_as: ".cursor/mcp.json",
+        instructions: "save as .cursor/mcp.json",
+      },
+    ],
     instructions: "save as .mcp.json",
     ...overrides,
   };

@@ -133,6 +133,43 @@ def test_live_gateway_yields_the_loopback_snippet(
     assert server["headers"]["Authorization"] == f"Bearer {TOKEN_PLACEHOLDER}"
 
 
+def test_live_gateway_offers_both_tier1_clients(
+    client: TestClient, owner_token: str, db_dir: Path
+) -> None:
+    """E11-T2: a Tier-1 runtime hands out a Claude Code *and* a Cursor snippet."""
+    url = "http://127.0.0.1:54321/v1/mcp"
+    _write_discovery(db_dir, url=url, pid=os.getpid())
+
+    body = client.get("/v1/me/agent-snippet", headers=_bearer(owner_token)).json()
+    by_client = {c["client"]: c for c in body["clients"]}
+    assert set(by_client) == {"claude_code", "cursor"}
+
+    # Back-compat: the bare ``snippet`` is still the Claude Code config.
+    assert body["snippet"] == by_client["claude_code"]["config"]
+
+    claude = by_client["claude_code"]
+    assert claude["save_as"] == ".mcp.json"
+    claude_server = claude["config"]["mcpServers"]["kantaq"]
+    assert claude_server["type"] == "http"  # Claude Code names the transport
+    assert claude_server["url"] == url
+    assert claude_server["headers"]["Authorization"] == f"Bearer {TOKEN_PLACEHOLDER}"
+
+    cursor = by_client["cursor"]
+    assert cursor["save_as"] == ".cursor/mcp.json"
+    cursor_server = cursor["config"]["mcpServers"]["kantaq"]
+    assert "type" not in cursor_server  # Cursor takes a bare url for a remote server
+    assert cursor_server["url"] == url
+    assert cursor_server["headers"]["Authorization"] == f"Bearer {TOKEN_PLACEHOLDER}"
+
+
+def test_gateway_down_offers_no_client_snippets(client: TestClient, owner_token: str) -> None:
+    """No gateway → no snippet for any client (the start-the-gateway state)."""
+    body = client.get("/v1/me/agent-snippet", headers=_bearer(owner_token)).json()
+    assert body["gateway_live"] is False
+    assert body["snippet"] is None
+    assert body["clients"] == []
+
+
 def test_the_response_never_carries_the_token(
     client: TestClient, owner_token: str, db_dir: Path
 ) -> None:
