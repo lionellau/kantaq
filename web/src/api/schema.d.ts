@@ -711,13 +711,22 @@ export interface components {
         };
         /**
          * AgentClientSnippet
-         * @description One Tier-1 client's copy-paste MCP config (E11-T2, MOD-24 Tier-1).
+         * @description One compatible client's copy-paste MCP config (E11, MOD-24).
          *
-         *     The same loopback URL + placeholder bearer, shaped for each client's config
-         *     file. Claude Code reads ``.mcp.json`` (``type: http`` + ``url``); Cursor
-         *     reads ``.cursor/mcp.json`` (``url`` for a remote/streamable-HTTP server).
-         *     Like the parent response, this **never** carries a token — only the
-         *     placeholder the web client substitutes locally.
+         *     The same loopback URL, shaped for each client's config file and auth style:
+         *
+         *     - **Claude Code** — ``.mcp.json`` (``type: http`` + ``url`` + an inline
+         *       ``Authorization`` bearer).
+         *     - **Cursor** — ``.cursor/mcp.json`` (bare ``url`` for a remote server + the
+         *       inline bearer).
+         *     - **Codex** — ``~/.codex/config.toml`` (`[mcp_servers.kantaq]` with ``url``
+         *       + ``bearer_token_env_var``); the token rides an **env var**, never the
+         *       file (``setup`` carries the export).
+         *
+         *     ``text`` is the exact string to paste, rendered for ``format`` (``mcp_json``
+         *     or ``toml``). Like the parent response, nothing here carries a real token —
+         *     only the placeholder the web client substitutes locally, wherever it appears
+         *     (``text`` for the header clients, ``setup`` for Codex).
          */
         AgentClientSnippet: {
             /** Client */
@@ -726,12 +735,18 @@ export interface components {
             config: {
                 [key: string]: unknown;
             };
+            /** Format */
+            format: string;
             /** Instructions */
             instructions: string;
             /** Label */
             label: string;
             /** Save As */
             save_as: string;
+            /** Setup */
+            setup: string | null;
+            /** Text */
+            text: string;
         };
         /** AgentSessionOut */
         AgentSessionOut: {

@@ -133,26 +133,29 @@ def test_live_gateway_yields_the_loopback_snippet(
     assert server["headers"]["Authorization"] == f"Bearer {TOKEN_PLACEHOLDER}"
 
 
-def test_live_gateway_offers_both_tier1_clients(
+def test_live_gateway_offers_all_three_clients(
     client: TestClient, owner_token: str, db_dir: Path
 ) -> None:
-    """E11-T2: a Tier-1 runtime hands out a Claude Code *and* a Cursor snippet."""
+    """E11: a live runtime hands out Claude Code, Cursor, *and* Codex snippets."""
     url = "http://127.0.0.1:54321/v1/mcp"
     _write_discovery(db_dir, url=url, pid=os.getpid())
 
     body = client.get("/v1/me/agent-snippet", headers=_bearer(owner_token)).json()
     by_client = {c["client"]: c for c in body["clients"]}
-    assert set(by_client) == {"claude_code", "cursor"}
+    assert set(by_client) == {"claude_code", "cursor", "codex"}
 
     # Back-compat: the bare ``snippet`` is still the Claude Code config.
     assert body["snippet"] == by_client["claude_code"]["config"]
 
     claude = by_client["claude_code"]
     assert claude["save_as"] == ".mcp.json"
+    assert claude["format"] == "mcp_json"
+    assert claude["setup"] is None
     claude_server = claude["config"]["mcpServers"]["kantaq"]
     assert claude_server["type"] == "http"  # Claude Code names the transport
     assert claude_server["url"] == url
     assert claude_server["headers"]["Authorization"] == f"Bearer {TOKEN_PLACEHOLDER}"
+    assert '"type": "http"' in claude["text"]  # the exact paste string
 
     cursor = by_client["cursor"]
     assert cursor["save_as"] == ".cursor/mcp.json"
@@ -160,6 +163,18 @@ def test_live_gateway_offers_both_tier1_clients(
     assert "type" not in cursor_server  # Cursor takes a bare url for a remote server
     assert cursor_server["url"] == url
     assert cursor_server["headers"]["Authorization"] == f"Bearer {TOKEN_PLACEHOLDER}"
+
+    # Codex: a TOML config.toml table; the bearer rides an env var, never the file.
+    codex = by_client["codex"]
+    assert codex["save_as"] == "~/.codex/config.toml"
+    assert codex["format"] == "toml"
+    codex_server = codex["config"]["mcp_servers"]["kantaq"]
+    assert codex_server["url"] == url
+    assert codex_server["bearer_token_env_var"] == "KANTAQ_AGENT_TOKEN"
+    assert "[mcp_servers.kantaq]" in codex["text"]
+    assert f'url = "{url}"' in codex["text"]
+    assert TOKEN_PLACEHOLDER not in codex["text"]  # the token is never in the file
+    assert codex["setup"] == f"export KANTAQ_AGENT_TOKEN={TOKEN_PLACEHOLDER}"
 
 
 def test_gateway_down_offers_no_client_snippets(client: TestClient, owner_token: str) -> None:

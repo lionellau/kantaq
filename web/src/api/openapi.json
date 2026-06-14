@@ -58,7 +58,7 @@
         "type": "object"
       },
       "AgentClientSnippet": {
-        "description": "One Tier-1 client's copy-paste MCP config (E11-T2, MOD-24 Tier-1).\n\nThe same loopback URL + placeholder bearer, shaped for each client's config\nfile. Claude Code reads ``.mcp.json`` (``type: http`` + ``url``); Cursor\nreads ``.cursor/mcp.json`` (``url`` for a remote/streamable-HTTP server).\nLike the parent response, this **never** carries a token \u2014 only the\nplaceholder the web client substitutes locally.",
+        "description": "One compatible client's copy-paste MCP config (E11, MOD-24).\n\nThe same loopback URL, shaped for each client's config file and auth style:\n\n- **Claude Code** \u2014 ``.mcp.json`` (``type: http`` + ``url`` + an inline\n  ``Authorization`` bearer).\n- **Cursor** \u2014 ``.cursor/mcp.json`` (bare ``url`` for a remote server + the\n  inline bearer).\n- **Codex** \u2014 ``~/.codex/config.toml`` (`[mcp_servers.kantaq]` with ``url``\n  + ``bearer_token_env_var``); the token rides an **env var**, never the\n  file (``setup`` carries the export).\n\n``text`` is the exact string to paste, rendered for ``format`` (``mcp_json``\nor ``toml``). Like the parent response, nothing here carries a real token \u2014\nonly the placeholder the web client substitutes locally, wherever it appears\n(``text`` for the header clients, ``setup`` for Codex).",
         "properties": {
           "client": {
             "title": "Client",
@@ -68,6 +68,10 @@
             "additionalProperties": true,
             "title": "Config",
             "type": "object"
+          },
+          "format": {
+            "title": "Format",
+            "type": "string"
           },
           "instructions": {
             "title": "Instructions",
@@ -80,13 +84,31 @@
           "save_as": {
             "title": "Save As",
             "type": "string"
+          },
+          "setup": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Setup"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
           }
         },
         "required": [
           "client",
           "label",
           "config",
+          "format",
+          "text",
           "save_as",
+          "setup",
           "instructions"
         ],
         "title": "AgentClientSnippet",
