@@ -229,6 +229,21 @@ was not needed.
 | Injection-defense controls | **built from scratch** (`kantaq_mcp.security` + the MOD-08 gateway) | Apache-2.0 (ours) | Golden-rule survey (E08-T0, 2026-06) of published MCP / LLM injection-defense guidance — Anthropic's MCP security guidance and the **OWASP LLM Top 10 (LLM01 prompt injection)** layered-defense pattern: separate data from instructions, least privilege, human-in-the-loop, bound the blast radius. We **implement the server-side controls of that pattern** (not a library): untrusted-content fencing (`tag_untrusted`), the fixed per-session tool allowlist + grant-scoped capabilities (least privilege), propose-first for risky writes (human-in-the-loop), rate limits, loopback-only + origin guards, and the prompt-injection regression **corpus as a CI gate** across every read tool. No OSS clears the bar for this server-side contract: prompt-injection "guard"/classifier libraries (rebuff, llm-guard) are **model-side** detectors — the product runs no model, so they are out of scope. The OWASP layered pattern is claimed honestly: applied, not a named library. |
 | External-MCP allowlist (FR-E08-6) | **built from scratch** (`kantaq_mcp.security.ExternalMcpAllowlist`, stdlib `urllib`) | Apache-2.0 (ours) | A small origin-normalizing allowlist: in team mode an external MCP server must be workspace-approved; solo mode is local-trust (D-06). v0.1 federates with no external server (the gateway is loopback-only and proxies to nothing), so the policy gates *configuration* — the seam external-MCP federation will enforce against — with no live traffic path to overclaim. |
 
+### Sprint 5 release-readiness (E27-T3/T4, E23-T2, E21-T3) — reuse confirmed, no new dependencies
+
+Golden-rule pass run 2026-06-14 for the v0.1 release-readiness bundle. Every task
+resolved to **reuse**; no library cleared (or needed to clear) the bar because no
+genuinely new capability was introduced.
+
+| Need | Chosen | Notes |
+|---|---|---|
+| Bundle import (E23-T2) | **built on stdlib + the in-stack codec** (`kantaq_runtime.import_bundle`) | The inverse of the E23-T1 producer: `tarfile`/`gzip`/`json`/`hashlib` (stdlib) + the MOD-17 `decode`/`verify`/`decode_grant` codec + MOD-04 `insert_event`/`refold_entity`. Adopting an import/migration library would replace the protocol. The public `POST /v1/import` endpoint stays v0.2 (DEBT-03); this is the library seam it will call. |
+| Round-trip byte-diff (E23-T2) | **stdlib `hashlib`/`json`** | Byte-for-byte NDJSON comparison + SHA-256 content-address checks. No diff library needed. |
+| v0.1 gate set + failing fixtures (E27-T3) | **pytest + the existing harness** | The gate manifest re-exercises the real gate primitives (`verify`, `verify_event`/`verify_grant`, `evals.score`, `tag_untrusted`, `HeroFlowTimer`) with seeded regressions. No new tooling. |
+| Real timed hero flow (E27-T3) | **the in-stack runtime + MCP gateway + sync engine + `HeroFlowTimer`** | The scripted agent is the existing `FakeMCPClient` over the real gateway; nothing added. |
+| Conformance smoke (E27-T4) | **the in-stack protocol + `VerifyingBackend` + `FakeBackend`** | Assembled from shipped seams; no new dependency. |
+| Onboarding wizard (E21-T3) | **React + react-router + `ui.ts` + existing endpoints** | A guided wrapper over `POST /v1/projects` + `POST /v1/memory` + the My Agent snippet; same shape as every prior web epic. No new dependency. |
+
 ## Consequences
 
 - Two toolchains in CI (Python + web). Keep total CI **under 10 minutes**
