@@ -138,6 +138,32 @@ def test_import_refuses_a_corrupted_file(tmp_path: Path) -> None:
         import_bundle(_retar(files), session=session, blob_store=LocalBlobStore(tmp_path / "b"))
 
 
+def test_import_refuses_a_signature_stripped_event(tmp_path: Path) -> None:
+    """The strip-the-signature bypass: tamper a signed event, drop its `sig` so
+    it reads as unsigned, repair the now-self-referential file hash, and null the
+    manifest signature (the attacker has no device key to re-sign). An unsigned
+    event in a bundle with no verifying manifest signature must be refused."""
+    files = _members(_source_bundle(tmp_path))
+    path = "collections/tickets/events.ndjson"
+    lines = files[path].decode("utf-8").splitlines()
+    record = json.loads(lines[0])
+    record["payload"]["title"] = "STRIPPED"
+    record.pop("sig", None)  # now reads as an unsigned event
+    lines[0] = json.dumps(record, sort_keys=True, separators=(",", ":"))
+    files[path] = ("\n".join(lines) + "\n").encode("utf-8")
+
+    manifest = json.loads(files["manifest.json"])
+    manifest["files"][path]["sha256"] = hashlib.sha256(files[path]).hexdigest()
+    manifest["files"][path]["bytes"] = len(files[path])
+    manifest["signature"] = None  # the attacker cannot re-sign the manifest
+    files["manifest.json"] = (
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
+
+    with Session(_fresh_engine()) as session, pytest.raises(BundleImportError):
+        import_bundle(_retar(files), session=session, blob_store=LocalBlobStore(tmp_path / "b"))
+
+
 def test_import_refuses_a_tampered_event(tmp_path: Path) -> None:
     """Tamper a signed event and repair its file hash so integrity passes — the
     signature check at ingest must still refuse it (verified ingestion)."""

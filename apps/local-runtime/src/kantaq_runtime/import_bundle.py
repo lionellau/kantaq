@@ -11,11 +11,13 @@ endpoint with its own auth surface stays v0.1-out, v0.2-in (DEBT-03); this
 function is the seam it will call.
 
 Verification on ingest mirrors the backend (E24-T5): every *signed* event is
-checked against its issuing device's root key (found via its capability grant);
-a tamper is refused. Unsigned events are accepted as immutable pre-cutover
-history (D-15). The manifest is integrity-checked against its recorded per-file
-hashes, and its signature (when present) is verified against a device root —
-verifying the signed root then each file proves the whole bundle.
+checked against its issuing device's root key (found via its capability grant)
+and its grant must authorise the acting member; a tamper is refused. An
+*unsigned* event (pre-cutover history, D-15) is accepted ONLY when a verifying
+manifest signature attests the whole bundle — otherwise an attacker could strip
+a signature, rewrite the payload, and repair the now-self-referential file hash.
+The manifest is integrity-checked against its recorded per-file hashes; verifying
+the signed root then each file proves the whole bundle.
 
 Identity distribution (actors/grants/audit) travels in the manifest and is not
 folded into a domain table here; the round-trip's named guarantee is event logs,
@@ -35,7 +37,14 @@ from sqlmodel import Session, select
 
 from kantaq_core.tracker import LocalBlobStore
 from kantaq_db.models import EventLog, Workspace
-from kantaq_protocol import canonicalize, decode, decode_grant, verify, verify_bytes
+from kantaq_protocol import (
+    CapabilityGrant,
+    canonicalize,
+    decode,
+    decode_grant,
+    verify,
+    verify_bytes,
+)
 from kantaq_runtime.export import MANIFEST_SIGNING_DOMAIN
 from kantaq_sync_engine import insert_event
 from kantaq_sync_engine.apply import refold_entity
@@ -93,13 +102,13 @@ def _device_roots(actors_ndjson: bytes) -> dict[str, str]:
     return roots
 
 
-def _grant_issuers(grants_ndjson: bytes) -> dict[str, str]:
-    """{grant_id: issuer_device_id} from the canonical, signed grants."""
-    issuers: dict[str, str] = {}
+def _decode_grants(grants_ndjson: bytes) -> dict[str, CapabilityGrant]:
+    """{grant_id: CapabilityGrant} from the canonical, signed grants."""
+    grants: dict[str, CapabilityGrant] = {}
     for line in _ndjson_lines(grants_ndjson):
         grant = decode_grant(line.encode("utf-8"))
-        issuers[grant.grant_id] = grant.issuer
-    return issuers
+        grants[grant.grant_id] = grant
+    return grants
 
 
 def _verify_file_hashes(files: dict[str, bytes], manifest: dict[str, Any]) -> None:
@@ -113,14 +122,21 @@ def _verify_file_hashes(files: dict[str, bytes], manifest: dict[str, Any]) -> No
             raise BundleImportError(f"file {path} failed its manifest hash check")
 
 
-def _verify_manifest_signature(manifest: dict[str, Any], roots: dict[str, str]) -> None:
+def _verify_manifest_signature(manifest: dict[str, Any], roots: dict[str, str]) -> bool:
+    """Return True iff the bundle carries a manifest signature that verifies
+    against a known device root — i.e. the device attests every listed file (and
+    thus every byte) via the signed hash index. A bundle with no signature has no
+    cryptographic root: it returns False, and its *unsigned* events are therefore
+    unattested and must be refused by the caller (closing the strip-the-signature
+    + rewrite-the-hashes bypass)."""
     signature = manifest.get("signature")
     if signature is None:
-        return  # hashes-only integrity (no device key signed this bundle)
+        return False
     core = {key: value for key, value in manifest.items() if key != "signature"}
     message = MANIFEST_SIGNING_DOMAIN + canonicalize(core)
     if not any(verify_bytes(message, signature, key) for key in roots.values()):
         raise BundleImportError("manifest signature does not verify against any device root")
+    return True
 
 
 def import_bundle(bundle: bytes, *, session: Session, blob_store: LocalBlobStore) -> ImportResult:
@@ -134,8 +150,8 @@ def import_bundle(bundle: bytes, *, session: Session, blob_store: LocalBlobStore
     manifest = json.loads(files["manifest.json"])
     _verify_file_hashes(files, manifest)
     roots = _device_roots(files["actors.ndjson"])
-    _verify_manifest_signature(manifest, roots)
-    issuers = _grant_issuers(files.get("grants.ndjson", b""))
+    attested = _verify_manifest_signature(manifest, roots)
+    grants = _decode_grants(files.get("grants.ndjson", b""))
 
     team = json.loads(files["team_manifest.json"])
     workspace_id = team["team_id"]
@@ -150,12 +166,26 @@ def import_bundle(bundle: bytes, *, session: Session, blob_store: LocalBlobStore
         for line in _ndjson_lines(files.get(f"collections/{collection}/events.ndjson", b"")):
             event = decode(line.encode("utf-8"))
             if event.sig is not None:
-                device = issuers.get(event.policy_ref or "")
-                root = roots.get(device or "")
-                if root is None or not verify(event, root):
+                # A signed event must verify against its issuing device's root,
+                # and its grant must authorise the acting member (subject bind).
+                grant = grants.get(event.policy_ref or "")
+                root = roots.get(grant.issuer) if grant is not None else None
+                if grant is None or root is None or not verify(event, root):
                     raise BundleImportError(
                         f"event {event.event_id} did not verify against a known device root"
                     )
+                if grant.subject != event.actor_id:
+                    raise BundleImportError(
+                        f"event {event.event_id}'s grant does not authorise its actor"
+                    )
+            elif not attested:
+                # An unsigned event is only trustworthy if a verifying manifest
+                # signature attests the whole bundle; otherwise its bytes (and
+                # hashes) could have been rewritten freely. Fail closed.
+                raise BundleImportError(
+                    f"unsigned event {event.event_id} in a bundle with no verifying "
+                    "manifest signature"
+                )
             rev += 1
             insert_event(session, event, committed_rev=rev)
     session.flush()
