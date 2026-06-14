@@ -201,3 +201,10 @@ Claude Code and Cursor runs are recorded, the README states the scripted result
 (8/8) and the real-agent connection result (Codex), and marks full real-client
 certification as pending — it does not claim a tier the GUI clients have not yet
 earned.
+
+## See also
+
+- [`docs/protocol.md`](../protocol.md) — the wire protocol every conformant client speaks.
+- [`docs/security.md`](../security.md) — the gateway threat model the Tier-1 tests (T4 denial, T6 fencing, T7 expiry) exercise.
+- [`docs/mcp.md`](../mcp.md) — the gateway, the eight checks, and the connection snippets.
+- [`docs/portability.md`](../portability.md) — export + the lossless round-trip a conformant client must honor.

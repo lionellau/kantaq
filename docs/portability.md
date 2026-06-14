@@ -89,3 +89,9 @@ v0.1 ships the export producer, this importer **library**, the automated fixture
 round-trip, and this manual procedure. The public `POST /v1/import` endpoint and
 the round-trip **CI gate** are v0.2 (DEBT-03); this importer is the seam they will
 call.
+
+## See also
+
+- [protocol.md](protocol.md) — a bundle is a signed event log at rest; the same codec, signatures, and grants verify it.
+- [security.md](security.md) — the verified-ingestion contract the importer mirrors.
+- [clients/compatibility.md](clients/compatibility.md) — the clients that speak this protocol and the tier they earn.
