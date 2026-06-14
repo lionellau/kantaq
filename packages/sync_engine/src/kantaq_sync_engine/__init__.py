@@ -51,7 +51,7 @@ from kantaq_sync_engine.verify import (
     verify_event,
 )
 
-__version__: str = "0.0.5"
+__version__: str = "0.1.0"
 
 __all__ = [
     "ALL_COLLECTIONS",

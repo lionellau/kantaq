@@ -1,6 +1,6 @@
 [project]
 name = "kantaq-test-harness"
-version = "0.0.5"
+version = "0.1.0"
 description = "kantaq shared test harness: builders, fakes, fixtures, runners (MOD-30)"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }

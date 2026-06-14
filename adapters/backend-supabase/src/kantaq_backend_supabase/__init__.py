@@ -32,7 +32,7 @@ from kantaq_backend_supabase.sync import (
     lookup_active_members,
 )
 
-__version__: str = "0.0.5"
+__version__: str = "0.1.0"
 
 __all__ = [
     "COLLECTIONS_MIGRATION",

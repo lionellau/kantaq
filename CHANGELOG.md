@@ -6,6 +6,39 @@ release line (v0.0.5 → v0.3) described in the project docs.
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-06-14
+
+The v0.1 release: the full hero loop, signed-and-verified sync, the eight Tier-1
+compatibility tests (scripted 8/8), the wired v0.1 CI gate set, a red-team
+containment proof, lossless export round-trip, and the public documentation set.
+The certified-Tier-1 badge (a real GUI client passing all 8 at a pinned version),
+the live wall-clock hero demo (real agent + real Supabase, timed under 15 minutes),
+and the warm-channel launch posts are the remaining human release steps —
+[`docs/clients/compatibility.md`](docs/clients/compatibility.md) tracks the badge
+rule, and the launch is staged but not auto-posted.
+
+### Added — Sprint 5: docs & distribution (E29, MOD-16)
+
+- **The published protocol spec** (E29-T2): new
+  [`docs/protocol.md`](docs/protocol.md) — entities, the RFC 8785 canonical
+  codec (restricted profile), Ed25519 signing with domain separation, capability
+  grants and the `verify_grant` order, dedup/`base_rev` idempotency, the audit
+  hash chain, merge policies, error codes, and conformance (golden vectors + the
+  E27-T4 smoke). The wire contract a second implementation needs to interoperate.
+- **Security + MCP docs finalized for v0.1** (E29-T2): `docs/security.md`'s PRD
+  §15 control table refreshed to the live state (E06/E07/E08/E09/E13/E24 now
+  shipped), plus an Audit section and the wired CI-gate table; `docs/mcp.md`
+  catalog re-verified against the live tool set; the whole doc set
+  (protocol ↔ security ↔ mcp ↔ compatibility ↔ portability) is now cross-linked.
+- **README rewritten for launch** (E29-T2) and a wedge post,
+  [`docs/blog/we-stopped-paying-for-linear.md`](docs/blog/we-stopped-paying-for-linear.md).
+- **Docs-profile gates extended** (E29-T2): the new docs are covered by the
+  internal-link and command-drift gates, plus a v0.1 "published docs exist and
+  are cross-linked" pin. An opt-in `make linkcheck` (lychee) spot-checks external
+  URLs at release time; CI stays hermetic.
+- **Version bumped to 0.1.0** across every package + the runtime `version`
+  endpoint; `uv.lock` regenerated.
+
 ### Added — Sprint 5: v0.1 release readiness (E27, E23, E21)
 
 - **Onboarding wizard** (E21-T3, MOD-13/MOD-19): a guided first-run flow

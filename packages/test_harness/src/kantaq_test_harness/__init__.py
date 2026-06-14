@@ -70,7 +70,7 @@ if TYPE_CHECKING:
         categories_covered,
     )
 
-__version__ = "0.0.5"
+__version__ = "0.1.0"
 
 # Lazy attribute → "module:name". Resolved on first access, cached in globals.
 _LAZY: dict[str, str] = {

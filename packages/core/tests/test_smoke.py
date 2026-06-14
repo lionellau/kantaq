@@ -4,4 +4,4 @@ import kantaq_core
 
 
 def test_package_imports() -> None:
-    assert kantaq_core.__version__ == "0.0.5"
+    assert kantaq_core.__version__ == "0.1.0"
