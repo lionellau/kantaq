@@ -56,6 +56,13 @@ from kantaq_sync_engine.log import (
     pending_rows,
     row_to_event,
 )
+from kantaq_sync_engine.merge import (
+    ENTITY_FIELD,
+    FieldDecision,
+    MergeOutcome,
+    conflict_record_id,
+    detect_merge,
+)
 from kantaq_sync_engine.snapshot import compose_snapshot, fold_collection, parse_snapshot
 from kantaq_sync_engine.verify import (
     INVALID_SIGNATURE,
@@ -95,12 +102,15 @@ __all__ = [
     "CommitResult",
     "CommittedEvent",
     "DuplicateEventError",
+    "ENTITY_FIELD",
     "Event",
     "EventLogSink",
     "EventRejected",
     "EventSigner",
     "EventVerification",
+    "FieldDecision",
     "FlushResult",
+    "MergeOutcome",
     "Op",
     "PullResult",
     "PushResult",
@@ -112,6 +122,8 @@ __all__ = [
     "__version__",
     "collection_rows",
     "compose_snapshot",
+    "conflict_record_id",
+    "detect_merge",
     "entity_base_rev",
     "entity_rows",
     "event_by_id",

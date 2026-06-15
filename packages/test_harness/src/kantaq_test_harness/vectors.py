@@ -19,9 +19,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from kantaq_protocol import Event
+from kantaq_sync_engine.events import CommittedEvent
+
 _FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
 PROTOCOL_VECTORS_PATH = _FIXTURES / "protocol_golden_vectors.json"
 RFC8032_VECTORS_PATH = _FIXTURES / "rfc8032_vectors.json"
+CONFLICT_VECTORS_PATH = _FIXTURES / "conflict_vectors.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,3 +92,59 @@ def load_protocol_vectors(
     if not events or not grants:
         raise ValueError(f"golden vector file is incomplete: {path or PROTOCOL_VECTORS_PATH}")
     return events, grants
+
+
+@dataclass(frozen=True, slots=True)
+class ConflictVector:
+    """One conflict-merge golden case (MOD-26 §B3): an entity's committed prefix,
+    an incoming committed event, and the expected outcome. The SAME file pins
+    ``detect_merge`` (Python) and the plpgsql RPC (T2.6) — one decision, one truth."""
+
+    name: str
+    committed_prefix: tuple[CommittedEvent, ...]
+    incoming: CommittedEvent
+    expected_verdict: str
+    expected_conflicts: tuple[dict[str, Any], ...]
+
+
+def _conflict_event(
+    entry: dict[str, Any], *, entity_id: str, collection: str, actor_id: str
+) -> CommittedEvent:
+    revision = int(entry["revision"])
+    event = Event(
+        event_id=f"evt{revision:023d}",
+        collection=collection,
+        entity_id=entity_id,
+        actor_id=entry.get("actor_id", actor_id),
+        actor_seq=int(entry["actor_seq"]),
+        op=entry["op"],
+        base_rev=entry.get("base_rev"),
+        policy_ref=None,
+        payload=dict(entry["payload"]),
+        sig=None,
+    )
+    return CommittedEvent(revision=revision, event=event)
+
+
+def load_conflict_vectors(path: Path | None = None) -> tuple[ConflictVector, ...]:
+    """Load the conflict-merge golden vectors (MOD-26 §B3)."""
+    raw = json.loads((path or CONFLICT_VECTORS_PATH).read_text())
+    entity_id, collection, actor_id = raw["entity_id"], raw["collection"], raw["actor_id"]
+    vectors = tuple(
+        ConflictVector(
+            name=case["name"],
+            committed_prefix=tuple(
+                _conflict_event(e, entity_id=entity_id, collection=collection, actor_id=actor_id)
+                for e in case["committed_prefix"]
+            ),
+            incoming=_conflict_event(
+                case["incoming"], entity_id=entity_id, collection=collection, actor_id=actor_id
+            ),
+            expected_verdict=case["expected"]["entity_verdict"],
+            expected_conflicts=tuple(case["expected"]["conflicts"]),
+        )
+        for case in raw["cases"]
+    )
+    if not vectors:
+        raise ValueError(f"empty conflict vector file: {path or CONFLICT_VECTORS_PATH}")
+    return vectors
