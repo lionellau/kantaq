@@ -16,6 +16,7 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from kantaq_core import audit, lifecycle
 from kantaq_core.tracker import RecordingSink, TrackerService, fold_entity
+from kantaq_core.tracker.events import REVIVE_FIELD, DomainEvent
 from kantaq_db.models import Workspace
 from kantaq_test_harness.clock import FakeClock
 
@@ -66,3 +67,75 @@ def test_fold_of_emitted_events_equals_current_ticket(
 
     folded = fold_entity(ticket.id, [e for e in sink.events if e.collection == "tickets"])
     assert folded == final
+
+
+# --- Sticky tombstones (E05-T2.1 / MOD-26 §B5): a committed delete does not
+# --- resurrect under a stale edit. fold_entity is exercised directly with the
+# --- rev metadata the as-built log carries (committed_rev + base_rev).
+
+
+def _patch(
+    payload: dict[str, Any], *, base_rev: int | None = None, rev: int | None = None
+) -> DomainEvent:
+    return DomainEvent(
+        collection="tickets",
+        entity_id="tk1",
+        op="patch",
+        payload=payload,
+        base_rev=base_rev,
+        committed_rev=rev,
+    )
+
+
+def _tombstone(*, rev: int | None = None) -> DomainEvent:
+    return DomainEvent(
+        collection="tickets", entity_id="tk1", op="tombstone", payload={}, committed_rev=rev
+    )
+
+
+def test_patch_before_a_committed_tombstone_does_not_resurrect() -> None:
+    # An edit committed after the delete but based on a revision before it (it
+    # never saw the delete) — the edit-vs-delete case. Row stays deleted.
+    events = [
+        _patch({"status": "todo"}, base_rev=1, rev=1),
+        _tombstone(rev=5),
+        _patch({"status": "doing"}, base_rev=2, rev=7),
+    ]
+    assert fold_entity("tk1", events) is None
+
+
+def test_patch_that_saw_the_delete_revives() -> None:
+    events = [
+        _tombstone(rev=5),
+        _patch({"status": "doing", "title": "back"}, base_rev=5, rev=7),
+    ]
+    assert fold_entity("tk1", events) == {"status": "doing", "title": "back"}
+
+
+def test_explicit_revive_recreates_even_without_seeing_the_delete() -> None:
+    events = [
+        _tombstone(rev=5),
+        _patch({REVIVE_FIELD: True, "status": "todo", "title": "revived"}, base_rev=2, rev=8),
+    ]
+    # The sentinel is stripped from the folded state — it is a control flag.
+    assert fold_entity("tk1", events) == {"status": "todo", "title": "revived"}
+
+
+def test_delete_vs_delete_is_idempotent() -> None:
+    events = [
+        _patch({"status": "todo"}, rev=1),
+        _tombstone(rev=3),
+        _tombstone(rev=4),
+    ]
+    assert fold_entity("tk1", events) is None
+
+
+def test_pending_tombstone_is_not_sticky_for_the_owners_own_edit() -> None:
+    # A still-uncommitted optimistic delete is not sticky — the actor may revive
+    # their own pending delete with a later optimistic edit.
+    events = [
+        _patch({"status": "todo"}, rev=1),
+        _tombstone(rev=None),  # pending (committed_rev IS NULL)
+        _patch({"status": "doing"}, base_rev=None, rev=None),
+    ]
+    assert fold_entity("tk1", events) == {"status": "doing"}

@@ -147,6 +147,8 @@ def _fold_into(session: Session, model: type[SQLModel], collection: str, entity_
             entity_id=row.entity_id,
             op=row.op,  # type: ignore[arg-type]  # the column stores the Op literal
             payload=dict(row.payload),
+            base_rev=row.base_rev,
+            committed_rev=row.committed_rev,
         )
         for row in entity_rows(session, collection, entity_id)
     ]
