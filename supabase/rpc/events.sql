@@ -335,13 +335,15 @@ begin
           -- the field-head in the window: the latest NON-tombstone setter of
           -- this field with base < revision <= head (multi-writes collapse to
           -- E-vs-field-head, so the contender is gapless-prefix deterministic).
-          select se.revision, se.payload -> v_field
+          -- sync_events.payload is stored as `json`; the key-existence (?) and
+          -- field (->) operators are jsonb-only, so cast the column per row.
+          select se.revision, (se.payload::jsonb) -> v_field
             into v_c_rev, v_head_value
             from public.sync_events se
             where se.workspace_id = v_ws and se.collection = v_collection
               and se.entity_id = v_entity and se.op <> 'tombstone'
               and se.revision > v_base_eff and se.revision <= v_head
-              and se.payload ? v_field
+              and (se.payload::jsonb) ? v_field
             order by se.revision desc
             limit 1;
           if found and v_head_value is distinct from v_in_value then
