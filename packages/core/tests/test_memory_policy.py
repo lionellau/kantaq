@@ -247,3 +247,36 @@ def test_filter_over_an_empty_list_is_empty() -> None:
     assert result.included == ()
     assert result.excluded == ()
     assert result.decisions == ()
+
+
+# ----------------------------------------------------- promotion (E13-T4)
+
+
+def test_promoted_team_approved_admitted_while_local_source_stays_excluded() -> None:
+    """The promotion outcome is visible to agents; the local source never is.
+
+    Copy-on-promote yields two rows in an include scope: the original ``local``
+    (always excluded for privacy, NFR-E16-1) and the promoted ``team``
+    ``approved`` copy (admitted). The pins above are unchanged — this asserts the
+    promotion model lands on the right side of the locked policy."""
+    policy = mp.policy_for("code_agent")  # 'codebase' is in scope
+    local_source = _entry(
+        "codebase", visibility="local", review_status="draft", ident="mem-local-source"
+    )
+    promoted_copy = _entry(
+        "codebase", visibility="team", review_status="approved", ident="mem-team-copy"
+    )
+    result = mp.filter([local_source, promoted_copy], policy, now=_NOW)
+
+    assert [e.id for e in result.included] == ["mem-team-copy"]
+    reasons = {e.id: reason for e, reason in result.excluded}
+    assert reasons == {"mem-local-source": "privacy_filter:visibility_local"}
+
+
+def test_proposed_team_row_passes_the_status_gate() -> None:
+    """A ``team`` ``proposed`` row (the intermediate promotion state) is admitted
+    in an include scope — proposed is not a withheld status (only stale/rejected
+    are), so the Inbox-context note is visible to the relevant agents."""
+    policy = mp.policy_for("code_agent")
+    proposed = _entry("codebase", visibility="team", review_status="proposed")
+    assert len(mp.filter([proposed], policy, now=_NOW).included) == 1

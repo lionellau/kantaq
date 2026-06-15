@@ -23,6 +23,7 @@ from sqlmodel import Session
 
 from kantaq_core.identity import Action, VerifiedActor
 from kantaq_core.memory import (
+    MemoryConflictError,
     MemoryNotFoundError,
     MemoryService,
     MemoryValidationError,
@@ -37,6 +38,10 @@ router = APIRouter(prefix="/v1", tags=["memory"])
 EngineDep = Annotated[Engine, Depends(get_engine_dep)]
 ReaderActor = Annotated[VerifiedActor, Depends(require_action(Action.memory_read))]
 WriterActor = Annotated[VerifiedActor, Depends(require_action(Action.memory_write))]
+# Approve/reject are a human decision — strictly stronger than memory.write.
+# An agent token (memory.read/memory.write only) never carries memory.approve,
+# so it is 403 here even though it can propose via the write routes.
+ApproverActor = Annotated[VerifiedActor, Depends(require_action(Action.memory_approve))]
 # Write routes only (it ensures the member's self-grant), so a read never signs.
 SignerDep = Annotated[EventSigner | None, Depends(get_event_signer)]
 
@@ -145,9 +150,14 @@ class LinkedMemoryOut(BaseModel):
 # ------------------------------------------------------------- error mapping
 
 
-def _domain(exc: MemoryNotFoundError | MemoryValidationError) -> HTTPException:
+def _domain(
+    exc: MemoryNotFoundError | MemoryValidationError | MemoryConflictError,
+) -> HTTPException:
+    # Mirrors proposals' {"not_found": 404, "conflict": 409, "validation": 422}.
     if isinstance(exc, MemoryNotFoundError):
         return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, MemoryConflictError):
+        return HTTPException(status_code=409, detail=str(exc))
     return HTTPException(status_code=422, detail=str(exc))
 
 
@@ -221,6 +231,50 @@ def update_memory(
                 memory_id, body.model_dump(exclude_unset=True)
             )
         except (MemoryNotFoundError, MemoryValidationError) as exc:
+            raise _domain(exc) from exc
+        return MemoryOut.from_row(row)
+
+
+@router.post("/memory/{memory_id}/promote", response_model=MemoryOut)
+def promote_memory(
+    memory_id: str, actor: WriterActor, engine: EngineDep, signer: SignerDep
+) -> MemoryOut:
+    """Propose an entry into the shared collection (E13-T4, the PROPOSE step).
+
+    Agents may call this (it needs only ``memory.write``). A ``local`` source is
+    never mutated — a new ``team`` ``proposed`` row is returned; a ``team``
+    ``{draft,stale}`` row transitions in place. Human approval comes next.
+    """
+    with Session(engine) as session:
+        try:
+            row = _service(session, actor, signer).promote(memory_id)
+        except (MemoryNotFoundError, MemoryValidationError, MemoryConflictError) as exc:
+            raise _domain(exc) from exc
+        return MemoryOut.from_row(row)
+
+
+@router.post("/memory/{memory_id}/approve", response_model=MemoryOut)
+def approve_memory(
+    memory_id: str, actor: ApproverActor, engine: EngineDep, signer: SignerDep
+) -> MemoryOut:
+    """Approve a proposed team entry into the shared collection (HUMAN only)."""
+    with Session(engine) as session:
+        try:
+            row = _service(session, actor, signer).approve(memory_id)
+        except (MemoryNotFoundError, MemoryValidationError, MemoryConflictError) as exc:
+            raise _domain(exc) from exc
+        return MemoryOut.from_row(row)
+
+
+@router.post("/memory/{memory_id}/reject", response_model=MemoryOut)
+def reject_memory(
+    memory_id: str, actor: ApproverActor, engine: EngineDep, signer: SignerDep
+) -> MemoryOut:
+    """Decline a proposed team entry (HUMAN only): ``proposed → rejected``."""
+    with Session(engine) as session:
+        try:
+            row = _service(session, actor, signer).reject(memory_id)
+        except (MemoryNotFoundError, MemoryValidationError, MemoryConflictError) as exc:
             raise _domain(exc) from exc
         return MemoryOut.from_row(row)
 

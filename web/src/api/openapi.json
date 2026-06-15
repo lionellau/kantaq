@@ -3152,6 +3152,49 @@
         ]
       }
     },
+    "/v1/memory/{memory_id}/approve": {
+      "post": {
+        "description": "Approve a proposed team entry into the shared collection (HUMAN only).",
+        "operationId": "approve_memory_v1_memory__memory_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Memory",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
     "/v1/memory/{memory_id}/link": {
       "post": {
         "operationId": "link_memory_v1_memory__memory_id__link_post",
@@ -3245,6 +3288,92 @@
           }
         },
         "summary": "Memory Links",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/v1/memory/{memory_id}/promote": {
+      "post": {
+        "description": "Propose an entry into the shared collection (E13-T4, the PROPOSE step).\n\nAgents may call this (it needs only ``memory.write``). A ``local`` source is\nnever mutated \u2014 a new ``team`` ``proposed`` row is returned; a ``team``\n``{draft,stale}`` row transitions in place. Human approval comes next.",
+        "operationId": "promote_memory_v1_memory__memory_id__promote_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Promote Memory",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/v1/memory/{memory_id}/reject": {
+      "post": {
+        "description": "Decline a proposed team entry (HUMAN only): ``proposed \u2192 rejected``.",
+        "operationId": "reject_memory_v1_memory__memory_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memory_id",
+            "required": true,
+            "schema": {
+              "title": "Memory Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Memory",
         "tags": [
           "memory"
         ]
