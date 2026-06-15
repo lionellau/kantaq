@@ -6,6 +6,37 @@ release line (v0.0.5 → v0.3) described in the project docs.
 
 ## [Unreleased]
 
+### Added — Sprint 6: v0.2 foundations (E24-T6/T7, E13-T4, E17-T4)
+
+- **Atomic commit RPC** (E24-T6, MOD-05, D-09): `supabase/rpc/events.sql` —
+  `public.events(...)` commits events in one plpgsql transaction (validate the
+  grant against committed state + signature presence, apply LWW-by-commit-order,
+  assign the revision, report `stale_base_rev`), serialised per workspace by a
+  `pg_advisory_xact_lock` so a reader never sees revision `N+1` before `N`. The
+  Ed25519 *byte* check stays client-side at the `VerifyingBackend` edge (stock
+  Postgres has no Ed25519); the RPC enforces everything else server-side
+  (MOD-17 honest-naming). The adapter gains `SupabaseSyncBackend.commit_events`.
+- **Append-only history, even for `service_role`** (E24-T7, MOD-05):
+  `supabase/policies/0003_append_only.sql` — a `BEFORE UPDATE OR DELETE` row
+  trigger and a `BEFORE TRUNCATE` statement trigger make committed `sync_events`
+  immutable past BYPASSRLS (incl. `ON CONFLICT DO UPDATE`).
+- **Trust-root ingest** (E24-T7, MOD-05/06): `devices` and `capability_grants`
+  join the sync surface (allowlist 9→11, kept in lock-step across the CHECK,
+  `SYNCABLE_MODELS`, the README ALTER note, and `NEVER_SYNC`); a broad pull folds
+  them without wedging (DEBT-21).
+- **Memory promotion workflow** (E13-T4, MOD-19): `draft → proposed → approved`
+  via `POST /v1/memory/{id}/promote` + `/approve` + `/reject`. An agent may only
+  *propose* (`memory.write`); approval is human-only (new `Action.memory_approve`,
+  a compare-and-swap). Promoting a `local` entry copies it to a new `team`
+  `proposed` row and leaves the original immutable + unsynced (NFR-E13-1
+  re-proven; provenance is id-free).
+- **db-backed skill registry** (E17-T4, MOD-22): `skill_containers` +
+  `skill_mappings` collections (migration `0010`, schema v10) + the sink-less
+  `kantaq_core.skills.SkillRegistryService`; the 29 hardcoded containers are
+  seeded behind the same contract. Skill mappings are **descriptive** (DEBT-06
+  resolved; DEBT-07 moot). The registry is managed locally (off the sync
+  allowlist in v0.2).
+
 ## [0.1.0] — 2026-06-14
 
 The v0.1 release: the full hero loop, signed-and-verified sync, the eight Tier-1
