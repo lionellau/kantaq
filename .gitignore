@@ -27,6 +27,9 @@ web/coverage/
 # ---- Local data / secrets ----
 data/*.sqlite
 data/*.sqlite-*
+# Local runtime key material (the 0600 FileKeychain device seed + runtime token,
+# MOD-06 / D-01) — never commit secret material (public repo, DEBT-17).
+data/keychain/
 .env
 .env.*
 !.env.example
