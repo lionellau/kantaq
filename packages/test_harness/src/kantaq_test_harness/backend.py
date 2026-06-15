@@ -15,12 +15,15 @@ from typing import Any
 # BackendPort nominally, not just structurally — and folds with the engine's
 # own fold_events, so the contract the real adapters (MOD-05/28) implement is
 # pinned to one shape.
+from kantaq_db.meta import COLLECTION_META
 from kantaq_sync_engine.events import (
     BackendUnavailable,
     CommitResult,
     CommittedEvent,
+    FieldConflict,
     fold_events,
 )
+from kantaq_sync_engine.merge import detect_merge
 from kantaq_test_harness.models import Event
 
 __all__ = ["CommitResult", "CommittedEvent", "Event", "FakeBackend", "PartitionLink"]
@@ -111,9 +114,37 @@ class FakeBackend:
                     base_rev=event.base_rev,
                     head_rev=head,
                     stale_base_rev=stale,
+                    conflicts=self._detect_conflicts(event, self._revision),
                 )
             )
         return results
+
+    def _detect_conflicts(self, event: Event, revision: int) -> tuple[FieldConflict, ...]:
+        """Mirror the RPC's per-field conflict detection for the optimistic-domain
+        (lww) collections — authoritative_tx / append_only never mint a record.
+        Runs the shared ``detect_merge`` over the entity's committed prefix, so the
+        fake and the real plpgsql RPC agree on the same golden vectors (E05-T2)."""
+        meta = COLLECTION_META.get(event.collection)
+        if meta is None or meta.merge_policy != "lww":
+            return ()
+        prefix = [
+            entry
+            for entry in self._log
+            if entry.event.collection == event.collection
+            and entry.event.entity_id == event.entity_id
+            and entry.revision < revision
+        ]
+        outcome = detect_merge(prefix, CommittedEvent(revision=revision, event=event))
+        return tuple(
+            FieldConflict(
+                field=d.field,
+                contending_revision=d.contending_revision,
+                head_value=d.head_value,
+                incoming_value=d.incoming_value,
+            )
+            for d in outcome.conflicts
+            if d.contending_revision is not None
+        )
 
     def pull(self, collection: str | None = None, since: int = 0) -> list[CommittedEvent]:
         if self.offline:

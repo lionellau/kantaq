@@ -32,6 +32,7 @@ from kantaq_sync_engine.events import (
     CommitResult,
     CommittedEvent,
     Event,
+    FieldConflict,
     Op,
     fold_events,
 )
@@ -108,6 +109,7 @@ __all__ = [
     "EventRejected",
     "EventSigner",
     "EventVerification",
+    "FieldConflict",
     "FieldDecision",
     "FlushResult",
     "MergeOutcome",

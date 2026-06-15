@@ -587,7 +587,7 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
         workspace_id=me.workspace_id,
         settings=get_settings(),
     )
-    engine = SyncEngine(db, backend, actor_id=me.id)
+    engine = SyncEngine(db, backend, actor_id=me.id, workspace_id=me.workspace_id)
     # DEBT-25 cutover: commit every write through the atomic RPC (flush_outbox →
     # commit_events), never the raw push path. flush_outbox first reconciles any
     # dropped ack, then drains the durable outbox with offline-aware backoff;

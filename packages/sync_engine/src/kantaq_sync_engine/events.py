@@ -28,6 +28,7 @@ __all__ = [
     "CommitResult",
     "CommittedEvent",
     "Event",
+    "FieldConflict",
     "Op",
     "fold_events",
 ]
@@ -54,15 +55,33 @@ class CommittedEvent:
 
 
 @dataclass(frozen=True)
+class FieldConflict:
+    """One per-field conflict the atomic RPC detected (MOD-26 §B4, E05-T2).
+
+    The **raw tuple** the committing client mints a ``conflict_record`` from: the
+    contended field, the committed field-head revision in ``(base, head]`` it
+    collides with, and both candidate scalars. The conflict-record id is hashed
+    **client-side** from these (no plpgsql hash), so this carries only the raw
+    inputs — keeping the merge id single-language (no cross-language drift).
+    """
+
+    field: str
+    contending_revision: int
+    head_value: Any
+    incoming_value: Any
+
+
+@dataclass(frozen=True)
 class CommitResult:
     """One event's outcome from the v0.2 atomic commit RPC (E24-T6 / MOD-05).
 
     ``status`` is ``"committed"`` or ``"duplicate"`` (the dedup floor was hit on
     an idempotent re-push). ``revision`` is the assigned commit order.
     ``stale_base_rev`` is set (to the event's ``base_rev``) when that base was
-    older than the committed head for the entity — a concurrent write landed
-    first, so the committing client mints a signed ``conflict_record`` (E05-T2).
-    ``head_rev`` is the committed head observed before this event committed.
+    older than the committed head for the entity. ``conflicts`` is the per-field
+    detail (E05-T2): when non-empty the committing client mints a signed
+    ``conflict_record`` per entry. ``head_rev`` is the committed head observed
+    before this event committed.
     """
 
     event_id: str
@@ -71,6 +90,7 @@ class CommitResult:
     base_rev: int | None
     head_rev: int
     stale_base_rev: int | None
+    conflicts: tuple[FieldConflict, ...] = ()
 
     @property
     def is_stale(self) -> bool:

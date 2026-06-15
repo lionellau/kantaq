@@ -78,7 +78,7 @@ def _build(name: str, db: Engine, backend: FakeBackend, clock: FakeClock | None)
         name=name,
         db=db,
         actor_id=actor_id,
-        sync=SyncEngine(db, backend, actor_id=actor_id),
+        sync=SyncEngine(db, backend, actor_id=actor_id, workspace_id=WORKSPACE_ID),
         clock=clock or FakeClock(),
     )
 
