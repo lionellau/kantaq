@@ -32,6 +32,8 @@ _ALL_TABLES = {
     "local_settings",
     "devices",
     "capability_grants",
+    "skill_containers",
+    "skill_mappings",
 }
 
 
@@ -229,3 +231,41 @@ def test_lifecycle_stage_normalized_to_taxonomy(tmp_path: Path) -> None:
     assert schema_version.verify(engine, expected=7).ok
     migrations.upgrade(url)
     assert schema_version.verify(engine).ok
+
+
+def test_skill_containers_seed_on_upgrade_and_roll_back(tmp_path: Path) -> None:
+    """0010 seeds the 29 hardcoded containers and rolls back cleanly (E17-T4).
+
+    The migration moves the v0.1 hardcoded registry behind a db table: the seed
+    is static literals (no kantaq_core import), so the row count and a sample
+    row's JSON-list columns are pinned here. Down to 0009 drops both tables and
+    restores the version row; up again re-seeds the same 29 rows.
+    """
+    from sqlmodel import Session, select
+
+    from kantaq_db.models import SkillContainerRow
+
+    url = _url(tmp_path)
+    engine = get_engine(url)
+    migrations.upgrade(url)
+
+    with Session(engine) as session:
+        rows = session.exec(select(SkillContainerRow)).all()
+        assert len(rows) == 29
+        triage = {r.slug: r for r in rows}["triage"]
+        assert triage.recommended_roles == ["product_agent"]
+        assert triage.supported_stages == ["intake"]
+        assert triage.default_write_mode == "read"
+        assert triage.risk_level == "low"
+        assert "role_context_get" in triage.allowed_tools
+
+    migrations.downgrade(url, "0009")
+    assert schema_version.verify(engine, expected=9).ok
+    remaining = set(inspect(engine).get_table_names())
+    assert "skill_containers" not in remaining
+    assert "skill_mappings" not in remaining
+
+    migrations.upgrade(url)
+    assert schema_version.verify(engine).ok
+    with Session(engine) as session:
+        assert len(session.exec(select(SkillContainerRow)).all()) == 29

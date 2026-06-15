@@ -19,12 +19,12 @@ from typing import Literal
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
-# Bump this whenever a migration changes the version row. Version 9 adds the
-# ticket_relationships collection (E12-T3, MOD-03 v0.1).
-EXPECTED_SCHEMA_VERSION = 9
+# Bump this whenever a migration changes the version row. Version 10 adds the
+# skill registry (skill_containers + skill_mappings, E17-T4 / MOD-22 v0.2).
+EXPECTED_SCHEMA_VERSION = 10
 # The Alembic head revision that defines the expected schema. Kept in sync with
 # the migration filename in ``migrations/versions``.
-HEAD_REVISION = "0009"
+HEAD_REVISION = "0010"
 
 Status = Literal["ok", "uninitialized", "mismatch"]
 

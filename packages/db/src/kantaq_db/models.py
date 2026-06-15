@@ -264,6 +264,61 @@ class CapabilityGrantRow(CollectionBase, table=True):
     revoked_at: datetime | None = Field(default=None)
 
 
+class SkillContainerRow(CollectionBase, table=True):
+    """A skill container in the db-backed registry (MOD-22 v0.2 / E17-T4).
+
+    v0.1 kept the 29 containers hardcoded in ``kantaq_core.reco.CONTAINERS``;
+    v0.2 moves them behind a db-backed registry table seeded by the migration
+    (0010), so the HTTP editor (E17-T5) and the recommendation panel read the
+    same rows. The ``Row`` suffix avoids colliding with the still-pure
+    ``kantaq_core.reco.SkillContainer`` engine record. ``recommended_roles`` is
+    plural (a JSON list) — each container seeds its single v0.1
+    ``recommended_role`` as a one-element list. The collection is db-backed but
+    **off the sync allowlist** in v0.2 (architecture §6.1 "backend registry");
+    cross-replica registry sync is deferred, so its CRUD writes locally and is
+    audited but never emitted.
+    """
+
+    __tablename__ = "skill_containers"
+
+    slug: str = Field(unique=True, index=True, max_length=32)
+    name: str = Field(max_length=64)
+    recommended_roles: list[str] = Field(
+        default_factory=list, sa_column=Column(JSON, nullable=False)
+    )
+    supported_stages: list[str] = Field(
+        default_factory=list, sa_column=Column(JSON, nullable=False)
+    )
+    required_input: str = ""
+    expected_output: str = ""
+    allowed_tools: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    # default_write_mode ∈ propose | read; risk_level ∈ low | medium | high
+    # (VARCHARs for dialect parity; the vocabulary is enforced in the service).
+    default_write_mode: str = Field(default="read", max_length=16)
+    risk_level: str = Field(default="low", max_length=16)
+
+
+class SkillMappingRow(CollectionBase, table=True):
+    """A personal/workspace skill→tool mapping (MOD-22 v0.2 / E17-T4).
+
+    Binds a skill container to the descriptive tool a human runs for it.
+    ``connection`` is DEBT-06 **descriptive**: a label/pointer the human acts
+    on (e.g. "an MCP-connected coding agent"), not an executable command, and no
+    secret column exists (DEBT-07 moot). ``scope`` separates a member's personal
+    mappings from shared workspace ones; ``created_by`` owner-scopes personal
+    mappings for RLS. Off the sync allowlist in v0.2 like its container.
+    """
+
+    __tablename__ = "skill_mappings"
+
+    container_id: str = Field(foreign_key="skill_containers.id", index=True)
+    scope: str = Field(default="personal", max_length=16)  # personal | workspace
+    provider: str = ""
+    connection: str = ""  # DEBT-06: a descriptive label, NOT an executable command; no secrets
+    status: str = Field(default="active", max_length=16)  # active | disabled
+    created_by: str | None = Field(default=None)  # member id; RLS owner-scopes personal mappings
+
+
 class SchemaVersion(SQLModel, table=True):
     """Single-row table guarding boot (FR-E02-4).
 
@@ -364,7 +419,7 @@ def new_id() -> str:
     return new_ulid()
 
 
-# The 13 collection table classes, in the canonical order (matches meta.py).
+# The 15 collection table classes, in the canonical order (matches meta.py).
 COLLECTION_MODELS: tuple[type[CollectionBase], ...] = (
     Workspace,
     Project,
@@ -379,4 +434,6 @@ COLLECTION_MODELS: tuple[type[CollectionBase], ...] = (
     MemoryLink,
     Device,
     CapabilityGrantRow,
+    SkillContainerRow,
+    SkillMappingRow,
 )

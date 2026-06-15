@@ -182,6 +182,8 @@ alter table memory_entries  enable row level security;
 alter table memory_links    enable row level security;
 alter table devices         enable row level security;
 alter table capability_grants enable row level security;
+alter table skill_containers enable row level security;
+alter table skill_mappings  enable row level security;
 
 grant select, insert, update         on workspaces      to authenticated;
 grant select, insert, update, delete on projects        to authenticated;
@@ -203,6 +205,12 @@ grant select, insert, update, delete on memory_links    to authenticated;
 -- (service_role; signature+grant checks land with E24-T5, Sprint 4).
 grant select on devices           to authenticated;
 grant select on capability_grants to authenticated;
+-- The skill registry (E17 v0.2) is READ-ONLY for clients: v0.2 manages the
+-- registry locally (off the sync allowlist) / via the verified path, so the
+-- Supabase tables are scaffolding for the future cross-replica sync and carry
+-- no insert/update/delete grant — write paths deferred (see the section below).
+grant select on skill_containers to authenticated;
+grant select on skill_mappings   to authenticated;
 
 grant all on all tables in schema public to service_role;
 
@@ -560,3 +568,28 @@ create policy capability_grants_select on capability_grants
 
 -- No insert/update policies for authenticated: grants are authoritative_tx
 -- and reach the backend only through the verified path (E24-T5, Sprint 4).
+
+-- ---------------------------------------------------------------------------
+-- skill_containers / skill_mappings (E17 v0.2, MOD-22) — the db-backed skill
+-- registry. v0.2 manages the registry LOCALLY: both collections are OFF the
+-- sync allowlist (architecture §6.1 "backend registry"; see
+-- tests/test_sync_allowlists.py NEVER_SYNC), so the registry CRUD service
+-- (kantaq_core.skills) writes locally + audited and never emits a sync event.
+-- The Supabase tables and the RLS below are SCAFFOLDING for the future
+-- cross-replica registry sync; write paths are deferred (no insert/update/
+-- delete grant above), so only SELECT policies exist here.
+--
+-- skill_containers — the lifecycle taxonomy is global, non-sensitive reference
+-- data: readable by every signed-in member. skill_mappings — workspace
+-- mappings are readable by all members; personal mappings only by their owner.
+-- ---------------------------------------------------------------------------
+
+drop policy if exists skill_containers_select on skill_containers;
+create policy skill_containers_select on skill_containers
+  for select to authenticated
+  using (true);
+
+drop policy if exists skill_mappings_select on skill_mappings;
+create policy skill_mappings_select on skill_mappings
+  for select to authenticated
+  using (scope = 'workspace' or created_by in (select kantaq.member_ids()));

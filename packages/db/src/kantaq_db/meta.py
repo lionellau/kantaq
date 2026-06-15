@@ -81,9 +81,15 @@ COLLECTION_META: dict[str, CollectionMeta] = {
     "capability_grants": CollectionMeta(
         "capability_grants", "backend", "authoritative_tx", _DEFAULT_PRIVACY
     ),
+    # E17 v0.2 (MOD-22): the db-backed skill registry. Full table treatment
+    # (model/migration/parity/Supabase DDL/RLS) but OFF the sync allowlist in
+    # v0.2 — architecture §6.1 lists them as "backend registry"; cross-replica
+    # registry sync is deferred, so CRUD writes locally + audited, never emitted.
+    "skill_containers": CollectionMeta("skill_containers", "backend", "lww", _DEFAULT_PRIVACY),
+    "skill_mappings": CollectionMeta("skill_mappings", "backend", "lww", _DEFAULT_PRIVACY),
 }
 
 
 def collection_names() -> tuple[str, ...]:
-    """The declared collection names, in declaration order (13 in v0.1)."""
+    """The declared collection names, in declaration order (15 in v0.2)."""
     return tuple(COLLECTION_META)

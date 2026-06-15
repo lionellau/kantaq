@@ -31,6 +31,8 @@ __all__ = [
     "Op",
     "PrivacyClass",
     "Project",
+    "SkillContainer",
+    "SkillMapping",
     "Ticket",
     "TicketRelationship",
     "Token",
@@ -163,6 +165,45 @@ class Device:
     member_id: str | None = None
     label: str = ""
     revoked_at: datetime | None = None
+    privacy_class: PrivacyClass = field(default_factory=PrivacyClass)
+
+
+@dataclass
+class SkillContainer:
+    """Look-alike of the v0.2 db-backed skill container (E17-T4 / MOD-22).
+
+    Mirrors the ORM ``SkillContainerRow`` (``recommended_roles`` plural); the
+    harness stays a leaf, so no ORM import.
+    """
+
+    id: str
+    slug: str
+    name: str
+    recommended_roles: list[str] = field(default_factory=list)
+    supported_stages: list[str] = field(default_factory=list)
+    required_input: str = ""
+    expected_output: str = ""
+    allowed_tools: list[str] = field(default_factory=list)
+    default_write_mode: str = "read"
+    risk_level: str = "low"
+    privacy_class: PrivacyClass = field(default_factory=PrivacyClass)
+
+
+@dataclass
+class SkillMapping:
+    """Look-alike of the v0.2 db-backed skill→tool mapping (E17-T4 / MOD-22).
+
+    ``connection`` is DEBT-06 descriptive (a label, not an executable command);
+    no secret field exists (DEBT-07 moot).
+    """
+
+    id: str
+    container_id: str
+    scope: str = "personal"
+    provider: str = ""
+    connection: str = ""
+    status: str = "active"
+    created_by: str | None = None
     privacy_class: PrivacyClass = field(default_factory=PrivacyClass)
 
 
