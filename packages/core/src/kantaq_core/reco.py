@@ -386,6 +386,39 @@ CONTAINERS: Final[tuple[SkillContainer, ...]] = (
 
 _BY_ID: Final[dict[str, SkillContainer]] = {c.id: c for c in CONTAINERS}
 
+
+class Registry(Protocol):
+    """The skill-registry view :func:`recommend` reads (FR-E17-2).
+
+    The v0.1 hardcoded tuple and the v0.2 db-backed ``SkillRegistryService`` both
+    satisfy it, so the rule engine stays pure over whichever the caller injects
+    (the same discipline as ``missing_memory_for``). ``container`` resolves a slug
+    to its contract (or ``None`` if the registry has no record for it);
+    ``mapped_tool`` returns the descriptive tool label to surface — the user's
+    active skill→tool *mapping* when one exists, else the role's default hint, so
+    a personal/workspace mapping reflects in the recommendation output (DEBT-06:
+    descriptive, never executable).
+    """
+
+    def container(self, slug: str) -> SkillContainer | None: ...
+
+    def mapped_tool(self, container: SkillContainer) -> str: ...
+
+
+class _HardcodedRegistry:
+    """The v0.1 registry (§8.9): the frozen tuple + the per-role tool hint."""
+
+    def container(self, slug: str) -> SkillContainer | None:
+        return _BY_ID.get(slug)
+
+    def mapped_tool(self, container: SkillContainer) -> str:
+        return container.mapped_tool
+
+
+# The default registry — preserves the pure v0.1 behaviour for every caller that
+# does not inject a db-backed view (tests, the hardcoded ripple gate).
+_HARDCODED: Final[Registry] = _HardcodedRegistry()
+
 # Signal rules: a ticket label pulls in a cross-stage container (FR-E17-1
 # "stage + signals"). Conservative on purpose — only unambiguous labels, and a
 # signal recommendation is marked partial confidence (the stage drives strong).
@@ -456,11 +489,14 @@ def _build(
     slug: str,
     ticket: TicketLike,
     *,
+    registry: Registry,
     confidence: str,
     why: str,
     missing_memory_for: Callable[[str], Sequence[str]] | None,
 ) -> Recommendation:
-    spec = _BY_ID[slug]
+    spec = registry.container(slug)
+    if spec is None:  # the caller only builds slugs the registry holds
+        raise KeyError(slug)
     role = spec.recommended_role
     required = memory_policy.policy_for(role).include_scopes
     missing = tuple(missing_memory_for(role)) if missing_memory_for is not None else ()
@@ -471,7 +507,7 @@ def _build(
         required_memory=required,
         missing_memory=missing,
         expected_output=spec.expected_output,
-        mapped_tool=spec.mapped_tool,
+        mapped_tool=registry.mapped_tool(spec),
         mcp_session_template=_session_template(role, ticket.id, spec),
         risk_level=spec.risk_level,
         confidence=confidence,
@@ -482,6 +518,7 @@ def _build(
 def recommend(
     ticket: TicketLike,
     *,
+    registry: Registry = _HARDCODED,
     missing_memory_for: Callable[[str], Sequence[str]] | None = None,
 ) -> tuple[Recommendation, ...]:
     """Structured role/skill recommendations for a ticket (FR-E17-1).
@@ -490,6 +527,12 @@ def recommend(
     (MOD-20's per-stage containers), then label signals add cross-stage
     containers at partial confidence. A ticket whose stage predates the taxonomy
     (a legacy row) falls back to one safe read-only default (heuristic).
+
+    ``registry`` is the skill-registry view to read (FR-E17-2): the runtime
+    injects a db-backed view so the user's container edits + skill→tool mappings
+    reflect in the output; it defaults to the hardcoded v0.1 tuple, keeping the
+    function pure and the rule engine identical. Confidence stays **categorical**
+    (no numeric scores) regardless of the registry source.
 
     ``missing_memory_for(role)`` supplies the resolver's missing scopes per role
     (MOD-21); when omitted, ``missing_memory`` is empty (the pure default).
@@ -505,17 +548,20 @@ def recommend(
         stage_containers = ()
         stage_title = stage
 
-    # Strong: the stage's canonical containers (only those we have a contract for).
+    # Strong: the stage's canonical containers (only those the registry holds a
+    # contract for — a registry without a record for a slug simply skips it).
     for slug in stage_containers:
-        if slug in _BY_ID and slug not in seen:
+        spec = registry.container(slug)
+        if spec is not None and slug not in seen:
             why = (
                 f"At the {stage_title} stage, kantaq recommends a "
-                f"{_BY_ID[slug].recommended_role} run {_BY_ID[slug].name}."
+                f"{spec.recommended_role} run {spec.name}."
             )
             recs.append(
                 _build(
                     slug,
                     ticket,
+                    registry=registry,
                     confidence=CONFIDENCE_STRONG,
                     why=why,
                     missing_memory_for=missing_memory_for,
@@ -526,29 +572,33 @@ def recommend(
     # Partial: label signals pull in a cross-stage container.
     for label in ticket.labels:
         signal_slug = _LABEL_SIGNALS.get(label)
-        if signal_slug is not None and signal_slug not in seen:
-            why = (
-                f"The '{label}' label suggests {_BY_ID[signal_slug].name} "
-                f"({_BY_ID[signal_slug].recommended_role})."
+        if signal_slug is None or signal_slug in seen:
+            continue
+        spec = registry.container(signal_slug)
+        if spec is None:
+            continue
+        why = f"The '{label}' label suggests {spec.name} ({spec.recommended_role})."
+        recs.append(
+            _build(
+                signal_slug,
+                ticket,
+                registry=registry,
+                confidence=CONFIDENCE_PARTIAL,
+                why=why,
+                missing_memory_for=missing_memory_for,
             )
-            recs.append(
-                _build(
-                    signal_slug,
-                    ticket,
-                    confidence=CONFIDENCE_PARTIAL,
-                    why=why,
-                    missing_memory_for=missing_memory_for,
-                )
-            )
-            seen.add(signal_slug)
+        )
+        seen.add(signal_slug)
 
-    # Heuristic fallback: a stage-less/legacy ticket still gets one safe default.
-    if not recs:
+    # Heuristic fallback: a stage-less/legacy ticket still gets one safe default
+    # (when the registry holds it — a corrupt registry yields no rec, not a 500).
+    if not recs and registry.container(_FALLBACK_CONTAINER) is not None:
         why = "No lifecycle stage recognised; a read-only investigation is the safe default."
         recs.append(
             _build(
                 _FALLBACK_CONTAINER,
                 ticket,
+                registry=registry,
                 confidence=CONFIDENCE_HEURISTIC,
                 why=why,
                 missing_memory_for=missing_memory_for,
