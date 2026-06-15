@@ -59,6 +59,13 @@ class Action(StrEnum):
     # the opt-in. Agents get neither unless a token explicitly scopes it.
     telemetry_read = "telemetry.read"
     telemetry_write = "telemetry.write"
+    # The skill-registry surface (E17 / MOD-22): reading the db-backed containers
+    # + skill→tool mappings backs the recommendation panel and the Settings
+    # mapping editor (every human may read); managing the personal/workspace
+    # mappings is a member action. The registry is off the sync surface, so this
+    # is a local authz check, not a grant verb (no collection_write_verbs arm).
+    skills_read = "skills.read"
+    skills_manage = "skills.manage"
 
 
 # Human roles → allowed actions. Owner is full admin; Maintainer manages
@@ -79,6 +86,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Action]] = {
             Action.memory_approve,
             Action.telemetry_read,
             Action.telemetry_write,
+            Action.skills_read,
+            Action.skills_manage,
         }
     ),
     Role.member: frozenset(
@@ -90,6 +99,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Action]] = {
             Action.memory_write,
             Action.memory_approve,
             Action.telemetry_read,
+            Action.skills_read,
+            Action.skills_manage,
         }
     ),
     Role.viewer: frozenset(
@@ -98,6 +109,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Action]] = {
             Action.tickets_read,
             Action.memory_read,
             Action.telemetry_read,
+            Action.skills_read,
         }
     ),
 }

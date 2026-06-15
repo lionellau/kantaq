@@ -635,9 +635,7 @@ def get_recommendations(
         containers = registry_svc.list_containers()
         if containers:
             registry = DbRegistry(containers, registry_svc.list_mappings())
-            recs = reco.recommend(
-                ticket, registry=registry, missing_memory_for=missing_memory_for
-            )
+            recs = reco.recommend(ticket, registry=registry, missing_memory_for=missing_memory_for)
         else:
             recs = reco.recommend(ticket, missing_memory_for=missing_memory_for)
         return [RecommendationOut.from_rec(rec) for rec in recs]

@@ -67,7 +67,9 @@ def test_an_active_personal_mapping_reflects_in_mapped_tool() -> None:
         status="active",
     )
 
-    by_slug = {r.skill_container: r for r in reco.recommend(ticket, registry=DbRegistry(rows, [mapping]))}
+    by_slug = {
+        r.skill_container: r for r in reco.recommend(ticket, registry=DbRegistry(rows, [mapping]))
+    }
 
     assert by_slug[target.skill_container].mapped_tool == "My Claude Code"  # the user's mapping
     # the other recommendations still carry the role's default tool hint
@@ -88,6 +90,8 @@ def test_a_disabled_mapping_does_not_override_the_role_hint() -> None:
         status="disabled",
     )
 
-    by_slug = {r.skill_container: r for r in reco.recommend(ticket, registry=DbRegistry(rows, [disabled]))}
+    by_slug = {
+        r.skill_container: r for r in reco.recommend(ticket, registry=DbRegistry(rows, [disabled]))
+    }
 
     assert by_slug[target.skill_container].mapped_tool == target.mapped_tool  # the hint stands
