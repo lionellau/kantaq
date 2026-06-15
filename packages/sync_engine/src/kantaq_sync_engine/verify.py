@@ -216,7 +216,21 @@ class VerifyingBackend:
         """The DEBT-25 commit path: verify every event (the authoritative
         client-side Ed25519 wall — the RPC cannot check the bytes, D-09) before
         committing; reject the batch atomically if any fail, then delegate to
-        the atomic RPC."""
+        the atomic RPC.
+
+        The RPC's ``require_signature`` (its defense-in-depth signature-*presence*
+        check) tracks the workspace's negotiated cutover state — the same
+        ``require_signature`` the pull-side verify reads from the context — NOT
+        the ``require_signature`` argument, which is only the bare-backend
+        default. This wrapper owns the cutover context, so it is authoritative: a
+        pre-cutover (unsigned) workspace commits with ``require_signature=False``
+        so the RPC tolerates its unsigned events instead of rejecting them on a
+        freshly-seeded backend that has no grants yet (the go-live gate). Once the
+        workspace cuts over to signing it flips to ``True`` and the RPC enforces
+        the grant. The ``require_signature`` argument is accepted for BackendPort
+        conformance and intentionally superseded here.
+        """
+        del require_signature  # superseded by the negotiated cutover state (ctx)
         batch = list(events)
         ctx = self.context()
         for event in batch:
@@ -224,7 +238,7 @@ class VerifyingBackend:
             if not verdict.ok:
                 self._deny(event, verdict)
                 raise EventRejected(verdict, event)
-        return self.inner.commit_events(batch, require_signature=require_signature)
+        return self.inner.commit_events(batch, require_signature=ctx.require_signature)
 
     def pull(self, collection: str | None = None, since: int = 0) -> list[CommittedEvent]:
         """Return only the committed events that verify; drop + audit the rest."""
