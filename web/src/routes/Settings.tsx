@@ -32,7 +32,14 @@ const TREE: TreeNode[] = [
     to: "/settings/identity",
     label: "Identity",
     hint: "your member, role, and capability grants",
-    children: [{ to: "/settings/my-agent", label: "My Agent", hint: "connect your coding agent" }],
+    children: [
+      { to: "/settings/my-agent", label: "My Agent", hint: "connect your coding agent" },
+      {
+        to: "/settings/skill-mappings",
+        label: "Skill mappings",
+        hint: "map a skill to the tool you drive it with",
+      },
+    ],
   },
   { to: "/settings/devices", label: "Devices", hint: "registered signing keys (trust roots)" },
   { to: "/settings/sync", label: "Sync", hint: "backend mode and local event-log state" },

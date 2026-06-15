@@ -518,6 +518,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/skill-containers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Skill Containers
+         * @description Every skill container, by slug — the picker for the mapping editor.
+         */
+        get: operations["list_skill_containers_v1_skill_containers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/skill-mappings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Skill Mappings */
+        get: operations["list_skill_mappings_v1_skill_mappings_get"];
+        put?: never;
+        /** Create Skill Mapping */
+        post: operations["create_skill_mapping_v1_skill_mappings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/skill-mappings/{mapping_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Skill Mapping */
+        delete: operations["delete_skill_mapping_v1_skill_mappings__mapping_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Skill Mapping */
+        patch: operations["update_skill_mapping_v1_skill_mappings__mapping_id__patch"];
+        trace?: never;
+    };
     "/v1/sync/status": {
         parameters: {
             query?: never;
@@ -1379,6 +1435,94 @@ export interface components {
             member_id: string;
             /** Token */
             token: string;
+        };
+        /**
+         * SkillContainerOut
+         * @description A skill container (the taxonomy unit) — read-only over this surface.
+         */
+        SkillContainerOut: {
+            /** Allowed Tools */
+            allowed_tools: string[];
+            /** Default Write Mode */
+            default_write_mode: string;
+            /** Expected Output */
+            expected_output: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Recommended Roles */
+            recommended_roles: string[];
+            /** Required Input */
+            required_input: string;
+            /** Risk Level */
+            risk_level: string;
+            /** Slug */
+            slug: string;
+            /** Supported Stages */
+            supported_stages: string[];
+        };
+        /**
+         * SkillMappingIn
+         * @description Create a mapping. ``connection`` is a descriptive label, never a secret.
+         */
+        SkillMappingIn: {
+            /**
+             * Connection
+             * @default
+             */
+            connection: string;
+            /** Container Id */
+            container_id: string;
+            /**
+             * Provider
+             * @default
+             */
+            provider: string;
+            /**
+             * Scope
+             * @default personal
+             */
+            scope: string;
+            /**
+             * Status
+             * @default active
+             */
+            status: string;
+        };
+        /**
+         * SkillMappingOut
+         * @description A personal/workspace skill→tool mapping.
+         */
+        SkillMappingOut: {
+            /** Connection */
+            connection: string;
+            /** Container Id */
+            container_id: string;
+            /** Created By */
+            created_by: string | null;
+            /** Id */
+            id: string;
+            /** Provider */
+            provider: string;
+            /** Scope */
+            scope: string;
+            /** Status */
+            status: string;
+        };
+        /**
+         * SkillMappingPatch
+         * @description Patch a mapping. ``container_id`` is immutable (re-point = delete + create).
+         */
+        SkillMappingPatch: {
+            /** Connection */
+            connection?: string | null;
+            /** Provider */
+            provider?: string | null;
+            /** Scope */
+            scope?: string | null;
+            /** Status */
+            status?: string | null;
         };
         /** SyncStatusOut */
         SyncStatusOut: {
@@ -2542,6 +2686,155 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProposalOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_skill_containers_v1_skill_containers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillContainerOut"][];
+                };
+            };
+        };
+    };
+    list_skill_mappings_v1_skill_mappings_get: {
+        parameters: {
+            query?: {
+                container_id?: string | null;
+                scope?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillMappingOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_skill_mapping_v1_skill_mappings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillMappingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillMappingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_skill_mapping_v1_skill_mappings__mapping_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mapping_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_skill_mapping_v1_skill_mappings__mapping_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mapping_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillMappingPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillMappingOut"];
                 };
             };
             /** @description Validation Error */
