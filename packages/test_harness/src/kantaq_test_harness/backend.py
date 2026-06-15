@@ -23,7 +23,7 @@ from kantaq_sync_engine.events import (
 )
 from kantaq_test_harness.models import Event
 
-__all__ = ["CommitResult", "CommittedEvent", "Event", "FakeBackend"]
+__all__ = ["CommitResult", "CommittedEvent", "Event", "FakeBackend", "PartitionLink"]
 
 
 class FakeBackend:
@@ -133,3 +133,41 @@ class FakeBackend:
 
     def __len__(self) -> int:
         return len(self._log)
+
+
+class PartitionLink:
+    """A per-replica view of a shared backend that can be partitioned alone.
+
+    ``FakeBackend.offline`` partitions *every* replica sharing the backend; wrap
+    each replica's backend in a ``PartitionLink`` to drop just that one replica's
+    link — the partition simulator MOD-26 §RISK-04 wants for N-way heal proofs.
+    It is a ``BackendPort``: it delegates while ``online`` and raises
+    ``BackendUnavailable`` when not, so the shared log stays intact and a heal
+    resumes exactly where the partition began.
+    """
+
+    def __init__(self, backend: FakeBackend, *, online: bool = True) -> None:
+        self._backend = backend
+        self.online = online
+
+    def _require_link(self) -> None:
+        if not self.online:
+            raise BackendUnavailable("replica is partitioned from the backend")
+
+    def push(self, events: Iterable[Event]) -> list[CommittedEvent]:
+        self._require_link()
+        return self._backend.push(events)
+
+    def commit_events(
+        self, events: Iterable[Event], *, require_signature: bool = True
+    ) -> list[CommitResult]:
+        self._require_link()
+        return self._backend.commit_events(events, require_signature=require_signature)
+
+    def pull(self, collection: str | None = None, since: int = 0) -> list[CommittedEvent]:
+        self._require_link()
+        return self._backend.pull(collection, since)
+
+    def snapshot(self, collection: str) -> dict[str, dict[str, Any]]:
+        self._require_link()
+        return self._backend.snapshot(collection)
