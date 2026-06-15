@@ -32,7 +32,7 @@ def _sql_merge_policy() -> dict[str, str]:
     )
     assert body, "kantaq.collection_merge_policy not found in events.sql"
     arms = re.findall(r"when '([a-z_]+)' then '([a-z_]+)'", body.group(1))
-    return {collection: policy for collection, policy in arms}
+    return dict(arms)
 
 
 def test_sql_merge_policy_matches_the_python_meta() -> None:

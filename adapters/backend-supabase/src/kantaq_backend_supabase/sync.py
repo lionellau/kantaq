@@ -45,7 +45,16 @@ from typing import Any
 import httpx
 
 from kantaq_backend_supabase.keys import assert_client_safe_key
-from kantaq_sync_engine.events import CommitResult, CommittedEvent, Event, Op, fold_events
+from kantaq_db.schema_version import EXPECTED_SCHEMA_VERSION
+from kantaq_sync_engine.events import (
+    SYNC_VERSION,
+    CommitResult,
+    CommittedEvent,
+    Event,
+    Op,
+    SessionInit,
+    fold_events,
+)
 
 _TIMEOUT = 10.0
 
@@ -177,6 +186,18 @@ class SupabaseSyncBackend:
         self._page_size = page_size
 
     # --------------------------------------------------------------- the port
+
+    def session_init(self, *, sync_version: int, schema_version: int) -> SessionInit:
+        """Advertise the versions this client is built for (MOD-26 §B7 / DEBT-09).
+
+        v0.2 has no server-side session-init RPC yet, so this returns the
+        client's own compile-time versions — a safe same-version handshake that
+        lets the engine's ±1 check pass. When the negotiation RPC lands (Vicky /
+        gateway), this delegates to it and the backend's advertised versions
+        become authoritative; the engine logic is already in place.
+        """
+        del sync_version, schema_version  # echoed by the future RPC; advertised here
+        return SessionInit(SYNC_VERSION, EXPECTED_SCHEMA_VERSION)
 
     def push(self, events: Iterable[Event]) -> list[CommittedEvent]:
         """Commit new events in submission order; duplicates drop silently."""
