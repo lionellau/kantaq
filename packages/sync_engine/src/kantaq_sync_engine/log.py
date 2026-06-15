@@ -22,8 +22,24 @@ from sqlmodel import Session, col, select
 
 from kantaq_core.tracker.events import DomainEvent
 from kantaq_db import EventLog, new_ulid
+from kantaq_db.meta import COLLECTION_META
 from kantaq_protocol import sign
 from kantaq_sync_engine.events import Event
+
+# event_log.sync_state vocabulary (MOD-26 §B1, E05-T1). 'pending' is the durable
+# outbox; the three terminal states take an event out of the flush loop:
+# 'committed' (the backend assigned a revision), 'rejected' (a CAS-rejected
+# authoritative_tx or verify-failed event the backend will never accept), and
+# 'rebase_required' (a stale agent proposal that must be re-based, not re-pushed).
+SYNC_STATE_PENDING = "pending"
+SYNC_STATE_COMMITTED = "committed"
+SYNC_STATE_REJECTED = "rejected"
+SYNC_STATE_REBASE_REQUIRED = "rebase_required"
+
+# The terminal states for an event the backend will never accept. A row in one
+# of these is dropped from the fold, so marking it terminal + re-folding the
+# entity *reverts* its optimistic local effect (MOD-26 §B1).
+_TERMINAL_REJECTED = (SYNC_STATE_REJECTED, SYNC_STATE_REBASE_REQUIRED)
 
 
 @dataclass(frozen=True)
@@ -48,6 +64,19 @@ class SigningRequiredError(Exception):
     The local fail-closed invariant of the signing cutover (E04-T4): once a
     runtime signs, it never writes an unsigned event — it raises instead, so a
     missing device key or grant can never silently downgrade to unsigned.
+    """
+
+
+class AuthoritativeWriteError(Exception):
+    """An ``authoritative_tx`` collection (grants/tokens) was written through the
+    optimistic outbox (MOD-26 §B1).
+
+    Grants and tokens are never queued optimistically: they require a live
+    synchronous RPC round-trip and a committed revision before the local row (or
+    any derived gateway session) reflects them. Routing one through the
+    ``EventLogSink`` would create exactly the offline self-escalation path B1
+    forbids — a locally-issued-but-unconfirmed grant the local gateway would
+    trust before it syncs (DEBT-15(a)/(b)). The outbox refuses it at the seam.
     """
 
 
@@ -112,6 +141,9 @@ def insert_event(
         policy_ref=event.policy_ref,
         sig=event.sig,
         committed_rev=committed_rev,
+        # An ingested remote event arrives already committed; a fresh local
+        # write starts in the durable outbox as 'pending' (MOD-26 §B1).
+        sync_state=(SYNC_STATE_COMMITTED if committed_rev is not None else SYNC_STATE_PENDING),
         created_at=now or datetime.now(UTC),
     )
     session.add(row)
@@ -135,8 +167,20 @@ def row_to_event(row: EventLog) -> Event:
 
 
 def pending_rows(session: Session) -> list[EventLog]:
-    """Local events not yet committed by the backend, in append order."""
-    rows = session.exec(select(EventLog).where(col(EventLog.committed_rev).is_(None))).all()
+    """The durable outbox: events the backend has not committed *and* that are
+    still flushable, in ``(actor_id, actor_seq)`` order (MOD-26 §B1).
+
+    An event whose ``sync_state`` has left ``'pending'`` (a backend-rejected or
+    rebase-required event) stays out of the outbox so the flush loop never
+    re-pushes it forever — that closes the zombie-event / stuck-``pending_count``
+    hole. Until terminal states are written every row is ``'pending'``, so this
+    is behaviour-preserving over the old ``committed_rev IS NULL`` query.
+    """
+    rows = session.exec(
+        select(EventLog)
+        .where(col(EventLog.committed_rev).is_(None))
+        .where(EventLog.sync_state == SYNC_STATE_PENDING)
+    ).all()
     return sorted(rows, key=lambda r: (r.actor_id, r.actor_seq))
 
 
@@ -145,21 +189,31 @@ def entity_rows(session: Session, collection: str, entity_id: str) -> list[Event
 
     This *is* D-05: the backend's commit order decides ties; local events the
     backend has not committed yet apply after everything committed (they are
-    the optimistic tail).
+    the optimistic tail). Terminal-rejected rows are excluded, so re-folding an
+    entity after marking one of its events ``rejected``/``rebase_required``
+    drops that event's optimistic effect (the revert path, MOD-26 §B1).
     """
     rows = session.exec(
         select(EventLog)
         .where(EventLog.collection == collection)
         .where(EventLog.entity_id == entity_id)
+        .where(col(EventLog.sync_state).not_in(_TERMINAL_REJECTED))
     ).all()
     return sorted(rows, key=_resolution_key)
 
 
 def collection_rows(session: Session, collection: str | None = None) -> list[EventLog]:
-    statement = select(EventLog)
+    statement = select(EventLog).where(col(EventLog.sync_state).not_in(_TERMINAL_REJECTED))
     if collection is not None:
         statement = statement.where(EventLog.collection == collection)
     return sorted(session.exec(statement).all(), key=_resolution_key)
+
+
+def event_row(session: Session, actor_id: str, actor_seq: int) -> EventLog | None:
+    """The local log row for one ``(actor_id, actor_seq)``, or ``None``."""
+    return session.exec(
+        select(EventLog).where(EventLog.actor_id == actor_id).where(EventLog.actor_seq == actor_seq)
+    ).one_or_none()
 
 
 def _resolution_key(row: EventLog) -> tuple[int, int, str, int]:
@@ -205,6 +259,15 @@ class EventLogSink:
         self._signer = signer
 
     def emit(self, event: DomainEvent) -> None:
+        # authoritative_tx (grants/tokens) is synchronous-only: it can never
+        # enter the optimistic outbox (MOD-26 §B1). Refuse it at the seam so a
+        # locally-issued-but-unconfirmed grant can never be queued offline.
+        meta = COLLECTION_META.get(event.collection)
+        if meta is not None and meta.merge_policy == "authoritative_tx":
+            raise AuthoritativeWriteError(
+                f"{event.collection!r} is authoritative_tx — it commits synchronously "
+                "via the atomic RPC, never as an optimistic outbox event (MOD-26 §B1)"
+            )
         signer = self._signer
         protocol_event = Event(
             event_id=new_ulid(),

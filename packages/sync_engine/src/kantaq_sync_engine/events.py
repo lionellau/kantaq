@@ -24,11 +24,24 @@ from kantaq_protocol import Event, Op
 
 __all__ = [
     "BackendPort",
+    "BackendUnavailable",
     "CommittedEvent",
     "Event",
     "Op",
     "fold_events",
 ]
+
+
+class BackendUnavailable(Exception):
+    """The backend could not be reached (transport / connectivity failure).
+
+    The offline-aware flush loop (MOD-26 §B1) catches this to back off and
+    retry; the events stay in the durable outbox and are re-attempted, so a
+    partition never strands an offline write (NFR-E05-1). This is **not** a
+    rejection — a rejection (bad signature, denied grant, stale base_rev) is a
+    terminal per-event signal that takes the event *out* of the outbox. A
+    backend raises this for a dropped connection or an unreachable host.
+    """
 
 
 @dataclass(frozen=True)

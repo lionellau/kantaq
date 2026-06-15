@@ -15,7 +15,7 @@ from typing import Any
 # BackendPort nominally, not just structurally — and folds with the engine's
 # own fold_events, so the contract the real adapters (MOD-05/28) implement is
 # pinned to one shape.
-from kantaq_sync_engine.events import CommittedEvent, fold_events
+from kantaq_sync_engine.events import BackendUnavailable, CommittedEvent, fold_events
 from kantaq_test_harness.models import Event
 
 __all__ = ["CommittedEvent", "Event", "FakeBackend"]
@@ -26,6 +26,11 @@ class FakeBackend:
         self._log: list[CommittedEvent] = []
         self._seen: set[tuple[str, int]] = set()
         self._revision = 0
+        # Partition primitive (MOD-26 §B1 / RISK-04): flip ``offline`` and every
+        # push/pull raises ``BackendUnavailable``, modelling a dropped connection.
+        # The log is untouched, so flipping it back resumes exactly where it left
+        # off — what the offline-aware flush loop and the partition proofs need.
+        self.offline = False
 
     @property
     def revision(self) -> int:
@@ -34,6 +39,8 @@ class FakeBackend:
     def push(self, events: Iterable[Event]) -> list[CommittedEvent]:
         """Append new events, assigning a monotonic revision. Duplicates (same
         actor_id+actor_seq) are silently dropped so retries cannot duplicate."""
+        if self.offline:
+            raise BackendUnavailable("fake backend is partitioned (offline)")
         committed: list[CommittedEvent] = []
         for event in events:
             key = (event.actor_id, event.actor_seq)
@@ -47,6 +54,8 @@ class FakeBackend:
         return committed
 
     def pull(self, collection: str | None = None, since: int = 0) -> list[CommittedEvent]:
+        if self.offline:
+            raise BackendUnavailable("fake backend is partitioned (offline)")
         return [
             entry
             for entry in self._log
