@@ -14,7 +14,9 @@ import pytest
 from sqlalchemy.engine import Engine
 
 from kantaq_backend_supabase.schema import (
+    APPEND_ONLY_POLICIES,
     COLLECTIONS_MIGRATION,
+    EVENTS_RPC,
     POLICIES_FILE,
     SYNC_MIGRATION,
     SYNC_POLICIES_FILE,
@@ -55,6 +57,21 @@ insert into sync_events (event_id, collection, entity_id, actor_id, actor_seq, o
    '{{"title": "A ticket"}}'::json, 'ws_a'),
   ('evt_seed_b0000000000000000', 'tickets', 'tkt_b', 'mbr_cher', 1, 'patch',
    '{{"title": "B secret"}}'::json, 'ws_b');
+
+-- A device (verification root) and a valid grant for mbr_alice in ws_a — the
+-- committed state the v0.2 atomic RPC (E24-T6) checks an event's grant against.
+-- The Ed25519 sig column is illustrative only: the RPC checks grant STATE, not
+-- the signature bytes (no Ed25519 in Postgres, D-09). issued_at/expires_at are
+-- unix seconds; the window is wide open so the grant is valid at test time.
+insert into devices (id, created_at, updated_at, actor_seq, visibility, hosting_mode,
+  retention_policy, public_key, member_id, label) values
+  ('dev_alice', {ENVELOPE}, '{'a' * 64}', 'mbr_alice', 'alice laptop');
+
+insert into capability_grants (id, created_at, updated_at, actor_seq, visibility,
+  hosting_mode, retention_policy, subject, issuer, resource, verbs, issued_at,
+  expires_at, sig) values
+  ('grant_alice', {ENVELOPE}, 'mbr_alice', 'dev_alice', 'ws_a',
+   '["tickets.write"]'::json, 0, 2000000000, '{'a' * 64}');
 """
 
 
@@ -69,5 +86,7 @@ def sync_pg() -> Iterator[Engine]:
         apply_sql(engine, read_repo_sql(POLICIES_FILE))
         apply_sql(engine, read_repo_sql(SYNC_MIGRATION))
         apply_sql(engine, read_repo_sql(SYNC_POLICIES_FILE))
+        apply_sql(engine, read_repo_sql(EVENTS_RPC))
+        apply_sql(engine, read_repo_sql(APPEND_ONLY_POLICIES))
         apply_sql(engine, SYNC_SEED)
         yield engine

@@ -50,6 +50,15 @@ from kantaq_test_harness.rls import SUPABASE_ROLES, TamperedClient
 
 _IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*$")
 
+# The RPC functions this fake exposes, with their named-argument signatures in
+# call order. PostgREST passes the JSON body as named function arguments; we
+# mirror that for the kantaq atomic commit RPC (E24-T6). The function returns a
+# JSON value, which PostgREST returns as the response body. ``cast`` "" binds
+# the value as-is. Module-level so the dataclass below has no mutable field.
+_RPC_ARGS: dict[str, tuple[tuple[str, str], ...]] = {
+    "events": (("p_events", "jsonb"), ("p_require_signature", "")),
+}
+
 # PostgREST → HTTP status for the SQLSTATEs this fake can produce.
 _SQLSTATE_STATUS = {
     "42501": 403,  # insufficient_privilege (incl. RLS WITH CHECK violations)
@@ -129,6 +138,16 @@ class FakePostgREST:
         if not isinstance(role, str) or role not in SUPABASE_ROLES:
             role = "anon"
 
+        rpc_match = re.fullmatch(r"/rest/v1/rpc/([^/]+)", request.url.path)
+        if rpc_match is not None:
+            try:
+                sql_client = TamperedClient(self.engine, claims=claims, role=role)
+                return self._rpc(sql_client, _identifier(rpc_match.group(1), "function"), request)
+            except DBAPIError as exc:
+                return self._pg_error(exc)
+            except ValueError as exc:
+                return self._error(400, None, str(exc))
+
         match = re.fullmatch(r"/rest/v1/([^/]+)", request.url.path)
         if match is None:
             return self._error(404, None, f"no route for {request.url.path}")
@@ -154,6 +173,39 @@ class FakePostgREST:
         if scheme.lower() != "bearer" or not token:
             return {}
         return decode_jwt_claims(token.strip())
+
+    # ------------------------------------------------------------- RPC (v0.2)
+
+    def _rpc(
+        self, sql_client: TamperedClient, function: str, request: httpx.Request
+    ) -> httpx.Response:
+        if request.method != "POST":
+            return self._error(405, None, f"{request.method} not supported for rpc")
+        signature = _RPC_ARGS.get(function)
+        if signature is None:
+            return self._error(404, None, f"no rpc {function!r} in the fake")
+        body = json.loads(request.content) if request.content else {}
+        if not isinstance(body, dict):
+            raise ValueError("rpc body must be a JSON object of named arguments")
+        placeholders: list[str] = []
+        bound: dict[str, Any] = {}
+        for arg, cast in signature:
+            value = body.get(arg)
+            if isinstance(value, dict | list):
+                bound[arg] = json.dumps(value)
+            else:
+                bound[arg] = value
+            placeholders.append(f"cast(:{arg} as {cast})" if cast else f":{arg}")
+        sql = f"select public.{function}({', '.join(placeholders)})"  # noqa: S608 - allowlisted
+        with sql_client.session() as conn:
+            result = conn.execute(text(sql), bound).scalar()
+            conn.commit()
+        payload = result if isinstance(result, list) else ([] if result is None else result)
+        return httpx.Response(
+            200,
+            content=json.dumps(payload, default=_json_default),
+            headers={"Content-Type": "application/json"},
+        )
 
     # ------------------------------------------------------------------- GET
 

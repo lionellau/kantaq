@@ -55,6 +55,9 @@ PAGE_SIZE = 500
 
 SYNC_TABLE = "sync_events"
 
+# The v0.2 atomic commit RPC (E24-T6), exposed by PostgREST at /rest/v1/rpc/events.
+EVENTS_RPC = "rpc/events"
+
 # The wire-object columns push writes; revision/committed_at are the backend's.
 _EVENT_COLUMNS = (
     "event_id",
@@ -91,6 +94,30 @@ def _error_message(response: httpx.Response) -> str:
             if isinstance(value, str) and value:
                 return value
     return f"HTTP {response.status_code}"
+
+
+@dataclass(frozen=True)
+class CommitResult:
+    """One event's outcome from the v0.2 atomic commit RPC (E24-T6).
+
+    ``status`` is ``"committed"`` or ``"duplicate"`` (the dedup floor was hit on
+    an idempotent re-push). ``revision`` is the assigned commit order.
+    ``stale_base_rev`` is set (to the event's ``base_rev``) when that base was
+    older than the committed head for the entity — a concurrent write landed
+    first, so the committing client mints a signed ``conflict_record`` (E05-T2).
+    ``head_rev`` is the committed head observed before this event committed.
+    """
+
+    event_id: str
+    status: str
+    revision: int
+    base_rev: int | None
+    head_rev: int
+    stale_base_rev: int | None
+
+    @property
+    def is_stale(self) -> bool:
+        return self.stale_base_rev is not None
 
 
 @dataclass(frozen=True)
@@ -211,6 +238,36 @@ class SupabaseSyncBackend:
         """The backend's fold of a collection (LWW by commit order)."""
         return fold_events(entry.event for entry in self.pull(collection))
 
+    # --------------------------------------------------------- v0.2 atomic RPC
+
+    def commit_events(
+        self, events: Iterable[Event], *, require_signature: bool = True
+    ) -> list[CommitResult]:
+        """Commit events through the v0.2 atomic plpgsql RPC (E24-T6, D-09).
+
+        One transaction validates the grant (held, live issuer, not revoked,
+        valid window, subject/resource/verb) + ordering, applies the merge
+        policy, and assigns the revision per event — closing the commit-
+        visibility window the raw ``push`` left open (among RPC callers). The
+        RPC rejects missing-grant / revoked / expired / wrong-scope events
+        before applying any (the call raises ``SyncBackendError`` and nothing
+        commits). The Ed25519 *bytes* are NOT checked here (no Ed25519 in
+        Postgres, D-09) — that stays on the pull-side VerifyingBackend; with
+        ``require_signature=True`` the RPC additionally rejects a *missing*
+        signature as defense-in-depth. For accepted events it returns each
+        one's outcome, including ``stale_base_rev`` when a concurrent write
+        landed first.
+
+        Set ``require_signature=False`` to commit pre-cutover unsigned history.
+        """
+        rows = [self._event_to_row(event) for event in events]
+        response = self._request(
+            "POST",
+            f"/{EVENTS_RPC}",
+            json={"p_events": rows, "p_require_signature": require_signature},
+        )
+        return [self._row_to_commit_result(row) for row in response.json()]
+
     # --------------------------------------------------------------- plumbing
 
     def _headers(self, bearer: str) -> dict[str, str]:
@@ -225,7 +282,7 @@ class SupabaseSyncBackend:
         *,
         params: dict[str, str] | None = None,
         headers: dict[str, str] | None = None,
-        json: list[dict[str, Any]] | None = None,
+        json: Any = None,
     ) -> httpx.Response:
         def send(bearer: str) -> httpx.Response:
             return self._client.request(
@@ -257,6 +314,19 @@ class SupabaseSyncBackend:
             "sig": event.sig,
             "workspace_id": self._workspace_id,
         }
+
+    @staticmethod
+    def _row_to_commit_result(row: dict[str, Any]) -> CommitResult:
+        stale = row.get("stale_base_rev")
+        base = row.get("base_rev")
+        return CommitResult(
+            event_id=row["event_id"],
+            status=row["status"],
+            revision=int(row["revision"]),
+            base_rev=int(base) if base is not None else None,
+            head_rev=int(row["head_rev"]),
+            stale_base_rev=int(stale) if stale is not None else None,
+        )
 
     @staticmethod
     def _row_to_committed(row: dict[str, Any]) -> CommittedEvent:

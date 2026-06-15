@@ -49,15 +49,18 @@ CREATE TABLE sync_events (
 	-- memory_entries/memory_links joined with E13 (team-visibility rows only;
 	-- local rows never produce events at all — the MOD-19 emit seam).
 	-- ticket_relationships joined with E12-T3 (typed ticket edges, MOD-03 v0.1).
-	-- devices and capability_grants are DELIBERATELY absent until the backend
-	-- verifies signatures + grants before accepting events (E24-T5, Sprint 4):
-	-- an unverified client-pushed device event must never become a teammate's
-	-- verification root. Keep this list, the local applier's SYNCABLE_MODELS,
-	-- and COLLECTION_META in lock-step — tests/test_sync_allowlists.py pins
-	-- all three against each other.
+	-- devices and capability_grants joined with E24-T7 (v0.2): now that the
+	-- backend verifies signatures + grants before accepting events (E24-T5
+	-- client-side + the E24-T6 atomic RPC server-side), the trust roots ingest
+	-- so teammates receive each other's device keys and grants. On PULL these
+	-- route to the identity store, not the domain fold (DEBT-21). Keep this
+	-- list, the local applier's SYNCABLE_MODELS, and COLLECTION_META in
+	-- lock-step — tests/test_sync_allowlists.py pins all three against each
+	-- other (and the README ALTER note against this CHECK).
 	CONSTRAINT ck_sync_events_collection CHECK (collection IN
 		('workspaces', 'projects', 'tickets', 'comments', 'ticket_relationships',
-		 'members', 'agent_proposals', 'memory_entries', 'memory_links'))
+		 'members', 'agent_proposals', 'memory_entries', 'memory_links',
+		 'devices', 'capability_grants'))
 );
 
 CREATE INDEX ix_sync_events_collection ON sync_events (collection, revision);

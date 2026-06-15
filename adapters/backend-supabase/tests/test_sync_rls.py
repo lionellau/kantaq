@@ -98,6 +98,52 @@ def test_the_log_is_append_only_even_for_the_owner(sync_pg: Engine) -> None:
     assert not erase.ok and "permission denied" in erase.error
 
 
+def test_the_log_is_append_only_even_for_the_service_role(sync_pg: Engine) -> None:
+    """E24-T7: the append-only trigger binds the BACKEND too. service_role holds
+    `grant all` and BYPASSRLS, so before the trigger it COULD rewrite committed
+    history; the BEFORE UPDATE OR DELETE trigger fires past BYPASSRLS, so even
+    the service role cannot mutate or erase a committed event."""
+    rewrite = service(sync_pg).attempt(
+        "update sync_events set payload = '{}'::json where event_id = 'evt_seed_a0000000000000000'"
+    )
+    assert not rewrite.ok and "append-only" in rewrite.error
+    erase = service(sync_pg).attempt(
+        "delete from sync_events where event_id = 'evt_seed_a0000000000000000'"
+    )
+    assert not erase.ok and "append-only" in erase.error
+    # the row is byte-unchanged
+    untouched = service(sync_pg).fetch_all(
+        "select payload from sync_events where event_id = 'evt_seed_a0000000000000000'"
+    )
+    assert untouched[0].payload == {"title": "A ticket"}
+
+
+def test_truncate_is_blocked_even_for_the_service_role(sync_pg: Engine) -> None:
+    """E24-T7: TRUNCATE escapes a row-level trigger and service_role holds
+    `grant all` (incl. TRUNCATE) + BYPASSRLS — so without a statement-level
+    guard it could wipe the whole append-only log. The BEFORE TRUNCATE trigger
+    closes that hole."""
+    wipe = service(sync_pg).attempt("truncate sync_events")
+    assert not wipe.ok and "append-only" in wipe.error
+    # the seeded events survive untouched
+    survivors = service(sync_pg).fetch_all("select event_id from sync_events")
+    assert {r.event_id for r in survivors} >= {
+        "evt_seed_a0000000000000000",
+        "evt_seed_b0000000000000000",
+    }
+
+
+def test_service_role_on_conflict_do_update_is_blocked_by_the_trigger(sync_pg: Engine) -> None:
+    """ON CONFLICT DO UPDATE fires the BEFORE UPDATE trigger, so even the
+    service role cannot smuggle a rewrite through an upsert."""
+    upsert = service(sync_pg).attempt(
+        INSERT
+        + _event_values("evt_svc_0000000000000001", "mbr_alice", 1, "ws_a")
+        + " on conflict (actor_id, actor_seq) do update set payload = '{\"x\": 1}'::json"
+    )
+    assert not upsert.ok and "append-only" in upsert.error
+
+
 def test_anon_gets_nothing(sync_pg: Engine) -> None:
     anon = TamperedClient(sync_pg, claims={}, role="anon")
     attempt = anon.attempt("select event_id from sync_events")
@@ -115,10 +161,10 @@ def test_a_revoked_member_loses_the_log(sync_pg: Engine) -> None:
 
 
 def test_unsyncable_collections_are_refused_at_the_database(sync_pg: Engine) -> None:
-    """tokens/audit_events never sync (MOD-04), and devices/capability_grants
-    stay off the surface until E24-T5's verified ingestion (E27 review) —
-    pinned by a CHECK constraint that binds even the service role."""
-    excluded = ("tokens", "audit_events", "devices", "capability_grants")
+    """tokens/audit_events never sync (MOD-04, MOD-07) — pinned by a CHECK
+    constraint that binds even the service role. (devices/capability_grants
+    joined the surface at E24-T7; see the accepted test below.)"""
+    excluded = ("tokens", "audit_events")
     for seq, collection in enumerate(excluded, start=50):
         smuggled = service(sync_pg).attempt(
             INSERT
@@ -130,14 +176,21 @@ def test_unsyncable_collections_are_refused_at_the_database(sync_pg: Engine) -> 
         assert "ck_sync_events_collection" in smuggled.error
 
 
-def test_memory_collections_are_accepted_at_the_database(sync_pg: Engine) -> None:
-    """The E13 regression, proven on real Postgres: team memory events pass
-    the constraint (the local emit seam already keeps local rows out)."""
-    for seq, collection in enumerate(("memory_entries", "memory_links"), start=60):
+def test_syncable_collections_are_accepted_at_the_database(sync_pg: Engine) -> None:
+    """The E13 regression + the E24-T7 trust-root ingest, proven on real
+    Postgres: team memory events and the device/grant trust roots pass the
+    constraint (the local emit seam already keeps local memory rows out)."""
+    accepted_collections = (
+        "memory_entries",
+        "memory_links",
+        "devices",
+        "capability_grants",
+    )
+    for seq, collection in enumerate(accepted_collections, start=60):
         accepted = service(sync_pg).attempt(
             INSERT
             + _event_values(
-                f"evt_mem_{collection[7:15].ljust(16, '0')}", "mbr_alice", seq, "ws_a", collection
+                f"evt_acc_{collection[:8].ljust(16, '0')}", "mbr_alice", seq, "ws_a", collection
             )
         )
         assert accepted.ok, f"{collection} event was refused: {accepted.error}"

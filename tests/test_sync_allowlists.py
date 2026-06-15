@@ -33,12 +33,8 @@ NEVER_SYNC: dict[str, str] = {
     "tokens": "MOD-06: local authority, secret material",
     # each replica's own local trail; replays write their own (source=sync).
     "audit_events": "MOD-07: per-replica trail",
-    # trust roots: an unverified client-pushed device event must never become
-    # a teammate's verification root. Joins the surface with E24-T5's
-    # signature+grant-verified ingestion (Sprint 4), not before.
-    "devices": "MOD-06: awaits verified ingestion (E24-T5)",
-    # authoritative_tx — never optimistically written; backend-issued in v0.2.
-    "capability_grants": "MOD-06: authoritative_tx, awaits E24-T5",
+    # devices/capability_grants joined the sync surface at E24-T7 (v0.2): see
+    # test_trust_collections_join_the_surface_with_verified_ingestion below.
 }
 
 
@@ -84,11 +80,15 @@ def test_memory_collections_are_on_the_full_surface() -> None:
         assert name in _backend_allowlist()
 
 
-def test_trust_collections_stay_off_the_backend_until_verified_ingestion() -> None:
-    """E27 review: devices/grants join the surface only with E24-T5."""
+def test_trust_collections_join_the_surface_with_verified_ingestion() -> None:
+    """E24-T7 (v0.2): the trust roots ingest now that the backend verifies
+    signatures + grants (E24-T5 client + the E24-T6 atomic RPC). They are on
+    the full surface (CHECK + applier) but route to the identity store on pull
+    (DEBT-21), not the domain fold."""
     backend = _backend_allowlist()
-    assert "devices" not in backend
-    assert "capability_grants" not in backend
+    for name in ("devices", "capability_grants"):
+        assert name in backend
+        assert name in SYNCABLE_MODELS
 
 
 def test_readme_alter_note_matches_the_constraint() -> None:
