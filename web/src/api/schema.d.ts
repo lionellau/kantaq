@@ -333,6 +333,26 @@ export interface paths {
         patch: operations["update_memory_v1_memory__memory_id__patch"];
         trace?: never;
     };
+    "/v1/memory/{memory_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Memory
+         * @description Approve a proposed team entry into the shared collection (HUMAN only).
+         */
+        post: operations["approve_memory_v1_memory__memory_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/memory/{memory_id}/link": {
         parameters: {
             query?: never;
@@ -361,6 +381,50 @@ export interface paths {
         get: operations["memory_links_v1_memory__memory_id__links_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/memory/{memory_id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote Memory
+         * @description Propose an entry into the shared collection (E13-T4, the PROPOSE step).
+         *
+         *     Agents may call this (it needs only ``memory.write``). A ``local`` source is
+         *     never mutated — a new ``team`` ``proposed`` row is returned; a ``team``
+         *     ``{draft,stale}`` row transitions in place. Human approval comes next.
+         */
+        post: operations["promote_memory_v1_memory__memory_id__promote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/memory/{memory_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Memory
+         * @description Decline a proposed team entry (HUMAN only): ``proposed → rejected``.
+         */
+        post: operations["reject_memory_v1_memory__memory_id__reject_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2108,6 +2172,37 @@ export interface operations {
             };
         };
     };
+    approve_memory_v1_memory__memory_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     link_memory_v1_memory__memory_id__link_post: {
         parameters: {
             query?: never;
@@ -2161,6 +2256,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemoryLinkOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    promote_memory_v1_memory__memory_id__promote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_memory_v1_memory__memory_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryOut"];
                 };
             };
             /** @description Validation Error */

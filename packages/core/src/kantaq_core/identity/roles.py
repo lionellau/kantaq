@@ -48,6 +48,12 @@ class Action(StrEnum):
     # memory policy (MOD-21) layers on top of this coarse check.
     memory_read = "memory.read"
     memory_write = "memory.write"
+    # The memory-promotion approval (E13-T4 / MOD-19 §52): approving a proposed
+    # team entry into the shared collection is a *human* decision in the Inbox,
+    # strictly stronger than memory.write. Agents propose (memory.write) but
+    # must never carry this scope, so an agent token gets 403 on approve —
+    # mirroring proposals' propose-first default.
+    memory_approve = "memory.approve"
     # The telemetry surface (E28, MOD-25): every human may inspect what the
     # machine collects (the privacy promise is transparency); only admins flip
     # the opt-in. Agents get neither unless a token explicitly scopes it.
@@ -70,6 +76,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Action]] = {
             Action.tickets_write,
             Action.memory_read,
             Action.memory_write,
+            Action.memory_approve,
             Action.telemetry_read,
             Action.telemetry_write,
         }
@@ -81,6 +88,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Action]] = {
             Action.tickets_write,
             Action.memory_read,
             Action.memory_write,
+            Action.memory_approve,
             Action.telemetry_read,
         }
     ),

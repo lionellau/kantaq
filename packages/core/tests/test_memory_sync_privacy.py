@@ -115,6 +115,46 @@ def test_push_carries_team_but_never_local(alice: Replica, backend: FakeBackend)
     )
 
 
+def test_promoting_a_local_entry_never_syncs_the_local_row(
+    alice: Replica, backend: FakeBackend
+) -> None:
+    """E13-T4 / NFR-E13-1 re-proven across promote.
+
+    Promoting a ``local`` entry copies its content into a NEW ``team``
+    ``proposed`` row — the original stays ``visibility=local`` and never syncs.
+    The user explicitly chose to share the *content* (it rides the new team
+    row), but the original ``local`` ROW must never leave the machine: zero
+    event-log rows for its id, and no event in the push references it. The new
+    team row DOES push (mirrors ``test_push_carries_team_but_never_local``)."""
+    with alice.session() as session:
+        memory = alice.memory_service(session)
+        local = memory.create_entry(title="rationale", visibility="local")
+        memory.update_entry(local.id, {"body": "details"})
+        proposed = memory.promote(local.id)
+        local_id, proposed_id = local.id, proposed.id
+
+    # The original local row produced no events at all; the new team row did.
+    local_events = [row for row in _memory_event_rows(alice) if row.entity_id == local_id]
+    assert local_events == []
+    proposed_events = [row for row in _memory_event_rows(alice) if row.entity_id == proposed_id]
+    assert [row.op for row in proposed_events] == ["patch"]
+
+    alice.sync.push()
+
+    pushed = backend.pull(collection=None, since=0)
+    # No pushed event is *about* the local row — its id never leaves the machine.
+    assert not any(entry.event.entity_id == local_id for entry in pushed)
+    payload_dump = json.dumps([asdict(entry.event) for entry in pushed], default=str)
+    assert local_id not in payload_dump
+    # The promoted team row did push (the channel itself works); the provenance
+    # lineage to the local id is the one place the id could leak — assert it is
+    # absent there too (the new row's provenance must not embed the source id).
+    assert any(
+        entry.event.collection == "memory_entries" and entry.event.entity_id == proposed_id
+        for entry in pushed
+    )
+
+
 def test_other_replica_never_learns_the_local_entry(
     alice: Replica, bob: Replica, backend: FakeBackend
 ) -> None:

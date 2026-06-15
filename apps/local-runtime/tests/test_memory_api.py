@@ -59,6 +59,25 @@ def viewer_token(engine: Engine, owner_token: str) -> str:
         )
 
 
+@pytest.fixture
+def agent_token(engine: Engine, owner_token: str) -> str:
+    """An Agent token with the memory read/write scopes — but NOT memory.approve.
+
+    An agent may propose (memory.write) yet must never approve (E13-T4): the
+    scope it cannot hold is the propose-first guard, mirroring proposals.
+    """
+    with Session(engine) as session:
+        return (
+            IdentityService(session)
+            .invite(
+                email="agent@example.com",
+                role=Role.agent,
+                scopes=["memory.read", "memory.write"],
+            )
+            .plaintext
+        )
+
+
 def _bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
@@ -265,6 +284,121 @@ def test_delete_cascades_links(client: TestClient, owner_token: str, engine: Eng
         assert session.exec(select(MemoryLink)).all() == []
     on_ticket = client.get(f"/v1/tickets/{ticket_id}/memory", headers=_bearer(owner_token))
     assert on_ticket.json() == []
+
+
+# ----------------------------------------------------------------- promotion
+
+
+def test_agent_can_propose_but_cannot_approve(
+    client: TestClient, owner_token: str, agent_token: str
+) -> None:
+    """E13-T4 propose-first: memory.write proposes; memory.approve is human-only."""
+    team = _create_memory(client, owner_token, title="shared")
+
+    # The agent CAN promote (it holds memory.write).
+    promoted = client.post(f"/v1/memory/{team['id']}/promote", headers=_bearer(agent_token))
+    assert promoted.status_code == 200, promoted.text
+    assert promoted.json()["review_status"] == "proposed"
+
+    # The agent CANNOT approve — its token never carries memory.approve (403).
+    denied = client.post(f"/v1/memory/{team['id']}/approve", headers=_bearer(agent_token))
+    assert denied.status_code == 403
+
+
+def test_viewer_cannot_approve_or_reject(
+    client: TestClient, owner_token: str, viewer_token: str
+) -> None:
+    team = _create_memory(client, owner_token, title="shared")
+    client.post(f"/v1/memory/{team['id']}/promote", headers=_bearer(owner_token))
+
+    assert (
+        client.post(f"/v1/memory/{team['id']}/approve", headers=_bearer(viewer_token)).status_code
+        == 403
+    )
+    assert (
+        client.post(f"/v1/memory/{team['id']}/reject", headers=_bearer(viewer_token)).status_code
+        == 403
+    )
+    # And a Viewer cannot even propose (no memory.write).
+    assert (
+        client.post(f"/v1/memory/{team['id']}/promote", headers=_bearer(viewer_token)).status_code
+        == 403
+    )
+
+
+def test_promotion_routes_require_a_token(client: TestClient) -> None:
+    for verb in ("promote", "approve", "reject"):
+        assert client.post(f"/v1/memory/mem_x/{verb}").status_code == 401
+
+
+def test_local_to_proposed_to_approved_happy_path(
+    client: TestClient, owner_token: str, agent_token: str
+) -> None:
+    """Create local → promote (new team proposed row) → owner approves → shared."""
+    local = _create_memory(client, owner_token, title="rationale", visibility="local")
+    assert local["domain_visibility"] == "private_local"
+
+    # The agent proposes; a NEW team row comes back at proposed.
+    promoted = client.post(f"/v1/memory/{local['id']}/promote", headers=_bearer(agent_token))
+    assert promoted.status_code == 200, promoted.text
+    proposed = promoted.json()
+    assert proposed["id"] != local["id"]
+    assert proposed["visibility"] == "team"
+    assert proposed["review_status"] == "proposed"
+    assert proposed["domain_visibility"] == "proposal_context"
+
+    # The original local row is untouched.
+    refreshed = client.get(f"/v1/memory/{local['id']}", headers=_bearer(owner_token)).json()
+    assert refreshed["visibility"] == "local"
+    assert refreshed["review_status"] == "draft"
+
+    # The owner approves the proposed row → shared.
+    approved = client.post(f"/v1/memory/{proposed['id']}/approve", headers=_bearer(owner_token))
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["review_status"] == "approved"
+    assert approved.json()["domain_visibility"] == "shared_workspace"
+
+
+def test_approve_an_already_decided_entry_409(client: TestClient, owner_token: str) -> None:
+    team = _create_memory(client, owner_token, title="shared")
+    client.post(f"/v1/memory/{team['id']}/promote", headers=_bearer(owner_token))
+    assert (
+        client.post(f"/v1/memory/{team['id']}/reject", headers=_bearer(owner_token)).status_code
+        == 200
+    )
+    # Approving the now-rejected row loses the CAS → 409.
+    again = client.post(f"/v1/memory/{team['id']}/approve", headers=_bearer(owner_token))
+    assert again.status_code == 409
+
+
+def test_promote_already_proposed_team_row_422(client: TestClient, owner_token: str) -> None:
+    team = _create_memory(client, owner_token, title="shared")
+    client.post(f"/v1/memory/{team['id']}/promote", headers=_bearer(owner_token))
+    again = client.post(f"/v1/memory/{team['id']}/promote", headers=_bearer(owner_token))
+    assert again.status_code == 422
+    assert "cannot be promoted" in again.json()["detail"]
+
+
+def test_promote_missing_entry_404(client: TestClient, owner_token: str) -> None:
+    assert (
+        client.post("/v1/memory/mem_missing/promote", headers=_bearer(owner_token)).status_code
+        == 404
+    )
+
+
+def test_local_promote_through_the_api_emits_no_events_for_the_local_row(
+    client: TestClient, owner_token: str, engine: Engine
+) -> None:
+    """The runtime wires the real sink; promoting a local entry leaves it silent."""
+    local = _create_memory(client, owner_token, title="private", visibility="local")
+    promoted = client.post(f"/v1/memory/{local['id']}/promote", headers=_bearer(owner_token)).json()
+
+    with Session(engine) as session:
+        rows = session.exec(select(EventLog)).all()
+    memory_rows = [r for r in rows if r.collection == "memory_entries"]
+    # No event references the local row id; the new team row did emit.
+    assert local["id"] not in {r.entity_id for r in memory_rows}
+    assert promoted["id"] in {r.entity_id for r in memory_rows}
 
 
 # -------------------------------------------------------------------- privacy

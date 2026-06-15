@@ -30,9 +30,11 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
-from sqlmodel import Session, select
+from sqlalchemy import update as sa_update
+from sqlalchemy.engine import CursorResult
+from sqlmodel import Session, col, select
 
 from kantaq_core import audit
 from kantaq_core.tracker.events import DomainEvent, EventSink, Op
@@ -127,6 +129,15 @@ class MemoryNotFoundError(MemoryGraphError):
         super().__init__(f"no such {collection.rstrip('s').replace('_', ' ')}: {entity_id}")
         self.collection = collection
         self.entity_id = entity_id
+
+
+class MemoryConflictError(MemoryGraphError):
+    """A compare-and-swap on ``review_status`` lost the race (HTTP 409).
+
+    The row was decided concurrently or is no longer ``proposed`` — mirrors
+    ``proposals.ProposalConflictError`` so the two human-gated decision paths
+    share one double-apply guard.
+    """
 
 
 class MemoryService:
@@ -257,6 +268,165 @@ class MemoryService:
         patch_payload = {key: after[key] for key in validated}
         patch_payload["updated_at"] = after["updated_at"]
         self._emit_team_only("memory_entries", entry, "patch", patch_payload)
+        self._session.commit()
+        self._session.refresh(entry)
+        return entry
+
+    # ------------------------------------------------------- promotion (E13-T4)
+
+    # Copyable content for a local→team promotion (MOD-19 §52): the substance of
+    # the note, never its envelope (id/visibility/review_status/audit fields).
+    _PROMOTABLE_FIELDS: tuple[str, ...] = (
+        "title",
+        "body",
+        "type",
+        "space",
+        "confidence",
+        "linked_entities",
+        "expires_at",
+    )
+
+    def promote(self, memory_id: str) -> MemoryEntry:
+        """Propose an entry into the shared collection (the PROPOSE step).
+
+        This is the agent-reachable half (``memory.write``); approve/reject is
+        human-only. The copy-on-promote model (MOD-19 §52 + sprint-6 §71 +
+        exit-criterion 5) keeps ``visibility=local`` immutable and never-syncing:
+
+        * A ``local`` source is **never mutated**. A NEW ``team`` row is created
+          at ``review_status="proposed"`` carrying the source's content; the
+          original keeps ``visibility="local"`` and its ``review_status``, and
+          emits nothing (NFR-E13-1 re-proven across promote). The new row's
+          ``provenance`` records the source id.
+        * A ``team`` row in ``{draft, stale}`` transitions **in place** to
+          ``proposed`` (no copy).
+        * Any other ``team`` state (already proposed/approved/rejected) is
+          rejected — only approve/reject moves those.
+        """
+        entry = self.get_entry(memory_id)
+        ts = self._now()
+        if entry.visibility == "local":
+            return self._promote_local_copy(entry, now=ts)
+        if entry.review_status not in WRITABLE_REVIEW_STATUSES:
+            raise MemoryValidationError(
+                f"a team entry in review_status {entry.review_status!r} cannot be promoted; "
+                f"only {WRITABLE_REVIEW_STATUSES} entries may be proposed "
+                "(approve/reject moves proposed/approved/rejected rows)"
+            )
+        return self._promote_team_in_place(entry, now=ts)
+
+    def _promote_local_copy(self, source: MemoryEntry, *, now: datetime) -> MemoryEntry:
+        """Copy a ``local`` source into a NEW ``team`` ``proposed`` row.
+
+        The source is left untouched — no write, no audit-after, no event — so
+        ``visibility=local`` stays immutable and off the sink (NFR-E13-1).
+        """
+        fields = {name: getattr(source, name) for name in self._PROMOTABLE_FIELDS}
+        # Copy mutable JSON columns so the new row never aliases the source's.
+        fields["linked_entities"] = list(fields["linked_entities"])
+        # Provenance records the promotion lineage. The new row SYNCS, so it must
+        # not embed the local source's id (NFR-E13-1: no byte/id of the local
+        # entry leaves the machine) — the precise source id lives only in the
+        # local source's audit object_ref, which never syncs (audit_events are a
+        # per-replica trail). So ``detail`` notes the lineage id-free.
+        prov: dict[str, Any] = {
+            "origin": source.source,
+            "actor_id": self._actor_id,
+            "captured_at": now.isoformat(),
+            "detail": "promoted from a local entry",
+        }
+        proposed = MemoryEntry(
+            created_by=self._actor_id,
+            source=source.source,
+            visibility="team",
+            review_status="proposed",
+            provenance=prov,
+            created_at=now,
+            updated_at=now,
+            **fields,
+        )
+        self._session.add(proposed)
+        self._session.flush()
+        # Audit the new team row with its snapshot; the local source is audited
+        # content-free (the lineage exists, the private content never does).
+        self._audit_entry_write("memory.promote", proposed, before=None, now=now)
+        self._audit_entry_write("memory.promote", source, before=None, after_none=True, now=now)
+        self._emit_team_only("memory_entries", proposed, "patch", audit.snapshot(proposed))
+        # The original local row never routes through the sink — promote does
+        # not bypass _emit_team_only, and it is never called for the source.
+        self._session.commit()
+        self._session.refresh(proposed)
+        return proposed
+
+    def _promote_team_in_place(self, entry: MemoryEntry, *, now: datetime) -> MemoryEntry:
+        """Transition a ``team`` ``{draft,stale}`` row to ``proposed`` in place."""
+        before = audit.snapshot(entry)
+        entry.review_status = "proposed"
+        entry.updated_at = now
+        self._session.add(entry)
+        self._session.flush()
+        self._audit_entry_write("memory.promote", entry, before=before, now=now)
+        after = audit.snapshot(entry)
+        self._emit_team_only(
+            "memory_entries",
+            entry,
+            "patch",
+            {"review_status": after["review_status"], "updated_at": after["updated_at"]},
+        )
+        self._session.commit()
+        self._session.refresh(entry)
+        return entry
+
+    def approve(self, memory_id: str) -> MemoryEntry:
+        """Approve a ``proposed`` team entry into the shared collection (HUMAN).
+
+        ``proposed → approved``; ``domain_visibility(team, approved, …)`` then
+        labels it shared. A compare-and-swap re-checking ``review_status =
+        'proposed'`` guards against a concurrent decision (mirrors
+        ``proposals._flip_status``)."""
+        return self._decide(memory_id, "approved", "memory.approve")
+
+    def reject(self, memory_id: str) -> MemoryEntry:
+        """Decline a ``proposed`` team entry (HUMAN): ``proposed → rejected``."""
+        return self._decide(memory_id, "rejected", "memory.reject")
+
+    def _decide(self, memory_id: str, status: str, action: str) -> MemoryEntry:
+        """The shared approve/reject body: a CAS status flip + audit + event.
+
+        Mirrors ``kantaq_core.proposals._flip_status`` exactly — a conditional
+        UPDATE re-checking ``review_status == 'proposed'``; a loser matches zero
+        rows and raises ``MemoryConflictError`` (the double-apply guard)."""
+        entry = self.get_entry(memory_id)
+        before = audit.snapshot(entry)
+        now = self._now()
+        claimed = cast(
+            "CursorResult[Any]",
+            self._session.execute(
+                sa_update(MemoryEntry)
+                .where(
+                    col(MemoryEntry.id) == entry.id,
+                    col(MemoryEntry.review_status) == "proposed",
+                )
+                .values(review_status=status, updated_at=now)
+            ),
+        )
+        if claimed.rowcount != 1:
+            self._session.rollback()
+            raise MemoryConflictError(
+                f"memory entry was decided concurrently or is not proposed (action {action})"
+            )
+        self._session.refresh(entry)
+        # Always a team row (only team rows ever reach 'proposed'); snapshots
+        # are full. The approver's actor differs from the proposer's
+        # (dogfood-gate #4) — it is whoever holds this service's actor_id.
+        self._audit_entry_write(action, entry, before=before, now=now)
+        after = audit.snapshot(entry)
+        self._emit_team_only(
+            "memory_entries",
+            entry,
+            "patch",
+            {"review_status": after["review_status"], "updated_at": after["updated_at"]},
+        )
         self._session.commit()
         self._session.refresh(entry)
         return entry
