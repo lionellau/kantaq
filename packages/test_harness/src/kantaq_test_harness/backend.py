@@ -15,10 +15,15 @@ from typing import Any
 # BackendPort nominally, not just structurally — and folds with the engine's
 # own fold_events, so the contract the real adapters (MOD-05/28) implement is
 # pinned to one shape.
-from kantaq_sync_engine.events import BackendUnavailable, CommittedEvent, fold_events
+from kantaq_sync_engine.events import (
+    BackendUnavailable,
+    CommitResult,
+    CommittedEvent,
+    fold_events,
+)
 from kantaq_test_harness.models import Event
 
-__all__ = ["CommittedEvent", "Event", "FakeBackend"]
+__all__ = ["CommitResult", "CommittedEvent", "Event", "FakeBackend"]
 
 
 class FakeBackend:
@@ -52,6 +57,63 @@ class FakeBackend:
             self._log.append(entry)
             committed.append(entry)
         return committed
+
+    def commit_events(
+        self, events: Iterable[Event], *, require_signature: bool = True
+    ) -> list[CommitResult]:
+        """The v0.2 atomic-RPC commit path (E24-T6): mirrors the real RPC's
+        contract — dedup by (actor_id, actor_seq), LWW by commit order, and a
+        per-event ``stale_base_rev`` when ``base_rev`` is older than the
+        committed head for the entity. Shares the log with ``push`` so
+        pull/snapshot/len see both paths. The fake does not enforce
+        ``require_signature`` (byte-verification is the VerifyingBackend's job,
+        mirroring D-09)."""
+        if self.offline:
+            raise BackendUnavailable("fake backend is partitioned (offline)")
+        results: list[CommitResult] = []
+        for event in events:
+            head = max(
+                (
+                    entry.revision
+                    for entry in self._log
+                    if entry.event.collection == event.collection
+                    and entry.event.entity_id == event.entity_id
+                ),
+                default=0,
+            )
+            key = (event.actor_id, event.actor_seq)
+            if key in self._seen:
+                prior = next(
+                    entry
+                    for entry in self._log
+                    if (entry.event.actor_id, entry.event.actor_seq) == key
+                )
+                results.append(
+                    CommitResult(
+                        event_id=event.event_id,
+                        status="duplicate",
+                        revision=prior.revision,
+                        base_rev=None,
+                        head_rev=head,
+                        stale_base_rev=None,
+                    )
+                )
+                continue
+            self._seen.add(key)
+            self._revision += 1
+            self._log.append(CommittedEvent(revision=self._revision, event=event))
+            stale = event.base_rev if event.base_rev is not None and event.base_rev < head else None
+            results.append(
+                CommitResult(
+                    event_id=event.event_id,
+                    status="committed",
+                    revision=self._revision,
+                    base_rev=event.base_rev,
+                    head_rev=head,
+                    stale_base_rev=stale,
+                )
+            )
+        return results
 
     def pull(self, collection: str | None = None, since: int = 0) -> list[CommittedEvent]:
         if self.offline:

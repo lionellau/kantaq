@@ -216,6 +216,12 @@ def event_row(session: Session, actor_id: str, actor_seq: int) -> EventLog | Non
     ).one_or_none()
 
 
+def event_by_id(session: Session, event_id: str) -> EventLog | None:
+    """The local log row for one ``event_id`` (the primary key), or ``None`` —
+    how a ``CommitResult`` (keyed by event_id) finds the row to mark committed."""
+    return session.get(EventLog, event_id)
+
+
 def _resolution_key(row: EventLog) -> tuple[int, int, str, int]:
     committed = row.committed_rev
     if committed is not None:

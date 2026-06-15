@@ -78,6 +78,7 @@ class FlushResult:
     committed: int
     reconciled: int  # own committed events backfilled before pushing (dropped-ack)
     rejected: int  # events moved to a terminal state (verify-failed / never-acceptable)
+    stale: int  # committed but base_rev was stale — E05-T2 mints a conflict_record here
     attempts: int  # connectivity attempts made
     drained: bool  # the outbox is empty afterwards (no pending rows remain)
 
@@ -202,15 +203,17 @@ class SyncEngine:
             try:
                 with Session(self._db) as session:
                     reconciled = self._reconcile_dropped_acks(session)
-                    submitted, committed, rejected = self._drain(session)
+                    submitted, committed, rejected, stale = self._drain(session)
                     drained = not event_log.pending_rows(session)
                     session.commit()
-                return FlushResult(submitted, committed, reconciled, rejected, attempts, drained)
+                return FlushResult(
+                    submitted, committed, reconciled, rejected, stale, attempts, drained
+                )
             except BackendUnavailable:
                 if attempts >= backoff.max_attempts:
                     with Session(self._db) as session:
                         drained = not event_log.pending_rows(session)
-                    return FlushResult(0, 0, 0, 0, attempts, drained)
+                    return FlushResult(0, 0, 0, 0, 0, attempts, drained)
                 sleep(backoff.delay(attempts))
 
     def _reconcile_dropped_acks(self, session: Session) -> int:
@@ -237,34 +240,41 @@ class SyncEngine:
             refold_entity(session, collection, entity_id)
         return backfilled
 
-    def _drain(self, session: Session) -> tuple[int, int, int]:
-        """Push pending events; resolve per-event rejections to terminal states.
+    def _drain(self, session: Session) -> tuple[int, int, int, int]:
+        """Commit pending events through the atomic RPC (the DEBT-25 cutover) and
+        map each ``CommitResult`` to its local row.
 
         A ``VerifyingBackend`` rejection (``EventRejected``) names the one
         offending event: it is marked terminal, its optimistic effect reverted,
-        and the remaining events re-pushed — so a single never-acceptable event
-        cannot wedge the outbox. A transport failure propagates to the backoff
-        loop, rolling the whole attempt back (the dropped-ack reconcile then
-        re-derives any commit the server did record).
+        and the remaining events re-committed — so a single never-acceptable
+        event cannot wedge the outbox. A transport failure propagates to the
+        backoff loop, rolling the whole attempt back (the dropped-ack reconcile
+        then re-derives any commit the server did record). A ``stale_base_rev``
+        result means the event committed LWW-by-order but a concurrent write
+        landed first — E05-T2 mints a ``conflict_record`` at this seam; E05-T1
+        only counts it.
         """
-        submitted = committed = rejected = 0
+        submitted = committed = rejected = stale = 0
         while True:
             pending = event_log.pending_rows(session)
             if not pending:
                 break
             events = [event_log.row_to_event(row) for row in pending]
             try:
-                results = self._backend.push(events)
+                results = self._backend.commit_events(events)
             except EventRejected as exc:
                 self._reject(session, exc.event, exc.code, exc.reason)
                 rejected += 1
                 continue  # poison event removed from the outbox; re-drain the rest
             submitted = len(events)
-            for entry in results:
-                self._mark_committed(session, entry.event, entry.revision)
-            committed = len(results)
+            for result in results:
+                self._mark_committed_by_id(session, result.event_id, result.revision)
+                if result.status == "committed":
+                    committed += 1
+                if result.stale_base_rev is not None:
+                    stale += 1
             break
-        return submitted, committed, rejected
+        return submitted, committed, rejected, stale
 
     def _reject(self, session: Session, event: Event, code: str, reason: str) -> None:
         """Move a never-acceptable event to a terminal state and revert its
@@ -301,6 +311,14 @@ class SyncEngine:
 
     def _mark_committed(self, session: Session, event: Event, revision: int) -> None:
         row = event_log.event_row(session, event.actor_id, event.actor_seq)
+        if row is not None and row.committed_rev is None:
+            row.committed_rev = revision
+            row.sync_state = event_log.SYNC_STATE_COMMITTED
+            session.add(row)
+
+    def _mark_committed_by_id(self, session: Session, event_id: str, revision: int) -> None:
+        """Mark a row committed from a ``CommitResult`` (keyed by event_id)."""
+        row = event_log.event_by_id(session, event_id)
         if row is not None and row.committed_rev is None:
             row.committed_rev = revision
             row.sync_state = event_log.SYNC_STATE_COMMITTED

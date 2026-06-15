@@ -42,7 +42,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from kantaq_protocol import CapabilityGrant, SchemaViolation, verify, verify_grant
-from kantaq_sync_engine.events import BackendPort, CommittedEvent, Event, fold_events
+from kantaq_sync_engine.events import (
+    BackendPort,
+    CommitResult,
+    CommittedEvent,
+    Event,
+    fold_events,
+)
 
 # Reject codes — FR-E03-5's wire vocabulary, extended for the two event-level
 # signature failures the grant vocabulary does not name.
@@ -203,6 +209,22 @@ class VerifyingBackend:
                 self._deny(event, verdict)
                 raise EventRejected(verdict, event)
         return self.inner.push(batch)
+
+    def commit_events(
+        self, events: Iterable[Event], *, require_signature: bool = True
+    ) -> list[CommitResult]:
+        """The DEBT-25 commit path: verify every event (the authoritative
+        client-side Ed25519 wall — the RPC cannot check the bytes, D-09) before
+        committing; reject the batch atomically if any fail, then delegate to
+        the atomic RPC."""
+        batch = list(events)
+        ctx = self.context()
+        for event in batch:
+            verdict = verify_event(event, ctx)
+            if not verdict.ok:
+                self._deny(event, verdict)
+                raise EventRejected(verdict, event)
+        return self.inner.commit_events(batch, require_signature=require_signature)
 
     def pull(self, collection: str | None = None, since: int = 0) -> list[CommittedEvent]:
         """Return only the committed events that verify; drop + audit the rest."""
