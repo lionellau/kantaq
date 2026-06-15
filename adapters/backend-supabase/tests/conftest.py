@@ -65,13 +65,13 @@ insert into sync_events (event_id, collection, entity_id, actor_id, actor_seq, o
 -- unix seconds; the window is wide open so the grant is valid at test time.
 insert into devices (id, created_at, updated_at, actor_seq, visibility, hosting_mode,
   retention_policy, public_key, member_id, label) values
-  ('dev_alice', {ENVELOPE}, '{'a' * 64}', 'mbr_alice', 'alice laptop');
+  ('dev_alice', {ENVELOPE}, '{"a" * 64}', 'mbr_alice', 'alice laptop');
 
 insert into capability_grants (id, created_at, updated_at, actor_seq, visibility,
   hosting_mode, retention_policy, subject, issuer, resource, verbs, issued_at,
   expires_at, sig) values
   ('grant_alice', {ENVELOPE}, 'mbr_alice', 'dev_alice', 'ws_a',
-   '["tickets.write"]'::json, 0, 2000000000, '{'a' * 64}');
+   '["tickets.write"]'::json, 0, 2000000000, '{"a" * 64}');
 """
 
 

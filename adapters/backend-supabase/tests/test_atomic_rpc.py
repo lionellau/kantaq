@@ -208,9 +208,7 @@ def test_a_grant_whose_resource_is_another_workspace_is_denied(sync_pg: Engine) 
 
 def test_a_grant_without_the_collection_verb_is_denied(sync_pg: Engine) -> None:
     _add_grant(sync_pg, "grant_noverb", verbs=("proposals.write",))
-    error = _reject(
-        sync_pg, [_event("evt_rpc_verb00000000001", seq=36, policy_ref="grant_noverb")]
-    )
+    error = _reject(sync_pg, [_event("evt_rpc_verb00000000001", seq=36, policy_ref="grant_noverb")])
     assert "policy_denied" in error and "tickets" in error
 
 
@@ -227,17 +225,13 @@ def test_a_grant_from_a_revoked_issuer_device_is_denied(sync_pg: Engine) -> None
 
 def test_a_grant_whose_issuer_device_is_absent_is_denied(sync_pg: Engine) -> None:
     _add_grant(sync_pg, "grant_noissuer", issuer="dev_ghost000000000000000001")
-    error = _reject(
-        sync_pg, [_event("evt_rpc_noiss0000001", seq=39, policy_ref="grant_noissuer")]
-    )
+    error = _reject(sync_pg, [_event("evt_rpc_noiss0000001", seq=39, policy_ref="grant_noissuer")])
     assert "policy_denied" in error and "issuer" in error
 
 
 def test_a_grant_with_an_inverted_validity_window_is_denied(sync_pg: Engine) -> None:
     _add_grant(sync_pg, "grant_inverted", issued_at=1000, expires_at=500)
-    error = _reject(
-        sync_pg, [_event("evt_rpc_inverted0001", seq=44, policy_ref="grant_inverted")]
-    )
+    error = _reject(sync_pg, [_event("evt_rpc_inverted0001", seq=44, policy_ref="grant_inverted")])
     assert "policy_denied" in error and "validity" in error
 
 

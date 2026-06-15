@@ -30,9 +30,7 @@ def _sql_verb_map() -> dict[str, frozenset[str]]:
     )
     assert body, "kantaq.collection_write_verbs not found in events.sql"
     arms = re.findall(r"when '([a-z_]+)' then array\[([^\]]*)\]", body.group(1))
-    return {
-        collection: frozenset(re.findall(r"'([^']+)'", verbs)) for collection, verbs in arms
-    }
+    return {collection: frozenset(re.findall(r"'([^']+)'", verbs)) for collection, verbs in arms}
 
 
 def test_sql_verb_map_matches_the_python_verifier() -> None:
