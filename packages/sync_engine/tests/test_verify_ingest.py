@@ -209,12 +209,23 @@ def test_malformed_event_is_a_schema_violation_not_a_crash() -> None:
     assert not verdict.ok and verdict.code == SCHEMA_VIOLATION
 
 
-def test_trust_root_tables_never_ride_the_fold() -> None:
-    """The signature gate reduces to the integrity of devices + grants, so they
-    (and tokens + the local audit trail) must never be syncable collections
-    a pulled event could forge into existence (E27 precondition, MED-4)."""
-    for collection in ("devices", "capability_grants", "tokens", "audit_events"):
+def test_secret_and_local_tables_never_ride_the_fold() -> None:
+    """tokens (secret material) and the per-replica audit trail must never be
+    syncable collections a pulled event could forge into existence (E27
+    precondition, MED-4). The device/grant trust roots DID join the fold at
+    E24-T7 — but only once verified ingestion is live (E24-T5 + the E24-T6
+    atomic RPC), so an unverifiable pushed event is rejected before it commits
+    and a pulled one is dropped before it folds (see the VerifyingBackend tests
+    below)."""
+    for collection in ("tokens", "audit_events"):
         assert collection not in SYNCABLE_MODELS
+
+
+def test_trust_roots_ride_the_fold_now_that_ingestion_is_verified() -> None:
+    """E24-T7: devices + capability_grants are on the applier surface (they fold
+    into their own tables); the wedge is closed (DEBT-21)."""
+    for collection in ("devices", "capability_grants"):
+        assert collection in SYNCABLE_MODELS
 
 
 # ----------------------------------------------------- the VerifyingBackend

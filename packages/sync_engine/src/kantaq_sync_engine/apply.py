@@ -23,7 +23,9 @@ from sqlmodel import Session, SQLModel
 from kantaq_core.tracker.events import DomainEvent, fold_entity
 from kantaq_db import (
     AgentProposal,
+    CapabilityGrantRow,
     Comment,
+    Device,
     Member,
     MemoryEntry,
     MemoryLink,
@@ -39,6 +41,12 @@ from kantaq_sync_engine.log import entity_rows
 # replica's own local trail (replays write their own, source="sync").
 # memory_entries/memory_links (E13): only team-visibility rows ever produce
 # events — local rows never enter the log at all (NFR-E13-1, MOD-19).
+# devices/capability_grants (E24-T7, v0.2): the trust roots join the surface now
+# that verified ingestion is live (E24-T5 client + E24-T6 RPC) — teammates need
+# each other's device keys and grants. Today they fold into their own tables
+# like any lww collection, which keeps a broad pull from wedging (DEBT-21);
+# routing them to a dedicated identity ingest on the offline inbox is the
+# follow-on E05-T1 work (MOD-26 §B2).
 SYNCABLE_MODELS: dict[str, type[SQLModel]] = {
     "workspaces": Workspace,
     "projects": Project,
@@ -51,6 +59,8 @@ SYNCABLE_MODELS: dict[str, type[SQLModel]] = {
     "agent_proposals": AgentProposal,
     "memory_entries": MemoryEntry,
     "memory_links": MemoryLink,
+    "devices": Device,
+    "capability_grants": CapabilityGrantRow,
 }
 
 

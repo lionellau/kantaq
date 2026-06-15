@@ -16,7 +16,9 @@ from kantaq_backend_supabase.auth import (
 )
 from kantaq_backend_supabase.keys import ServiceRoleKeyError, assert_client_safe_key, key_role
 from kantaq_backend_supabase.schema import (
+    APPEND_ONLY_POLICIES,
     COLLECTIONS_MIGRATION,
+    EVENTS_RPC,
     POLICIES_FILE,
     SYNC_MIGRATION,
     SYNC_POLICIES_FILE,
@@ -26,6 +28,7 @@ from kantaq_backend_supabase.schema import (
 from kantaq_backend_supabase.sync import (
     PAGE_SIZE,
     SYNC_TABLE,
+    CommitResult,
     SupabaseSyncBackend,
     SyncBackendError,
     SyncMember,
@@ -35,13 +38,16 @@ from kantaq_backend_supabase.sync import (
 __version__: str = "0.1.0"
 
 __all__ = [
+    "APPEND_ONLY_POLICIES",
     "COLLECTIONS_MIGRATION",
+    "EVENTS_RPC",
     "PAGE_SIZE",
     "POLICIES_FILE",
     "SYNC_MIGRATION",
     "SYNC_POLICIES_FILE",
     "SYNC_TABLE",
     "AuthError",
+    "CommitResult",
     "ServiceRoleKeyError",
     "Session",
     "SupabaseAuth",

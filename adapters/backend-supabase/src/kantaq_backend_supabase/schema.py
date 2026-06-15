@@ -37,6 +37,10 @@ POLICIES_FILE = Path("supabase") / "policies" / "0001_rls.sql"
 # infrastructure, not a D-07 collection mirror (MOD-04 "Data").
 SYNC_MIGRATION = Path("supabase") / "migrations" / "0002_sync_events.sql"
 SYNC_POLICIES_FILE = Path("supabase") / "policies" / "0002_sync_rls.sql"
+# The v0.2 atomic commit RPC (E24-T6, D-09) and the append-only trigger
+# (E24-T7) — hand-written backend artifacts; apply after the two 0002 files.
+EVENTS_RPC = Path("supabase") / "rpc" / "events.sql"
+APPEND_ONLY_POLICIES = Path("supabase") / "policies" / "0003_append_only.sql"
 
 _HEADER = """\
 -- supabase/migrations/0001_collections.sql
