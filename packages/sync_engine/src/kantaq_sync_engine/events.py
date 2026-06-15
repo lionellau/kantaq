@@ -23,6 +23,7 @@ from typing import Any, Protocol
 from kantaq_protocol import Event, Op
 
 __all__ = [
+    "SYNC_VERSION",
     "BackendPort",
     "BackendUnavailable",
     "CommitResult",
@@ -30,8 +31,27 @@ __all__ = [
     "Event",
     "FieldConflict",
     "Op",
+    "SessionInit",
+    "SyncVersionUnsupported",
     "fold_events",
 ]
+
+# The sync wire/codec version (MOD-26 §B7 / DEBT-09). Bumped only when the event
+# byte-shape or the commit protocol changes incompatibly; a replica tolerates a
+# peer within ±1 of this (see SyncEngine.SYNC_VERSION_SKEW) so a staggered
+# upgrade across a 2–10 person team interops during the rollout window.
+SYNC_VERSION = 1
+
+
+class SyncVersionUnsupported(Exception):
+    """The backend's sync/schema version is too far from ours to interop safely.
+
+    Raised by the handshake (MOD-26 §B7) **before** any drain or ingest, so the
+    durable outbox and inbox are untouched — a future-version peer can never
+    half-apply events an old replica would mis-decode, and a downgraded replica
+    never strands its pending writes. Non-destructive by construction: the caller
+    sees the raise, the local log is exactly as it was.
+    """
 
 
 class BackendUnavailable(Exception):
@@ -97,8 +117,33 @@ class CommitResult:
         return self.stale_base_rev is not None
 
 
+@dataclass(frozen=True)
+class SessionInit:
+    """The peer's advertised versions from the §B7 handshake.
+
+    Exchanged once per session before any sync I/O: the client advertises its
+    ``SYNC_VERSION`` + ``EXPECTED_SCHEMA_VERSION`` and the backend returns its
+    own. The engine refuses to proceed if the peer is more than one version away
+    (``SyncVersionUnsupported``), so a codec/schema mismatch is caught at the
+    door rather than corrupting the durable log mid-stream.
+    """
+
+    sync_version: int
+    schema_version: int
+
+
 class BackendPort(Protocol):
     """What the sync engine needs from a backend (implemented by MOD-05/28)."""
+
+    def session_init(self, *, sync_version: int, schema_version: int) -> SessionInit:
+        """Exchange protocol versions before any sync I/O (MOD-26 §B7).
+
+        The client advertises its ``sync_version`` + ``schema_version``; the
+        backend records them and returns its own. Optional: a pre-handshake
+        transport may omit it, in which case the engine treats the peer as
+        same-version (negotiation skipped) for backward compatibility.
+        """
+        ...
 
     def push(self, events: Iterable[Event]) -> list[CommittedEvent]:
         """Commit new events in submission order; drop (actor_id, actor_seq)

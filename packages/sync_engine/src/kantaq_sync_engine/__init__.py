@@ -28,6 +28,7 @@ from kantaq_sync_engine.engine import (
     SyncEngine,
 )
 from kantaq_sync_engine.events import (
+    SYNC_VERSION,
     BackendPort,
     BackendUnavailable,
     CommitResult,
@@ -35,6 +36,8 @@ from kantaq_sync_engine.events import (
     Event,
     FieldConflict,
     Op,
+    SessionInit,
+    SyncVersionUnsupported,
     fold_events,
 )
 from kantaq_sync_engine.log import (
@@ -95,6 +98,7 @@ __all__ = [
     "SYNC_STATE_PENDING",
     "SYNC_STATE_REBASE_REQUIRED",
     "SYNC_STATE_REJECTED",
+    "SYNC_VERSION",
     "UNSIGNED",
     "VERIFY_OK",
     "AuthoritativeWriteError",
@@ -118,8 +122,10 @@ __all__ = [
     "PullResult",
     "PushResult",
     "ResolveResult",
+    "SessionInit",
     "SigningRequiredError",
     "SyncEngine",
+    "SyncVersionUnsupported",
     "UnknownCollectionError",
     "VerifyContext",
     "VerifyingBackend",

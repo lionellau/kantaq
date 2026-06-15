@@ -16,11 +16,14 @@ from typing import Any
 # own fold_events, so the contract the real adapters (MOD-05/28) implement is
 # pinned to one shape.
 from kantaq_db.meta import COLLECTION_META
+from kantaq_db.schema_version import EXPECTED_SCHEMA_VERSION
 from kantaq_sync_engine.events import (
+    SYNC_VERSION,
     BackendUnavailable,
     CommitResult,
     CommittedEvent,
     FieldConflict,
+    SessionInit,
     fold_events,
 )
 from kantaq_sync_engine.merge import detect_merge
@@ -39,10 +42,20 @@ class FakeBackend:
         # The log is untouched, so flipping it back resumes exactly where it left
         # off — what the offline-aware flush loop and the partition proofs need.
         self.offline = False
+        # §B7 handshake: the versions this backend advertises. Tests bump these to
+        # model a peer the engine should refuse (out-of-range) or tolerate (±1).
+        self.sync_version = SYNC_VERSION
+        self.schema_version = EXPECTED_SCHEMA_VERSION
 
     @property
     def revision(self) -> int:
         return self._revision
+
+    def session_init(self, *, sync_version: int, schema_version: int) -> SessionInit:
+        """Mirror the RPC's handshake: record the client's advertised versions
+        (a no-op for the fake) and return our own (MOD-26 §B7)."""
+        del sync_version, schema_version  # the real RPC logs these; the fake echoes
+        return SessionInit(self.sync_version, self.schema_version)
 
     def push(self, events: Iterable[Event]) -> list[CommittedEvent]:
         """Append new events, assigning a monotonic revision. Duplicates (same
@@ -184,6 +197,10 @@ class PartitionLink:
     def _require_link(self) -> None:
         if not self.online:
             raise BackendUnavailable("replica is partitioned from the backend")
+
+    def session_init(self, *, sync_version: int, schema_version: int) -> SessionInit:
+        self._require_link()
+        return self._backend.session_init(sync_version=sync_version, schema_version=schema_version)
 
     def push(self, events: Iterable[Event]) -> list[CommittedEvent]:
         self._require_link()

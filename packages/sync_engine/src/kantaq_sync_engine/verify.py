@@ -47,6 +47,7 @@ from kantaq_sync_engine.events import (
     CommitResult,
     CommittedEvent,
     Event,
+    SessionInit,
     fold_events,
 )
 
@@ -199,6 +200,16 @@ class VerifyingBackend:
     context: Callable[[], VerifyContext]
     cutover_rev: int = 0
     on_deny: Callable[[Event, EventVerification], None] | None = field(default=None)
+
+    def session_init(self, *, sync_version: int, schema_version: int) -> SessionInit:
+        """Pass the §B7 handshake straight through to the inner backend — the
+        verifying wrapper adds nothing to version negotiation. A transport that
+        predates the handshake is treated as same-version (negotiation skipped)."""
+        init = getattr(self.inner, "session_init", None)
+        if init is None:
+            return SessionInit(sync_version, schema_version)
+        peer: SessionInit = init(sync_version=sync_version, schema_version=schema_version)
+        return peer
 
     def push(self, events: Iterable[Event]) -> list[CommittedEvent]:
         """Verify every event before submitting; reject the batch if any fail."""

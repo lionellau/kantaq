@@ -30,10 +30,19 @@ from sqlmodel import Session
 
 from kantaq_core import audit
 from kantaq_db import ConflictRecord, SyncCursor, new_ulid
+from kantaq_db.schema_version import EXPECTED_SCHEMA_VERSION
 from kantaq_protocol import sign
 from kantaq_sync_engine import log as event_log
 from kantaq_sync_engine.apply import refold_entity
-from kantaq_sync_engine.events import BackendPort, BackendUnavailable, CommitResult, Event
+from kantaq_sync_engine.events import (
+    SYNC_VERSION,
+    BackendPort,
+    BackendUnavailable,
+    CommitResult,
+    Event,
+    SessionInit,
+    SyncVersionUnsupported,
+)
 from kantaq_sync_engine.log import EventSigner
 from kantaq_sync_engine.merge import conflict_record_id
 from kantaq_sync_engine.verify import EventRejected
@@ -97,6 +106,10 @@ class ResolveResult:
 class SyncEngine:
     """One replica's sync loop: a local log, a backend port, an actor."""
 
+    # Tolerate one version of skew either way (MOD-26 §B7): during a staggered
+    # team rollout an N and an N+1 replica must still converge; N±2 is refused.
+    SYNC_VERSION_SKEW = 1
+
     def __init__(
         self,
         db_engine: Engine,
@@ -115,11 +128,58 @@ class SyncEngine:
         # sync loop (no workspace_id) skips minting.
         self._workspace_id = workspace_id
         self._signer = signer
+        # The §B7 handshake result, memoized for the session (one negotiation,
+        # not one-per-call). Reset to None to re-negotiate (e.g. after reconnect).
+        self._session: SessionInit | None = None
+
+    # ----------------------------------------------------------- handshake
+
+    def negotiate_session(self) -> SessionInit:
+        """Exchange protocol versions and verify the peer is within ±1 (§B7).
+
+        Memoized for the session. A backend without ``session_init`` (a
+        pre-handshake transport) is treated as same-version — negotiation is
+        skipped, preserving backward compatibility. On an out-of-range peer this
+        writes a denial audit row and raises ``SyncVersionUnsupported`` **before**
+        any drain/ingest, so the durable log is never touched.
+        """
+        if self._session is not None:
+            return self._session
+        init = getattr(self._backend, "session_init", None)
+        if init is None:
+            self._session = SessionInit(SYNC_VERSION, EXPECTED_SCHEMA_VERSION)
+            return self._session
+        peer: SessionInit = init(sync_version=SYNC_VERSION, schema_version=EXPECTED_SCHEMA_VERSION)
+        if abs(peer.sync_version - SYNC_VERSION) > self.SYNC_VERSION_SKEW:
+            self._audit_version_reject(peer)
+            raise SyncVersionUnsupported(
+                f"backend sync_version {peer.sync_version} is more than "
+                f"{self.SYNC_VERSION_SKEW} from ours ({SYNC_VERSION}); refusing to sync"
+            )
+        self._session = peer
+        return peer
+
+    def _audit_version_reject(self, peer: SessionInit) -> None:
+        """Record the §B7 refusal (NFR-E09-1 style) in its own transaction."""
+        with Session(self._db) as session:
+            audit.write(
+                session,
+                actor_id=self._actor_id,
+                action="sync.version_rejected",
+                source="sync",
+                object_ref="sync/session",
+                after={
+                    "ours": {"sync": SYNC_VERSION, "schema": EXPECTED_SCHEMA_VERSION},
+                    "peer": {"sync": peer.sync_version, "schema": peer.schema_version},
+                },
+            )
+            session.commit()
 
     # ------------------------------------------------------------------ push
 
     def push(self) -> PushResult:
         """Submit pending local events; mark what the backend committed."""
+        self.negotiate_session()
         with Session(self._db) as session:
             pending = event_log.pending_rows(session)
             events = [event_log.row_to_event(row) for row in pending]
@@ -137,6 +197,7 @@ class SyncEngine:
 
     def pull(self, collection: str | None = None) -> PullResult:
         """Ingest committed events since the cursor; re-fold what they touch."""
+        self.negotiate_session()
         key = collection or ALL_COLLECTIONS
         with Session(self._db) as session:
             since = self._cursor(session, key)
@@ -222,6 +283,7 @@ class SyncEngine:
         """
         backoff = backoff or Backoff()
         sleep = sleeper if sleeper is not None else time.sleep
+        self.negotiate_session()  # §B7: refuse an out-of-range peer before draining
         attempts = 0
         while True:
             attempts += 1
