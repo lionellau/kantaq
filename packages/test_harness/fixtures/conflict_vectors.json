@@ -1,0 +1,113 @@
+{
+  "_comment": "Golden conflict-merge vectors (MOD-26 §B3, E05-T2). The SINGLE source asserted equal against detect_merge (Python) and the plpgsql RPC on EphemeralPostgres (T2.6) -- one decision, one truth. Each case: an entity's committed prefix + an incoming committed event (with its assigned revision) -> the expected MergeOutcome. Shared defaults (entity_id/collection/actor_id) fill each event; per-event fields are revision/actor_seq/op/base_rev/payload.",
+  "entity_id": "tkt_conflict00000000000001",
+  "collection": "tickets",
+  "actor_id": "mbr_aa0000000000000000000",
+  "cases": [
+    {
+      "name": "R0_saw_head_applies",
+      "committed_prefix": [
+        {"revision": 1, "actor_seq": 1, "op": "patch", "base_rev": null, "payload": {"status": "todo", "priority": "low"}}
+      ],
+      "incoming": {"revision": 2, "actor_seq": 2, "op": "patch", "base_rev": 1, "payload": {"status": "doing"}},
+      "expected": {"entity_verdict": "apply", "conflicts": []}
+    },
+    {
+      "name": "R1_different_field_auto_merges",
+      "committed_prefix": [
+        {"revision": 1, "actor_seq": 1, "op": "patch", "base_rev": null, "payload": {"status": "todo", "priority": "low"}},
+        {"revision": 5, "actor_seq": 2, "op": "patch", "base_rev": 1, "payload": {"status": "doing"}}
+      ],
+      "incoming": {"revision": 7, "actor_seq": 1, "op": "patch", "base_rev": 1, "payload": {"priority": "high"}},
+      "expected": {"entity_verdict": "auto_merge", "conflicts": []}
+    },
+    {
+      "name": "R2_same_field_same_value_is_idempotent",
+      "committed_prefix": [
+        {"revision": 1, "actor_seq": 1, "op": "patch", "base_rev": null, "payload": {"status": "todo"}},
+        {"revision": 5, "actor_seq": 2, "op": "patch", "base_rev": 1, "payload": {"status": "doing"}}
+      ],
+      "incoming": {"revision": 7, "actor_seq": 1, "op": "patch", "base_rev": 1, "payload": {"status": "doing"}},
+      "expected": {"entity_verdict": "idempotent", "conflicts": []}
+    },
+    {
+      "name": "R3_same_field_different_value_conflicts",
+      "committed_prefix": [
+        {"revision": 1, "actor_seq": 1, "op": "patch", "base_rev": null, "payload": {"status": "todo"}},
+        {"revision": 5, "actor_seq": 2, "op": "patch", "base_rev": 1, "payload": {"status": "doing"}}
+      ],
+      "incoming": {"revision": 7, "actor_seq": 1, "op": "patch", "base_rev": 1, "payload": {"status": "done"}},
+      "expected": {
+        "entity_verdict": "conflict",
+        "conflicts": [{"field": "status", "contending_revision": 5, "head_value": "doing", "incoming_value": "done"}]
+      }
+    },
+    {
+      "name": "R4_multi_write_collapses_to_field_head",
+      "committed_prefix": [
+        {"revision": 1, "actor_seq": 1, "op": "patch", "base_rev": null, "payload": {"status": "todo"}},
+        {"revision": 3, "actor_seq": 2, "op": "patch", "base_rev": 1, "payload": {"status": "doing"}},
+        {"revision": 5, "actor_seq": 3, "op": "patch", "base_rev": 3, "payload": {"status": "review"}},
+        {"revision": 8, "actor_seq": 4, "op": "patch", "base_rev": 5, "payload": {"status": "done"}}
+      ],
+      "incoming": {"revision": 10, "actor_seq": 1, "op": "patch", "base_rev": 1, "payload": {"status": "blocked"}},
+      "expected": {
+        "entity_verdict": "conflict",
+        "conflicts": [{"field": "status", "contending_revision": 8, "head_value": "done", "incoming_value": "blocked"}]
+      }
+    },
+    {
+      "name": "R5_genesis_base_rev_null_still_conflicts",
+      "committed_prefix": [
+        {"revision": 1, "actor_seq": 1, "op": "patch", "base_rev": null, "payload": {"status": "todo"}}
+      ],
+      "incoming": {"revision": 2, "actor_seq": 1, "op": "patch", "base_rev": null, "payload": {"status": "doing"}},
+      "expected": {
+        "entity_verdict": "conflict",
+        "conflicts": [{"field": "status", "contending_revision": 1, "head_value": "todo", "incoming_value": "doing"}]
+      }
+    },
+    {
+      "name": "R6_edit_vs_committed_delete_stays_deleted",
+      "committed_prefix": [
+        {"revision": 1, "actor_seq": 1, "op": "patch", "base_rev": null, "payload": {"status": "todo"}},
+        {"revision": 5, "actor_seq": 2, "op": "tombstone", "base_rev": 1, "payload": {}}
+      ],
+      "incoming": {"revision": 8, "actor_seq": 1, "op": "patch", "base_rev": 1, "payload": {"status": "doing"}},
+      "expected": {
+        "entity_verdict": "edit_vs_delete",
+        "conflicts": [{"field": "__entity__", "contending_revision": 5, "head_value": null, "incoming_value": {"status": "doing"}}]
+      }
+    },
+    {
+      "name": "R7_delete_vs_delete_is_idempotent",
+      "committed_prefix": [
+        {"revision": 1, "actor_seq": 1, "op": "patch", "base_rev": null, "payload": {"status": "todo"}},
+        {"revision": 5, "actor_seq": 2, "op": "tombstone", "base_rev": 1, "payload": {}}
+      ],
+      "incoming": {"revision": 8, "actor_seq": 1, "op": "tombstone", "base_rev": 1, "payload": {}},
+      "expected": {"entity_verdict": "delete_idempotent", "conflicts": []}
+    },
+    {
+      "name": "S1_setter_exactly_at_base_is_excluded_from_the_window",
+      "committed_prefix": [
+        {"revision": 1, "actor_seq": 1, "op": "patch", "base_rev": null, "payload": {"status": "todo"}},
+        {"revision": 5, "actor_seq": 2, "op": "patch", "base_rev": 1, "payload": {"status": "doing"}}
+      ],
+      "incoming": {"revision": 7, "actor_seq": 1, "op": "patch", "base_rev": 5, "payload": {"status": "done"}},
+      "expected": {"entity_verdict": "apply", "conflicts": []}
+    },
+    {
+      "name": "S2_null_head_value_differs_from_a_set_value",
+      "committed_prefix": [
+        {"revision": 1, "actor_seq": 1, "op": "patch", "base_rev": null, "payload": {"assignee": "mbr_x"}},
+        {"revision": 5, "actor_seq": 2, "op": "patch", "base_rev": 1, "payload": {"assignee": null}}
+      ],
+      "incoming": {"revision": 7, "actor_seq": 1, "op": "patch", "base_rev": 1, "payload": {"assignee": "mbr_y0000000000000000000"}},
+      "expected": {
+        "entity_verdict": "conflict",
+        "conflicts": [{"field": "assignee", "contending_revision": 5, "head_value": null, "incoming_value": "mbr_y0000000000000000000"}]
+      }
+    }
+  ]
+}

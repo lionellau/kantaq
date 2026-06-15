@@ -68,6 +68,39 @@ as $$
     when 'agent_proposals' then array['proposals.write', 'tickets.write']
     when 'memory_entries' then array['memory.write']
     when 'memory_links' then array['memory.write']
+    when 'conflict_records' then array['conflict_records.write']
+    else null
+  end
+$$;
+
+-- The per-collection merge policy (E05-T2 / MOD-26 §B3), pinned EQUAL to
+-- kantaq_db.meta.COLLECTION_META by tests/test_merge_policy_parity.py. The
+-- per-field conflict scan below runs ONLY for 'lww' collections — append_only
+-- logs and authoritative_tx tables (conflict_records, grants, tokens) never
+-- mint a conflict_record. Drift here vs meta.py = the fake and the RPC mint on
+-- different collections, so the gate parses this CASE and fails on mismatch.
+create or replace function kantaq.collection_merge_policy(p_collection varchar)
+returns text
+language sql immutable
+set search_path = ''
+as $$
+  select case p_collection
+    when 'workspaces' then 'lww'
+    when 'projects' then 'lww'
+    when 'tickets' then 'lww'
+    when 'comments' then 'append_only'
+    when 'ticket_relationships' then 'lww'
+    when 'members' then 'lww'
+    when 'tokens' then 'authoritative_tx'
+    when 'audit_events' then 'append_only'
+    when 'agent_proposals' then 'lww'
+    when 'memory_entries' then 'lww'
+    when 'memory_links' then 'lww'
+    when 'devices' then 'lww'
+    when 'capability_grants' then 'authoritative_tx'
+    when 'skill_containers' then 'lww'
+    when 'skill_mappings' then 'lww'
+    when 'conflict_records' then 'authoritative_tx'
     else null
   end
 $$;
@@ -106,6 +139,15 @@ declare
   v_rev        bigint;
   v_status     text;
   v_stale      bigint;
+  -- Per-field merge (E05-T2 / MOD-26 §B4): the raw conflict tuples this commit
+  -- contends, mirroring detect_merge() in merge.py. Hashed CLIENT-SIDE only.
+  v_base_eff   bigint;
+  v_conflicts  jsonb;
+  v_field      text;
+  v_in_value   jsonb;
+  v_head_value jsonb;
+  v_c_rev      bigint;
+  v_tomb_rev   bigint;
   results      jsonb := '[]'::jsonb;
 begin
   -- ----------------------------------------------------------------- pass 1
@@ -254,13 +296,76 @@ begin
       v_status := 'committed';
     end if;
 
+    -- ----------------------------------------------------- per-field merge
+    -- E05-T2 / MOD-26 §B4: when a committed patch on an lww collection lands
+    -- with prior commits in its contention window (base, head], report the
+    -- PER-FIELD conflicts so the committing client mints one signed
+    -- conflict_record per entry. This MIRRORS detect_merge() (merge.py) — the
+    -- single source of the rule — and is pinned to it by the golden
+    -- conflict_vectors.json on the EphemeralPostgres cross-check (CI). The RPC
+    -- returns ONLY the raw contender tuple (field, contending_revision, both
+    -- candidate values); the deterministic conflict id is hashed client-side
+    -- (no plpgsql hash → no cross-language id drift, D-09 / design-review e#3).
+    -- base = coalesce(base_rev, 0): a NULL base is the genesis floor (0), so a
+    -- never-based write still contends against everything committed since.
+    v_conflicts := '[]'::jsonb;
+    v_base_eff := coalesce(v_base, 0);
+    if v_status = 'committed' and v_op = 'patch'
+       and kantaq.collection_merge_policy(v_collection) = 'lww'
+       and v_head > v_base_eff then
+      -- Edit-vs-delete (MOD-26 §B5) takes precedence: a patch whose base
+      -- predates a committed tombstone it never saw stays deleted — one whole
+      -- entity conflict (__entity__), the human revives from the record.
+      select max(revision) into v_tomb_rev from public.sync_events
+        where workspace_id = v_ws and collection = v_collection and entity_id = v_entity
+          and op = 'tombstone' and revision > v_base_eff and revision <= v_head;
+      if v_tomb_rev is not null then
+        v_conflicts := jsonb_build_array(jsonb_build_object(
+          'field', '__entity__',
+          'contending_revision', v_tomb_rev,
+          'head_value', null,
+          'incoming_value', e -> 'payload'
+        ));
+      else
+        for v_field, v_in_value in select key, value from jsonb_each(e -> 'payload')
+        loop
+          if v_field = '__revive__' then
+            continue;  -- the revive sentinel is never a contended column
+          end if;
+          -- the field-head in the window: the latest NON-tombstone setter of
+          -- this field with base < revision <= head (multi-writes collapse to
+          -- E-vs-field-head, so the contender is gapless-prefix deterministic).
+          -- sync_events.payload is stored as `json`; the key-existence (?) and
+          -- field (->) operators are jsonb-only, so cast the column per row.
+          select se.revision, (se.payload::jsonb) -> v_field
+            into v_c_rev, v_head_value
+            from public.sync_events se
+            where se.workspace_id = v_ws and se.collection = v_collection
+              and se.entity_id = v_entity and se.op <> 'tombstone'
+              and se.revision > v_base_eff and se.revision <= v_head
+              and (se.payload::jsonb) ? v_field
+            order by se.revision desc
+            limit 1;
+          if found and v_head_value is distinct from v_in_value then
+            v_conflicts := v_conflicts || jsonb_build_object(
+              'field', v_field,
+              'contending_revision', v_c_rev,
+              'head_value', v_head_value,
+              'incoming_value', v_in_value
+            );
+          end if;
+        end loop;
+      end if;
+    end if;
+
     results := results || jsonb_build_object(
       'event_id', v_event_id,
       'status', v_status,
       'revision', v_rev,
       'base_rev', case when v_status = 'duplicate' then null else v_base end,
       'head_rev', v_head,
-      'stale_base_rev', v_stale
+      'stale_base_rev', v_stale,
+      'conflicts', v_conflicts
     );
   end loop;
 

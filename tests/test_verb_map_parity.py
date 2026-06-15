@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from kantaq_core.identity.roles import Action
 from kantaq_sync_engine.verify import _COLLECTION_WRITE_VERBS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -35,3 +36,14 @@ def _sql_verb_map() -> dict[str, frozenset[str]]:
 
 def test_sql_verb_map_matches_the_python_verifier() -> None:
     assert _sql_verb_map() == dict(_COLLECTION_WRITE_VERBS)
+
+
+def test_every_write_verb_is_grantable_in_the_roles_vocab() -> None:
+    """A verb in the collection map must exist in the roles ``Action`` vocab —
+    else ``ensure_member_grant`` can never carry it and an event for that
+    collection fails verb-scoping while the SQL↔Python parity above stays green
+    (the silent gap the E05-T2 review flagged for ``conflict_records.write``)."""
+    vocab = {action.value for action in Action}
+    used = {verb for verbs in _COLLECTION_WRITE_VERBS.values() for verb in verbs}
+    missing = used - vocab
+    assert not missing, f"verbs not in roles.Action (ungrantable): {sorted(missing)}"

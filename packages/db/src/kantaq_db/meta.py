@@ -87,9 +87,16 @@ COLLECTION_META: dict[str, CollectionMeta] = {
     # registry sync is deferred, so CRUD writes locally + audited, never emitted.
     "skill_containers": CollectionMeta("skill_containers", "backend", "lww", _DEFAULT_PRIVACY),
     "skill_mappings": CollectionMeta("skill_mappings", "backend", "lww", _DEFAULT_PRIVACY),
+    # E05-T2 (MOD-26 §B4): resolvable same-scalar conflicts, minted at the
+    # authoritative merge — authoritative_tx (never optimistically client-written)
+    # + backend authority. On the sync surface, but routed to a dedicated ingest
+    # (never the optimistic-domain fold; see kantaq_sync_engine.apply).
+    "conflict_records": CollectionMeta(
+        "conflict_records", "backend", "authoritative_tx", _DEFAULT_PRIVACY
+    ),
 }
 
 
 def collection_names() -> tuple[str, ...]:
-    """The declared collection names, in declaration order (15 in v0.2)."""
+    """The declared collection names, in declaration order (16 in v0.2)."""
     return tuple(COLLECTION_META)

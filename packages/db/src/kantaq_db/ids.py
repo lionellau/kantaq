@@ -47,6 +47,21 @@ def _encode(value: int, length: int) -> str:
     return out.decode("ascii")
 
 
+def encode_base32(value: int, length: int) -> str:
+    """Public Crockford Base32 encoder (``length`` chars, big-endian).
+
+    Exposed for the conflict-record deterministic id (E05-T2 / MOD-26 §B4): it
+    packs a 130-bit hash digest into a 26-char id that fits ``CollectionBase.id``
+    (5 bits/char × 26 = 130 bits). ULID minting uses the same encoder internally.
+    Raises if ``value`` does not fit ``length`` chars (no silent truncation).
+    """
+    if value < 0:
+        raise ValueError("value must be non-negative")
+    if value >= (1 << (5 * length)):
+        raise ValueError(f"value does not fit in {length} base32 chars")
+    return _encode(value, length)
+
+
 def _now_ms() -> int:
     return int(time.time() * 1000)
 

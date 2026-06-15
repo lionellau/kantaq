@@ -23,14 +23,35 @@ from typing import Any, Protocol
 from kantaq_protocol import Event, Op
 
 __all__ = [
+    "SYNC_VERSION",
     "BackendPort",
     "BackendUnavailable",
     "CommitResult",
     "CommittedEvent",
     "Event",
+    "FieldConflict",
     "Op",
+    "SessionInit",
+    "SyncVersionUnsupported",
     "fold_events",
 ]
+
+# The sync wire/codec version (MOD-26 §B7 / DEBT-09). Bumped only when the event
+# byte-shape or the commit protocol changes incompatibly; a replica tolerates a
+# peer within ±1 of this (see SyncEngine.SYNC_VERSION_SKEW) so a staggered
+# upgrade across a 2–10 person team interops during the rollout window.
+SYNC_VERSION = 1
+
+
+class SyncVersionUnsupported(Exception):
+    """The backend's sync/schema version is too far from ours to interop safely.
+
+    Raised by the handshake (MOD-26 §B7) **before** any drain or ingest, so the
+    durable outbox and inbox are untouched — a future-version peer can never
+    half-apply events an old replica would mis-decode, and a downgraded replica
+    never strands its pending writes. Non-destructive by construction: the caller
+    sees the raise, the local log is exactly as it was.
+    """
 
 
 class BackendUnavailable(Exception):
@@ -54,15 +75,33 @@ class CommittedEvent:
 
 
 @dataclass(frozen=True)
+class FieldConflict:
+    """One per-field conflict the atomic RPC detected (MOD-26 §B4, E05-T2).
+
+    The **raw tuple** the committing client mints a ``conflict_record`` from: the
+    contended field, the committed field-head revision in ``(base, head]`` it
+    collides with, and both candidate scalars. The conflict-record id is hashed
+    **client-side** from these (no plpgsql hash), so this carries only the raw
+    inputs — keeping the merge id single-language (no cross-language drift).
+    """
+
+    field: str
+    contending_revision: int
+    head_value: Any
+    incoming_value: Any
+
+
+@dataclass(frozen=True)
 class CommitResult:
     """One event's outcome from the v0.2 atomic commit RPC (E24-T6 / MOD-05).
 
     ``status`` is ``"committed"`` or ``"duplicate"`` (the dedup floor was hit on
     an idempotent re-push). ``revision`` is the assigned commit order.
     ``stale_base_rev`` is set (to the event's ``base_rev``) when that base was
-    older than the committed head for the entity — a concurrent write landed
-    first, so the committing client mints a signed ``conflict_record`` (E05-T2).
-    ``head_rev`` is the committed head observed before this event committed.
+    older than the committed head for the entity. ``conflicts`` is the per-field
+    detail (E05-T2): when non-empty the committing client mints a signed
+    ``conflict_record`` per entry. ``head_rev`` is the committed head observed
+    before this event committed.
     """
 
     event_id: str
@@ -71,14 +110,40 @@ class CommitResult:
     base_rev: int | None
     head_rev: int
     stale_base_rev: int | None
+    conflicts: tuple[FieldConflict, ...] = ()
 
     @property
     def is_stale(self) -> bool:
         return self.stale_base_rev is not None
 
 
+@dataclass(frozen=True)
+class SessionInit:
+    """The peer's advertised versions from the §B7 handshake.
+
+    Exchanged once per session before any sync I/O: the client advertises its
+    ``SYNC_VERSION`` + ``EXPECTED_SCHEMA_VERSION`` and the backend returns its
+    own. The engine refuses to proceed if the peer is more than one version away
+    (``SyncVersionUnsupported``), so a codec/schema mismatch is caught at the
+    door rather than corrupting the durable log mid-stream.
+    """
+
+    sync_version: int
+    schema_version: int
+
+
 class BackendPort(Protocol):
     """What the sync engine needs from a backend (implemented by MOD-05/28)."""
+
+    def session_init(self, *, sync_version: int, schema_version: int) -> SessionInit:
+        """Exchange protocol versions before any sync I/O (MOD-26 §B7).
+
+        The client advertises its ``sync_version`` + ``schema_version``; the
+        backend records them and returns its own. Optional: a pre-handshake
+        transport may omit it, in which case the engine treats the peer as
+        same-version (negotiation skipped) for backward compatibility.
+        """
+        ...
 
     def push(self, events: Iterable[Event]) -> list[CommittedEvent]:
         """Commit new events in submission order; drop (actor_id, actor_seq)

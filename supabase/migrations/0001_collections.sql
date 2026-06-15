@@ -83,6 +83,35 @@ CREATE TABLE workspaces (
 	PRIMARY KEY (id)
 );
 
+CREATE TABLE conflict_records (
+	id VARCHAR(26) NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	actor_seq INTEGER NOT NULL,
+	visibility VARCHAR(16) NOT NULL,
+	hosting_mode VARCHAR(16) NOT NULL,
+	retention_policy VARCHAR(16) NOT NULL,
+	workspace_id VARCHAR NOT NULL,
+	collection VARCHAR(32) NOT NULL,
+	entity_id VARCHAR(26) NOT NULL,
+	field VARCHAR(64) NOT NULL,
+	contending_revisions JSON NOT NULL,
+	candidate_values JSON NOT NULL,
+	base_rev INTEGER NOT NULL,
+	head_rev INTEGER NOT NULL,
+	actor VARCHAR(26) NOT NULL,
+	status VARCHAR(16) NOT NULL,
+	resolved_by VARCHAR(26),
+	resolved_choice VARCHAR(16),
+	resolved_at TIMESTAMP WITHOUT TIME ZONE,
+	PRIMARY KEY (id),
+	FOREIGN KEY(workspace_id) REFERENCES workspaces (id)
+);
+
+CREATE INDEX ix_conflict_records_entity_id ON conflict_records (entity_id);
+
+CREATE INDEX ix_conflict_records_workspace_id ON conflict_records (workspace_id);
+
 CREATE TABLE members (
 	id VARCHAR(26) NOT NULL,
 	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,

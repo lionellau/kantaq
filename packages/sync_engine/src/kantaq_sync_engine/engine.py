@@ -29,10 +29,22 @@ from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
 from kantaq_core import audit
-from kantaq_db import SyncCursor
+from kantaq_db import ConflictRecord, SyncCursor, new_ulid
+from kantaq_db.schema_version import EXPECTED_SCHEMA_VERSION
+from kantaq_protocol import sign
 from kantaq_sync_engine import log as event_log
 from kantaq_sync_engine.apply import refold_entity
-from kantaq_sync_engine.events import BackendPort, BackendUnavailable, Event
+from kantaq_sync_engine.events import (
+    SYNC_VERSION,
+    BackendPort,
+    BackendUnavailable,
+    CommitResult,
+    Event,
+    SessionInit,
+    SyncVersionUnsupported,
+)
+from kantaq_sync_engine.log import EventSigner
+from kantaq_sync_engine.merge import conflict_record_id
 from kantaq_sync_engine.verify import EventRejected
 
 ALL_COLLECTIONS = "*"
@@ -78,23 +90,96 @@ class FlushResult:
     committed: int
     reconciled: int  # own committed events backfilled before pushing (dropped-ack)
     rejected: int  # events moved to a terminal state (verify-failed / never-acceptable)
-    stale: int  # committed but base_rev was stale — E05-T2 mints a conflict_record here
+    stale: int  # committed but base_rev was stale (a concurrent write landed first)
+    minted: int  # conflict_records minted from per-field conflicts (E05-T2)
     attempts: int  # connectivity attempts made
     drained: bool  # the outbox is empty afterwards (no pending rows remain)
+
+
+@dataclass(frozen=True)
+class ResolveResult:
+    conflict_id: str
+    resolved: bool  # the record is now resolved (the superseding write committed)
+    rebase_required: bool  # the field head moved past head_rev → record re-surfaces
 
 
 class SyncEngine:
     """One replica's sync loop: a local log, a backend port, an actor."""
 
-    def __init__(self, db_engine: Engine, backend: BackendPort, *, actor_id: str) -> None:
+    # Tolerate one version of skew either way (MOD-26 §B7): during a staggered
+    # team rollout an N and an N+1 replica must still converge; N±2 is refused.
+    SYNC_VERSION_SKEW = 1
+
+    def __init__(
+        self,
+        db_engine: Engine,
+        backend: BackendPort,
+        *,
+        actor_id: str,
+        workspace_id: str | None = None,
+        signer: EventSigner | None = None,
+    ) -> None:
         self._db = db_engine
         self._backend = backend
         self._actor_id = actor_id
+        # workspace_id + signer are needed only to MINT conflict_records (E05-T2):
+        # the record carries the workspace it scopes, and post-cutover the minted
+        # event is signed under the actor's conflict_records.write grant. A bare
+        # sync loop (no workspace_id) skips minting.
+        self._workspace_id = workspace_id
+        self._signer = signer
+        # The §B7 handshake result, memoized for the session (one negotiation,
+        # not one-per-call). Reset to None to re-negotiate (e.g. after reconnect).
+        self._session: SessionInit | None = None
+
+    # ----------------------------------------------------------- handshake
+
+    def negotiate_session(self) -> SessionInit:
+        """Exchange protocol versions and verify the peer is within ±1 (§B7).
+
+        Memoized for the session. A backend without ``session_init`` (a
+        pre-handshake transport) is treated as same-version — negotiation is
+        skipped, preserving backward compatibility. On an out-of-range peer this
+        writes a denial audit row and raises ``SyncVersionUnsupported`` **before**
+        any drain/ingest, so the durable log is never touched.
+        """
+        if self._session is not None:
+            return self._session
+        init = getattr(self._backend, "session_init", None)
+        if init is None:
+            self._session = SessionInit(SYNC_VERSION, EXPECTED_SCHEMA_VERSION)
+            return self._session
+        peer: SessionInit = init(sync_version=SYNC_VERSION, schema_version=EXPECTED_SCHEMA_VERSION)
+        if abs(peer.sync_version - SYNC_VERSION) > self.SYNC_VERSION_SKEW:
+            self._audit_version_reject(peer)
+            raise SyncVersionUnsupported(
+                f"backend sync_version {peer.sync_version} is more than "
+                f"{self.SYNC_VERSION_SKEW} from ours ({SYNC_VERSION}); refusing to sync"
+            )
+        self._session = peer
+        return peer
+
+    def _audit_version_reject(self, peer: SessionInit) -> None:
+        """Record the §B7 refusal (NFR-E09-1 style) in its own transaction."""
+        with Session(self._db) as session:
+            audit.write(
+                session,
+                actor_id=self._actor_id,
+                action="sync.version_rejected",
+                source="sync",
+                object_ref="sync/session",
+                after={
+                    "ours": {"sync": SYNC_VERSION, "schema": EXPECTED_SCHEMA_VERSION},
+                    "peer": {"sync": peer.sync_version, "schema": peer.schema_version},
+                },
+            )
+            session.commit()
 
     # ------------------------------------------------------------------ push
 
     def push(self) -> PushResult:
         """Submit pending local events; mark what the backend committed."""
+        self.negotiate_session()
         with Session(self._db) as session:
             pending = event_log.pending_rows(session)
             events = [event_log.row_to_event(row) for row in pending]
@@ -112,6 +197,7 @@ class SyncEngine:
 
     def pull(self, collection: str | None = None) -> PullResult:
         """Ingest committed events since the cursor; re-fold what they touch."""
+        self.negotiate_session()
         key = collection or ALL_COLLECTIONS
         with Session(self._db) as session:
             since = self._cursor(session, key)
@@ -197,23 +283,24 @@ class SyncEngine:
         """
         backoff = backoff or Backoff()
         sleep = sleeper if sleeper is not None else time.sleep
+        self.negotiate_session()  # §B7: refuse an out-of-range peer before draining
         attempts = 0
         while True:
             attempts += 1
             try:
                 with Session(self._db) as session:
                     reconciled = self._reconcile_dropped_acks(session)
-                    submitted, committed, rejected, stale = self._drain(session)
+                    submitted, committed, rejected, stale, minted = self._drain(session)
                     drained = not event_log.pending_rows(session)
                     session.commit()
                 return FlushResult(
-                    submitted, committed, reconciled, rejected, stale, attempts, drained
+                    submitted, committed, reconciled, rejected, stale, minted, attempts, drained
                 )
             except BackendUnavailable:
                 if attempts >= backoff.max_attempts:
                     with Session(self._db) as session:
                         drained = not event_log.pending_rows(session)
-                    return FlushResult(0, 0, 0, 0, 0, attempts, drained)
+                    return FlushResult(0, 0, 0, 0, 0, 0, attempts, drained)
                 sleep(backoff.delay(attempts))
 
     def _reconcile_dropped_acks(self, session: Session) -> int:
@@ -240,7 +327,7 @@ class SyncEngine:
             refold_entity(session, collection, entity_id)
         return backfilled
 
-    def _drain(self, session: Session) -> tuple[int, int, int, int]:
+    def _drain(self, session: Session) -> tuple[int, int, int, int, int]:
         """Commit pending events through the atomic RPC (the DEBT-25 cutover) and
         map each ``CommitResult`` to its local row.
 
@@ -254,7 +341,7 @@ class SyncEngine:
         landed first — E05-T2 mints a ``conflict_record`` at this seam; E05-T1
         only counts it.
         """
-        submitted = committed = rejected = stale = 0
+        submitted = committed = rejected = stale = minted = 0
         while True:
             pending = event_log.pending_rows(session)
             if not pending:
@@ -273,8 +360,162 @@ class SyncEngine:
                     committed += 1
                 if result.stale_base_rev is not None:
                     stale += 1
+                if result.conflicts:
+                    minted += self._mint_conflict_records(session, result)
             break
-        return submitted, committed, rejected, stale
+        return submitted, committed, rejected, stale, minted
+
+    def _mint_conflict_records(self, session: Session, result: CommitResult) -> int:
+        """Mint a signed ``conflict_record`` per field-conflict the RPC reported
+        (MOD-26 §B4). The deterministic id is hashed client-side from the raw
+        tuple (no plpgsql hash); the record commits synchronously through the
+        atomic RPC (authoritative_tx — never the optimistic outbox) and folds
+        locally via the dedicated ingest. Concurrent mints on other replicas
+        collapse to one row (insert-once on the deterministic id)."""
+        if self._workspace_id is None:
+            return 0  # a bare sync loop has no workspace scope to mint into
+        contended = event_log.event_by_id(session, result.event_id)
+        if contended is None:
+            return 0
+        minted = 0
+        for fc in result.conflicts:
+            revisions = sorted({result.revision, fc.contending_revision})
+            cr_id = conflict_record_id(contended.entity_id, fc.field, revisions)
+            payload = {
+                "workspace_id": self._workspace_id,
+                "collection": contended.collection,
+                "entity_id": contended.entity_id,
+                "field": fc.field,
+                "contending_revisions": revisions,
+                "candidate_values": {"keep_a": fc.head_value, "keep_b": fc.incoming_value},
+                "base_rev": result.base_rev or 0,
+                # The committed head AFTER this contending write — the revision a
+                # resolution CASes against (rebase_required if it moves, B4).
+                "head_rev": result.revision,
+                "actor": contended.actor_id,
+                "status": "open",
+            }
+            cr_event = Event(
+                event_id=new_ulid(),
+                collection="conflict_records",
+                entity_id=cr_id,
+                actor_id=self._actor_id,
+                actor_seq=event_log.next_actor_seq(session, self._actor_id),
+                op="patch",
+                base_rev=None,
+                policy_ref=self._signer.policy_ref if self._signer is not None else None,
+                payload=payload,
+                sig=None,
+            )
+            if self._signer is not None:
+                cr_event = sign(cr_event, self._signer.private_key)
+            for committed_cr in self._backend.commit_events([cr_event]):
+                if event_log.event_by_id(session, cr_event.event_id) is None:
+                    event_log.insert_event(session, cr_event, committed_rev=committed_cr.revision)
+                refold_entity(session, "conflict_records", cr_id)
+            minted += 1
+        return minted
+
+    # ------------------------------------------------------------- resolve
+
+    def resolve_conflict(
+        self,
+        conflict_id: str,
+        choice: str,
+        *,
+        new_value: object = None,
+        resolved_by: str | None = None,
+        now: datetime | None = None,
+    ) -> ResolveResult:
+        """Resolve a ``conflict_record`` (MOD-26 §B4).
+
+        Emits a superseding field write (``base_rev = the record's head_rev``)
+        AND flips the record to ``resolved``, committed **together** through the
+        atomic RPC. CAS-validated: if the field head moved past ``head_rev`` the
+        RPC rejects the resolution (``rebase_required``) and the record stays open
+        and re-surfaces — never resolved against a live newer contender (the
+        resolver-vs-writer hole). ``status`` is sticky-resolved in the fold.
+        ``choice ∈ {keep-A, keep-B, new-value}``. Resolution is a ``tickets.write``;
+        for agents it is propose-first, enforced at the API edge.
+        """
+        if choice not in ("keep-A", "keep-B", "new-value"):
+            raise ValueError(f"unknown resolve choice {choice!r}")
+        resolved_by = resolved_by or self._actor_id
+        with Session(self._db) as session:
+            record = session.get(ConflictRecord, conflict_id)
+            if record is None:
+                raise KeyError(f"no conflict_record {conflict_id!r}")
+            if record.status == "resolved":
+                return ResolveResult(conflict_id, resolved=True, rebase_required=False)
+
+            value = self._resolved_value(record, choice, new_value)
+            stamp = (now or datetime.now(UTC)).isoformat()
+            # The superseding write and the status flip are two events committed
+            # together — assign sequential actor_seqs (neither is inserted yet, so
+            # next_actor_seq alone would hand both the same number).
+            seq = event_log.next_actor_seq(session, self._actor_id)
+            field_event = self._signed_event(
+                record.collection, record.entity_id, {record.field: value}, record.head_rev, seq
+            )
+            flip_event = self._signed_event(
+                "conflict_records",
+                conflict_id,
+                {
+                    "status": "resolved",
+                    "resolved_by": resolved_by,
+                    "resolved_choice": choice,
+                    "resolved_at": stamp,
+                },
+                None,
+                seq + 1,
+            )
+            by_id = {r.event_id: r for r in self._backend.commit_events([field_event, flip_event])}
+            field_result = by_id.get(field_event.event_id)
+            if field_result is not None and field_result.is_stale:
+                # The field head moved past head_rev — the resolution raced a newer
+                # write. The atomic RPC rejects it (T2.6); the record stays open and
+                # re-surfaces. (Here we simply do not record it as resolved.)
+                return ResolveResult(conflict_id, resolved=False, rebase_required=True)
+            for event in (field_event, flip_event):
+                result = by_id.get(event.event_id)
+                if result is None:
+                    continue
+                if event_log.event_by_id(session, event.event_id) is None:
+                    event_log.insert_event(session, event, committed_rev=result.revision)
+                refold_entity(session, event.collection, event.entity_id)
+            session.commit()
+        return ResolveResult(conflict_id, resolved=True, rebase_required=False)
+
+    @staticmethod
+    def _resolved_value(record: ConflictRecord, choice: str, new_value: object) -> object:
+        if choice == "keep-A":
+            return record.candidate_values.get("keep_a")
+        if choice == "keep-B":
+            return record.candidate_values.get("keep_b")
+        return new_value
+
+    def _signed_event(
+        self,
+        collection: str,
+        entity_id: str,
+        payload: dict[str, object],
+        base_rev: int | None,
+        actor_seq: int,
+    ) -> Event:
+        """Build (and, when a signer is present, sign) one event for a synchronous
+        authoritative write — the resolution's superseding write + status flip."""
+        event = Event(
+            event_id=new_ulid(),
+            collection=collection,
+            entity_id=entity_id,
+            actor_id=self._actor_id,
+            actor_seq=actor_seq,
+            op="patch",
+            base_rev=base_rev,
+            policy_ref=self._signer.policy_ref if self._signer is not None else None,
+            payload=dict(payload),
+        )
+        return sign(event, self._signer.private_key) if self._signer is not None else event
 
     def _reject(self, session: Session, event: Event, code: str, reason: str) -> None:
         """Move a never-acceptable event to a terminal state and revert its

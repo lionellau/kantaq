@@ -38,7 +38,7 @@ ALTER TABLE sync_events DROP CONSTRAINT ck_sync_events_collection;
 ALTER TABLE sync_events ADD CONSTRAINT ck_sync_events_collection CHECK (collection IN
   ('workspaces', 'projects', 'tickets', 'comments', 'ticket_relationships',
    'members', 'agent_proposals', 'memory_entries', 'memory_links',
-   'devices', 'capability_grants'));
+   'devices', 'capability_grants', 'conflict_records'));
 ```
 
 Then apply the v0.2 backend additions (idempotent — `create or replace`):

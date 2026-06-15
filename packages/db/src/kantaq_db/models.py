@@ -319,6 +319,44 @@ class SkillMappingRow(CollectionBase, table=True):
     created_by: str | None = Field(default=None)  # member id; RLS owner-scopes personal mappings
 
 
+class ConflictRecord(CollectionBase, table=True):
+    """A resolvable same-scalar conflict (MOD-26 §B4, E05-T2).
+
+    Minted at the authoritative merge (``authority_mode=backend``,
+    ``merge_policy=authoritative_tx``) when two concurrent writes set the same
+    field to different values: the loser's value is preserved here instead of
+    being silently LWW-overwritten. The ``id`` is **deterministic** — a
+    domain-separated hash of ``(entity_id, field, sorted(contending_revisions))``
+    bound to immutable server revisions — so every replica that pulls the
+    colliding pair mints the same id (insert-once), and Sprint-7's E20-T5 review
+    UI renders/resolves the row from these fields alone. ``status`` is
+    sticky-monotonic: once ``resolved`` it never reopens on re-detection.
+    """
+
+    __tablename__ = "conflict_records"
+
+    workspace_id: str = Field(foreign_key="workspaces.id", index=True)
+    collection: str = Field(max_length=32)  # the contended entity's collection
+    entity_id: str = Field(index=True, max_length=26)  # the contended entity
+    field: str = Field(max_length=64)  # the contended scalar; "__entity__" for edit-vs-delete
+    # The two immutable committed revisions that collide (loser + field-head),
+    # sorted — the deterministic-id input and the re-verification basis (B4).
+    contending_revisions: list[int] = Field(
+        default_factory=list, sa_column=Column(JSON, nullable=False)
+    )
+    # Both candidate scalars: {"keep_a": <head value>, "keep_b": <loser value>}.
+    candidate_values: dict[str, Any] = Field(
+        default_factory=dict, sa_column=Column(JSON, nullable=False)
+    )
+    base_rev: int = 0  # what the losing write saw
+    head_rev: int = 0  # committed entity head at detection (the resolution's CAS target)
+    actor: str = Field(max_length=26)  # actor of the losing write
+    status: str = Field(default="open", max_length=16)  # open | resolved (sticky-monotonic)
+    resolved_by: str | None = Field(default=None, max_length=26)  # member who resolved
+    resolved_choice: str | None = Field(default=None, max_length=16)  # keep-A | keep-B | new-value
+    resolved_at: datetime | None = Field(default=None)  # resolution time (created_at = detect time)
+
+
 class SchemaVersion(SQLModel, table=True):
     """Single-row table guarding boot (FR-E02-4).
 
@@ -444,4 +482,5 @@ COLLECTION_MODELS: tuple[type[CollectionBase], ...] = (
     CapabilityGrantRow,
     SkillContainerRow,
     SkillMappingRow,
+    ConflictRecord,
 )

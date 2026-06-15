@@ -26,15 +26,30 @@ from typing import Any, Literal, Protocol
 
 Op = Literal["patch", "append", "tombstone"]
 
+# A patch carrying this sentinel is an explicit human revive: it re-creates a
+# tombstoned entity with full state even if it did not see the delete (MOD-26
+# §B5). It is a control flag stripped from the folded payload — never a real
+# column. Any *non-revive* write whose ``base_rev`` predates a committed
+# tombstone stays deleted (it routes to an edit-vs-delete conflict at the merge).
+REVIVE_FIELD = "__revive__"
+
 
 @dataclass(frozen=True)
 class DomainEvent:
-    """One tracker mutation, as the protocol will sync it."""
+    """One tracker mutation, as the protocol will sync it.
+
+    ``base_rev``/``committed_rev`` are optional sync metadata (E05-T2): the fold
+    needs them for the sticky-tombstone rule (§B5). They default to ``None`` so
+    the MOD-03 emit stream and solo-mode mutations still construct a DomainEvent
+    from just the four protocol fields, unchanged.
+    """
 
     collection: str
     entity_id: str
     op: Op
     payload: dict[str, Any]
+    base_rev: int | None = None
+    committed_rev: int | None = None
 
 
 class EventSink(Protocol):
@@ -56,18 +71,34 @@ class RecordingSink:
 def fold_entity(entity_id: str, events: Iterable[DomainEvent]) -> dict[str, Any] | None:
     """Fold an ordered event stream into one entity's current state.
 
-    Returns ``None`` for an entity that never existed or was tombstoned. The
-    stream order is the resolution order (D-05: the backend's commit order);
-    this fold takes whatever order it is given.
+    Returns ``None`` for an entity that never existed or is tombstoned. The
+    stream order is the resolution order (D-05: the backend's commit order,
+    local pending last).
+
+    Sticky tombstones (MOD-26 §B5): once a *committed* tombstone is seen, a later
+    patch revives the entity **only if** it saw the delete (``base_rev`` >= the
+    tombstone's committed revision) or it is an explicit ``__revive__``. A stale
+    patch that predates the committed tombstone does **not** resurrect it — that
+    is the edit-vs-delete case the conflict engine records; the row stays deleted.
+    A pending (not-yet-committed) tombstone still deletes locally but is not
+    sticky, so an actor may revive their own optimistic delete.
     """
     state: dict[str, Any] | None = None
+    tombstone_rev: int | None = None  # committed_rev of the last committed tombstone
     for event in events:
         if event.entity_id != entity_id:
             continue
         if event.op == "tombstone":
             state = None
+            if event.committed_rev is not None:
+                tombstone_rev = event.committed_rev
             continue
+        if tombstone_rev is not None:
+            saw_delete = event.base_rev is not None and event.base_rev >= tombstone_rev
+            if not (saw_delete or event.payload.get(REVIVE_FIELD)):
+                continue  # sticky: a stale edit never resurrects a committed delete
+            tombstone_rev = None  # a legitimate revive clears the sticky state
         if state is None:
             state = {}
-        state.update(event.payload)
+        state.update({k: v for k, v in event.payload.items() if k != REVIVE_FIELD})
     return state
