@@ -25,6 +25,7 @@ from sqlmodel import Session, col, select
 
 from kantaq_core import context, lifecycle, reco
 from kantaq_core.identity import Action, VerifiedActor
+from kantaq_core.skills import DbRegistry, SkillRegistryService
 from kantaq_core.telemetry import TelemetryService
 from kantaq_core.tracker import (
     MAX_ATTACHMENT_BYTES,
@@ -626,7 +627,17 @@ def get_recommendations(
                 missing_by_role[role] = bundle.missing
             return missing_by_role[role]
 
-        recs = reco.recommend(ticket, missing_memory_for=missing_memory_for)
+        # E17-T5 (FR-E17-2): read the db-backed registry so a user's container
+        # edits + skill→tool mappings reflect in the output. A runtime whose db
+        # is unseeded (no migration 0010 rows) falls back to the pure hardcoded
+        # tuple, so recommendations never go empty on a fresh replica.
+        registry_svc = SkillRegistryService(session, actor_id=actor.member_id)
+        containers = registry_svc.list_containers()
+        if containers:
+            registry = DbRegistry(containers, registry_svc.list_mappings())
+            recs = reco.recommend(ticket, registry=registry, missing_memory_for=missing_memory_for)
+        else:
+            recs = reco.recommend(ticket, missing_memory_for=missing_memory_for)
         return [RecommendationOut.from_rec(rec) for rec in recs]
 
 

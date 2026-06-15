@@ -1666,6 +1666,212 @@
         "title": "RotateOut",
         "type": "object"
       },
+      "SkillContainerOut": {
+        "description": "A skill container (the taxonomy unit) \u2014 read-only over this surface.",
+        "properties": {
+          "allowed_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Tools",
+            "type": "array"
+          },
+          "default_write_mode": {
+            "title": "Default Write Mode",
+            "type": "string"
+          },
+          "expected_output": {
+            "title": "Expected Output",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "recommended_roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recommended Roles",
+            "type": "array"
+          },
+          "required_input": {
+            "title": "Required Input",
+            "type": "string"
+          },
+          "risk_level": {
+            "title": "Risk Level",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "supported_stages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Stages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "recommended_roles",
+          "supported_stages",
+          "required_input",
+          "expected_output",
+          "allowed_tools",
+          "default_write_mode",
+          "risk_level"
+        ],
+        "title": "SkillContainerOut",
+        "type": "object"
+      },
+      "SkillMappingIn": {
+        "additionalProperties": false,
+        "description": "Create a mapping. ``connection`` is a descriptive label, never a secret.",
+        "properties": {
+          "connection": {
+            "default": "",
+            "title": "Connection",
+            "type": "string"
+          },
+          "container_id": {
+            "title": "Container Id",
+            "type": "string"
+          },
+          "provider": {
+            "default": "",
+            "title": "Provider",
+            "type": "string"
+          },
+          "scope": {
+            "default": "personal",
+            "title": "Scope",
+            "type": "string"
+          },
+          "status": {
+            "default": "active",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "container_id"
+        ],
+        "title": "SkillMappingIn",
+        "type": "object"
+      },
+      "SkillMappingOut": {
+        "description": "A personal/workspace skill\u2192tool mapping.",
+        "properties": {
+          "connection": {
+            "title": "Connection",
+            "type": "string"
+          },
+          "container_id": {
+            "title": "Container Id",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "container_id",
+          "scope",
+          "provider",
+          "connection",
+          "status",
+          "created_by"
+        ],
+        "title": "SkillMappingOut",
+        "type": "object"
+      },
+      "SkillMappingPatch": {
+        "additionalProperties": false,
+        "description": "Patch a mapping. ``container_id`` is immutable (re-point = delete + create).",
+        "properties": {
+          "connection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connection"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "SkillMappingPatch",
+        "type": "object"
+      },
       "SyncStatusOut": {
         "properties": {
           "backend_configured": {
@@ -3713,6 +3919,225 @@
         "summary": "Reject Proposal",
         "tags": [
           "proposals"
+        ]
+      }
+    },
+    "/v1/skill-containers": {
+      "get": {
+        "description": "Every skill container, by slug \u2014 the picker for the mapping editor.",
+        "operationId": "list_skill_containers_v1_skill_containers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillContainerOut"
+                  },
+                  "title": "Response List Skill Containers V1 Skill Containers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Skill Containers",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/v1/skill-mappings": {
+      "get": {
+        "operationId": "list_skill_mappings_v1_skill_mappings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "container_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Container Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillMappingOut"
+                  },
+                  "title": "Response List Skill Mappings V1 Skill Mappings Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Skill Mappings",
+        "tags": [
+          "skills"
+        ]
+      },
+      "post": {
+        "operationId": "create_skill_mapping_v1_skill_mappings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillMappingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillMappingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Skill Mapping",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/v1/skill-mappings/{mapping_id}": {
+      "delete": {
+        "operationId": "delete_skill_mapping_v1_skill_mappings__mapping_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mapping_id",
+            "required": true,
+            "schema": {
+              "title": "Mapping Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Skill Mapping",
+        "tags": [
+          "skills"
+        ]
+      },
+      "patch": {
+        "operationId": "update_skill_mapping_v1_skill_mappings__mapping_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mapping_id",
+            "required": true,
+            "schema": {
+              "title": "Mapping Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillMappingPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillMappingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Skill Mapping",
+        "tags": [
+          "skills"
         ]
       }
     },

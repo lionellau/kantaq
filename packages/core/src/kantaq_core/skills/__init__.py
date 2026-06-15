@@ -7,6 +7,7 @@ CRUD writes locally + audited and is never emitted — see ``service`` for the
 contrast with ``kantaq_core.memory``'s emit seam.
 """
 
+from kantaq_core.skills.registry_view import DbRegistry
 from kantaq_core.skills.service import (
     MAPPING_SCOPES,
     MAPPING_STATUSES,
@@ -27,6 +28,7 @@ __all__ = [
     "ROLE_SLUGS",
     "STAGE_SLUGS",
     "WRITE_MODES",
+    "DbRegistry",
     "SkillNotFoundError",
     "SkillRegistryError",
     "SkillRegistryService",

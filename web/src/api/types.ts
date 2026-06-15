@@ -23,6 +23,12 @@ export type RelationInput = components["schemas"]["RelationIn"];
 export type Recommendation = components["schemas"]["RecommendationOut"];
 export type AgentSession = components["schemas"]["AgentSessionOut"];
 export type AuditCall = components["schemas"]["AuditEventOut"];
+export type SkillContainer = components["schemas"]["SkillContainerOut"];
+export type SkillMapping = components["schemas"]["SkillMappingOut"];
+
+// Mirrors kantaq_core.skills.service (E17 / MOD-22); values validated server-side.
+export const SKILL_MAPPING_SCOPES = ["personal", "workspace"] as const;
+export const SKILL_MAPPING_STATUSES = ["active", "disabled"] as const;
 
 // The domain vocabularies (mirrors kantaq_core.tracker.service; values are
 // validated server-side — these drive the filter/create selects only).

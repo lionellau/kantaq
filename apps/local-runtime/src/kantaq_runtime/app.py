@@ -30,6 +30,7 @@ from kantaq_runtime.me_api import router as me_router
 from kantaq_runtime.members_api import router as members_router
 from kantaq_runtime.memory_api import router as memory_router
 from kantaq_runtime.proposals_api import router as proposals_router
+from kantaq_runtime.skills_api import router as skills_router
 from kantaq_runtime.sync_api import router as sync_router
 from kantaq_runtime.telemetry_api import router as telemetry_router
 from kantaq_runtime.tracker_api import router as tracker_router
@@ -84,6 +85,7 @@ def create_app(
     app.include_router(memory_router)
     app.include_router(agents_router)
     app.include_router(audit_router)
+    app.include_router(skills_router)
 
     dist = _web_dist()
 

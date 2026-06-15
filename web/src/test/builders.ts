@@ -20,6 +20,8 @@ import type {
   Project,
   Proposal,
   Recommendation,
+  SkillContainer,
+  SkillMapping,
   SyncStatus,
   TelemetryView,
   Ticket,
@@ -160,6 +162,35 @@ export function buildDevice(overrides: Partial<Device> = {}): Device {
     revoked_at: null,
     active: true,
     is_current: true,
+    ...overrides,
+  };
+}
+
+export function buildSkillContainer(overrides: Partial<SkillContainer> = {}): SkillContainer {
+  return {
+    id: "skc-1",
+    slug: "code-review",
+    name: "Code review",
+    recommended_roles: ["code_agent"],
+    supported_stages: ["implementation"],
+    required_input: "",
+    expected_output: "findings",
+    allowed_tools: [],
+    default_write_mode: "propose",
+    risk_level: "medium",
+    ...overrides,
+  };
+}
+
+export function buildSkillMapping(overrides: Partial<SkillMapping> = {}): SkillMapping {
+  return {
+    id: "skm-1",
+    container_id: "skc-1",
+    scope: "personal",
+    provider: "anthropic",
+    connection: "My Claude Code",
+    status: "active",
+    created_by: "member-1",
     ...overrides,
   };
 }
