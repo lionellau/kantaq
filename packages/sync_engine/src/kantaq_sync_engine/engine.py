@@ -29,7 +29,7 @@ from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
 from kantaq_core import audit
-from kantaq_db import SyncCursor, new_ulid
+from kantaq_db import ConflictRecord, SyncCursor, new_ulid
 from kantaq_protocol import sign
 from kantaq_sync_engine import log as event_log
 from kantaq_sync_engine.apply import refold_entity
@@ -85,6 +85,13 @@ class FlushResult:
     minted: int  # conflict_records minted from per-field conflicts (E05-T2)
     attempts: int  # connectivity attempts made
     drained: bool  # the outbox is empty afterwards (no pending rows remain)
+
+
+@dataclass(frozen=True)
+class ResolveResult:
+    conflict_id: str
+    resolved: bool  # the record is now resolved (the superseding write committed)
+    rebase_required: bool  # the field head moved past head_rev → record re-surfaces
 
 
 class SyncEngine:
@@ -320,7 +327,9 @@ class SyncEngine:
                 "contending_revisions": revisions,
                 "candidate_values": {"keep_a": fc.head_value, "keep_b": fc.incoming_value},
                 "base_rev": result.base_rev or 0,
-                "head_rev": result.head_rev,
+                # The committed head AFTER this contending write — the revision a
+                # resolution CASes against (rebase_required if it moves, B4).
+                "head_rev": result.revision,
                 "actor": contended.actor_id,
                 "status": "open",
             }
@@ -344,6 +353,107 @@ class SyncEngine:
                 refold_entity(session, "conflict_records", cr_id)
             minted += 1
         return minted
+
+    # ------------------------------------------------------------- resolve
+
+    def resolve_conflict(
+        self,
+        conflict_id: str,
+        choice: str,
+        *,
+        new_value: object = None,
+        resolved_by: str | None = None,
+        now: datetime | None = None,
+    ) -> ResolveResult:
+        """Resolve a ``conflict_record`` (MOD-26 §B4).
+
+        Emits a superseding field write (``base_rev = the record's head_rev``)
+        AND flips the record to ``resolved``, committed **together** through the
+        atomic RPC. CAS-validated: if the field head moved past ``head_rev`` the
+        RPC rejects the resolution (``rebase_required``) and the record stays open
+        and re-surfaces — never resolved against a live newer contender (the
+        resolver-vs-writer hole). ``status`` is sticky-resolved in the fold.
+        ``choice ∈ {keep-A, keep-B, new-value}``. Resolution is a ``tickets.write``;
+        for agents it is propose-first, enforced at the API edge.
+        """
+        if choice not in ("keep-A", "keep-B", "new-value"):
+            raise ValueError(f"unknown resolve choice {choice!r}")
+        resolved_by = resolved_by or self._actor_id
+        with Session(self._db) as session:
+            record = session.get(ConflictRecord, conflict_id)
+            if record is None:
+                raise KeyError(f"no conflict_record {conflict_id!r}")
+            if record.status == "resolved":
+                return ResolveResult(conflict_id, resolved=True, rebase_required=False)
+
+            value = self._resolved_value(record, choice, new_value)
+            stamp = (now or datetime.now(UTC)).isoformat()
+            # The superseding write and the status flip are two events committed
+            # together — assign sequential actor_seqs (neither is inserted yet, so
+            # next_actor_seq alone would hand both the same number).
+            seq = event_log.next_actor_seq(session, self._actor_id)
+            field_event = self._signed_event(
+                record.collection, record.entity_id, {record.field: value}, record.head_rev, seq
+            )
+            flip_event = self._signed_event(
+                "conflict_records",
+                conflict_id,
+                {
+                    "status": "resolved",
+                    "resolved_by": resolved_by,
+                    "resolved_choice": choice,
+                    "resolved_at": stamp,
+                },
+                None,
+                seq + 1,
+            )
+            by_id = {r.event_id: r for r in self._backend.commit_events([field_event, flip_event])}
+            field_result = by_id.get(field_event.event_id)
+            if field_result is not None and field_result.is_stale:
+                # The field head moved past head_rev — the resolution raced a newer
+                # write. The atomic RPC rejects it (T2.6); the record stays open and
+                # re-surfaces. (Here we simply do not record it as resolved.)
+                return ResolveResult(conflict_id, resolved=False, rebase_required=True)
+            for event in (field_event, flip_event):
+                result = by_id.get(event.event_id)
+                if result is None:
+                    continue
+                if event_log.event_by_id(session, event.event_id) is None:
+                    event_log.insert_event(session, event, committed_rev=result.revision)
+                refold_entity(session, event.collection, event.entity_id)
+            session.commit()
+        return ResolveResult(conflict_id, resolved=True, rebase_required=False)
+
+    @staticmethod
+    def _resolved_value(record: ConflictRecord, choice: str, new_value: object) -> object:
+        if choice == "keep-A":
+            return record.candidate_values.get("keep_a")
+        if choice == "keep-B":
+            return record.candidate_values.get("keep_b")
+        return new_value
+
+    def _signed_event(
+        self,
+        collection: str,
+        entity_id: str,
+        payload: dict[str, object],
+        base_rev: int | None,
+        actor_seq: int,
+    ) -> Event:
+        """Build (and, when a signer is present, sign) one event for a synchronous
+        authoritative write — the resolution's superseding write + status flip."""
+        event = Event(
+            event_id=new_ulid(),
+            collection=collection,
+            entity_id=entity_id,
+            actor_id=self._actor_id,
+            actor_seq=actor_seq,
+            op="patch",
+            base_rev=base_rev,
+            policy_ref=self._signer.policy_ref if self._signer is not None else None,
+            payload=dict(payload),
+        )
+        return sign(event, self._signer.private_key) if self._signer is not None else event
 
     def _reject(self, session: Session, event: Event, code: str, reason: str) -> None:
         """Move a never-acceptable event to a terminal state and revert its

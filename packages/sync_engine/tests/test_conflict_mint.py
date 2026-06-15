@@ -75,7 +75,7 @@ def test_flush_mints_a_conflict_record_on_a_same_field_conflict() -> None:
         assert rec.entity_id == TID
         assert rec.field == "status"
         assert rec.candidate_values == {"keep_a": "doing", "keep_b": "done"}
-        assert rec.head_rev == 2
+        assert rec.head_rev == 3  # the committed head AFTER our done — the resolution CAS target
         assert rec.status == "open"
         assert sorted(rec.contending_revisions) == rec.contending_revisions  # stored sorted
 

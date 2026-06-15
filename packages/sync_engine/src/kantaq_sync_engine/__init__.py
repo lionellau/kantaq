@@ -24,6 +24,7 @@ from kantaq_sync_engine.engine import (
     FlushResult,
     PullResult,
     PushResult,
+    ResolveResult,
     SyncEngine,
 )
 from kantaq_sync_engine.events import (
@@ -116,6 +117,7 @@ __all__ = [
     "Op",
     "PullResult",
     "PushResult",
+    "ResolveResult",
     "SigningRequiredError",
     "SyncEngine",
     "UnknownCollectionError",
