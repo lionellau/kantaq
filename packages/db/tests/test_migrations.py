@@ -34,6 +34,7 @@ _ALL_TABLES = {
     "capability_grants",
     "skill_containers",
     "skill_mappings",
+    "conflict_records",
 }
 
 

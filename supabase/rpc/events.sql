@@ -68,6 +68,7 @@ as $$
     when 'agent_proposals' then array['proposals.write', 'tickets.write']
     when 'memory_entries' then array['memory.write']
     when 'memory_links' then array['memory.write']
+    when 'conflict_records' then array['conflict_records.write']
     else null
   end
 $$;

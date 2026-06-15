@@ -184,6 +184,7 @@ alter table devices         enable row level security;
 alter table capability_grants enable row level security;
 alter table skill_containers enable row level security;
 alter table skill_mappings  enable row level security;
+alter table conflict_records enable row level security;
 
 grant select, insert, update         on workspaces      to authenticated;
 grant select, insert, update, delete on projects        to authenticated;
@@ -211,6 +212,9 @@ grant select on capability_grants to authenticated;
 -- no insert/update/delete grant — write paths deferred (see the section below).
 grant select on skill_containers to authenticated;
 grant select on skill_mappings   to authenticated;
+-- conflict_records (E05-T2) is READ-ONLY for clients: authoritative_tx, minted
+-- and resolved only through the verified RPC path, never a direct client write.
+grant select on conflict_records to authenticated;
 
 grant all on all tables in schema public to service_role;
 
@@ -593,3 +597,17 @@ drop policy if exists skill_mappings_select on skill_mappings;
 create policy skill_mappings_select on skill_mappings
   for select to authenticated
   using (scope = 'workspace' or created_by in (select kantaq.member_ids()));
+
+-- ---------------------------------------------------------------------------
+-- conflict_records (E05-T2, MOD-26 §B4) — resolvable same-scalar conflicts,
+-- minted at the authoritative merge (authoritative_tx, backend authority).
+-- Members read the conflicts in their workspaces; clients never write one
+-- directly — both the mint and the resolution reach the backend only through
+-- the verified RPC path, like capability_grants. No insert/update/delete grant
+-- above, so only a SELECT policy exists here.
+-- ---------------------------------------------------------------------------
+
+drop policy if exists conflict_records_select on conflict_records;
+create policy conflict_records_select on conflict_records
+  for select to authenticated
+  using (kantaq.is_member(workspace_id));

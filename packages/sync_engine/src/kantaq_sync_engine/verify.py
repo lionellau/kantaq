@@ -77,6 +77,7 @@ _COLLECTION_WRITE_VERBS: dict[str, frozenset[str]] = {
     "agent_proposals": frozenset({"proposals.write", "tickets.write"}),
     "memory_entries": frozenset({"memory.write"}),
     "memory_links": frozenset({"memory.write"}),
+    "conflict_records": frozenset({"conflict_records.write"}),
 }
 
 

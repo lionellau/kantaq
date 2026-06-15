@@ -38,6 +38,12 @@ class Action(StrEnum):
     # module needs them.
     tickets_read = "tickets.read"
     tickets_write = "tickets.write"
+    # The conflict-record surface (E05-T2 / MOD-26 §B4): minting a same-scalar
+    # conflict_record at the authoritative merge. Carried alongside tickets.write
+    # by every role that does tracker work — the committing client signs the
+    # minted record under its own grant (it is NOT exempt from the signed-sync
+    # invariant). Resolving a conflict is a tickets.write (it is a field write).
+    conflict_records_write = "conflict_records.write"
     # The MCP propose surface (E09/E10, MOD-08/09): storing an agent_proposal
     # for human review. Weaker than tickets.write — a proposal changes nothing
     # until approved — so agent tokens carry it in scopes without ever holding
@@ -74,6 +80,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Action]] = {
             Action.tokens_rotate,
             Action.tickets_read,
             Action.tickets_write,
+            Action.conflict_records_write,
             Action.memory_read,
             Action.memory_write,
             Action.memory_approve,
@@ -86,6 +93,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Action]] = {
             Action.members_read,
             Action.tickets_read,
             Action.tickets_write,
+            Action.conflict_records_write,
             Action.memory_read,
             Action.memory_write,
             Action.memory_approve,

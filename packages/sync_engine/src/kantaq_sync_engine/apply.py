@@ -25,6 +25,7 @@ from kantaq_db import (
     AgentProposal,
     CapabilityGrantRow,
     Comment,
+    ConflictRecord,
     Device,
     Member,
     MemoryEntry,
@@ -70,12 +71,26 @@ TRUST_ROOT_MODELS: dict[str, type[SQLModel]] = {
     "capability_grants": CapabilityGrantRow,
 }
 
+# E05-T2 (MOD-26 §B4): conflict_records is authoritative_tx — minted at the merge,
+# never optimistically client-written. Like the trust roots it is on the sync
+# surface but routed to its OWN dedicated ingest (insert-once on the deterministic
+# id + sticky-resolved status), NOT the optimistic-domain fold — so the E05-T1
+# EventLogSink authoritative_tx guard never blocks it and the domain conflict
+# engine never runs over a conflict_record (no record-of-a-record).
+CONFLICT_MODELS: dict[str, type[SQLModel]] = {
+    "conflict_records": ConflictRecord,
+}
+
 # The full applier surface: every collection a replica can fold (domain + trust
-# roots), independent of WHICH fold path each routes to. This is the set the
-# export, the import round-trip, and the three-way sync allowlist gate
-# (tests/test_sync_allowlists.py) pin against the backend CHECK — "what a replica
-# can fold."
-SYNCABLE_MODELS: dict[str, type[SQLModel]] = {**DOMAIN_MODELS, **TRUST_ROOT_MODELS}
+# roots + conflict records), independent of WHICH fold path each routes to. This
+# is the set the export, the import round-trip, and the three-way sync allowlist
+# gate (tests/test_sync_allowlists.py) pin against the backend CHECK — "what a
+# replica can fold."
+SYNCABLE_MODELS: dict[str, type[SQLModel]] = {
+    **DOMAIN_MODELS,
+    **TRUST_ROOT_MODELS,
+    **CONFLICT_MODELS,
+}
 
 
 class UnknownCollectionError(Exception):
@@ -111,17 +126,58 @@ def folded_fields(collection: str, state: dict[str, Any]) -> dict[str, Any]:
 def refold_entity(session: Session, collection: str, entity_id: str) -> None:
     """Rebuild one entity's row as the fold of its events (no commit).
 
-    A trust-root collection routes to the dedicated identity ingest (B2); a
-    domain collection uses the optimistic_db fold; anything else raises, so a
-    poisoned pull fails loudly instead of silently dropping data.
+    A trust-root collection routes to the dedicated identity ingest (B2);
+    ``conflict_records`` routes to its own mint/ingest seam (B4); a domain
+    collection uses the optimistic_db fold; anything else raises, so a poisoned
+    pull fails loudly instead of silently dropping data.
     """
     if collection in TRUST_ROOT_MODELS:
         ingest_trust_root(session, collection, entity_id)
+        return
+    if collection in CONFLICT_MODELS:
+        ingest_conflict_record(session, entity_id)
         return
     model = DOMAIN_MODELS.get(collection)
     if model is None:
         raise UnknownCollectionError(collection)
     _fold_into(session, model, collection, entity_id)
+
+
+def ingest_conflict_record(session: Session, entity_id: str) -> None:
+    """Fold a ``conflict_records`` event into the ConflictRecord table via a
+    dedicated seam (MOD-26 §B4) — never the optimistic-domain fold.
+
+    The conflict_record's own ``id`` is the event's ``entity_id`` (deterministic,
+    so concurrent mints on different replicas converge to one row — insert-once).
+    ``status`` is sticky-monotonic: once a committed event flips it to
+    ``resolved`` it stays resolved on re-detection, mirroring sticky tombstones,
+    so a lagging replica that re-mints an already-resolved conflict never reopens
+    it. Backend-authoritative, never subject to the domain conflict engine.
+    """
+    resolution: dict[str, Any] | None = None
+    state: dict[str, Any] = {}
+    for row in entity_rows(session, "conflict_records", entity_id):
+        payload = dict(row.payload)
+        state.update(payload)
+        if payload.get("status") == "resolved" and resolution is None:
+            resolution = payload  # the first committed resolution is sticky
+    if not state:
+        return
+    if resolution is not None:
+        state["status"] = "resolved"
+        for key in ("resolved_by", "resolved_choice", "resolved_at"):
+            if key in resolution:
+                state[key] = resolution[key]
+
+    fields = folded_fields("conflict_records", state)
+    existing = session.get(ConflictRecord, entity_id)
+    if existing is None:
+        session.add(ConflictRecord(id=entity_id, **fields))
+    else:
+        for fieldname, value in fields.items():
+            setattr(existing, fieldname, value)
+        session.add(existing)
+    session.flush()
 
 
 def ingest_trust_root(session: Session, collection: str, entity_id: str) -> None:

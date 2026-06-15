@@ -21,14 +21,15 @@ _EXPECTED = {
     "capability_grants",
     "skill_containers",
     "skill_mappings",
+    "conflict_records",
 }
 _VALID_MERGE = {"lww", "append_only", "authoritative_tx", "crdt"}
 _VALID_AUTHORITY = {"local", "backend"}
 
 
-def test_fifteen_collections_declared() -> None:
+def test_sixteen_collections_declared() -> None:
     assert set(collection_names()) == _EXPECTED
-    assert len(collection_names()) == 15
+    assert len(collection_names()) == 16
 
 
 def test_meta_matches_table_models() -> None:

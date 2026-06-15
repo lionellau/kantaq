@@ -19,12 +19,12 @@ from typing import Literal
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
-# Bump this whenever a migration changes the version row. Version 11 adds the
-# event_log.sync_state outbox terminal-state column (E05-T1 / MOD-26 §B1).
-EXPECTED_SCHEMA_VERSION = 11
+# Bump this whenever a migration changes the version row. Version 12 adds the
+# conflict_records collection (E05-T2 / MOD-26 §B4).
+EXPECTED_SCHEMA_VERSION = 12
 # The Alembic head revision that defines the expected schema. Kept in sync with
 # the migration filename in ``migrations/versions``.
-HEAD_REVISION = "0011"
+HEAD_REVISION = "0012"
 
 Status = Literal["ok", "uninitialized", "mismatch"]
 
