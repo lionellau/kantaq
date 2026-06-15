@@ -360,6 +360,14 @@ class EventLog(SQLModel, table=True):
     policy_ref: str | None = Field(default=None)
     sig: str | None = Field(default=None)  # Ed25519 arrives in v0.1 (MOD-17)
     committed_rev: int | None = Field(default=None, index=True)
+    # sync_state ∈ pending | committed | rejected | rebase_required (MOD-26 §B1,
+    # E05-T1). Local infrastructure like committed_rev — event_log is the local
+    # log (Supabase holds sync_events), so this never reaches the backend and
+    # never enters a privacy envelope. The durable outbox is the rows with
+    # committed_rev IS NULL AND sync_state = 'pending'; a backend-rejected or
+    # rebase-required event flips off 'pending' so it leaves the outbox instead
+    # of being re-pushed forever (the zombie-event hole).
+    sync_state: str = Field(default="pending", max_length=16)
     created_at: datetime = Field(default_factory=_utcnow)
 
 

@@ -1,18 +1,22 @@
-"""E24-T7 / DEBT-21: ingesting device + grant trust roots must not wedge.
+"""E24-T7 / DEBT-21 → E05-T1: ingesting device + grant trust roots must not wedge.
 
 Before E24-T7 the trust roots (``devices``/``capability_grants``) were off the
-applier's ``SYNCABLE_MODELS``, so a broad ``pull(collection=None)`` that hit a
-device or grant event raised ``UnknownCollectionError`` — aborting the ingest
-transaction so the cursor never advanced and the replica re-pulled the poisoned
-batch forever (the wedge MOD-05 line 65 flags). Now that verified ingestion is
-live (E24-T5 client + the E24-T6 atomic RPC), the trust roots join the surface
-and fold into their own tables, so an unscoped pull ingests them cleanly.
+applier's surface, so a broad ``pull(collection=None)`` that hit a device or
+grant event raised ``UnknownCollectionError`` — aborting the ingest transaction
+so the cursor never advanced and the replica re-pulled the poisoned batch
+forever (the wedge MOD-05 line 65 flags). E24-T7 put them on the surface.
+
+E05-T1 (MOD-26 §B2) lands the final shape: trust roots stay on the applier
+surface (``SYNCABLE_MODELS``) but fold through a DEDICATED identity ingest
+(``ingest_trust_root``) — they are NOT in the domain fold (``DOMAIN_MODELS``),
+so E05-T2's per-field conflict engine + sticky-tombstone rules never touch
+identity state. ``apply_inbox`` is the named §B2 entry point.
 """
 
 from __future__ import annotations
 
 from kantaq_db import CapabilityGrantRow, Device
-from kantaq_sync_engine import SYNCABLE_MODELS
+from kantaq_sync_engine import DOMAIN_MODELS, SYNCABLE_MODELS, TRUST_ROOT_MODELS
 from kantaq_sync_engine.events import Event
 from kantaq_test_harness.backend import FakeBackend
 from kantaq_test_harness.replica import WORKSPACE_ID, Replica
@@ -57,19 +61,24 @@ def _grant_event(seq: int) -> Event:
     )
 
 
-def test_trust_roots_are_on_the_applier_surface() -> None:
-    assert "devices" in SYNCABLE_MODELS
-    assert "capability_grants" in SYNCABLE_MODELS
+def test_trust_roots_are_on_the_applier_surface_via_a_dedicated_ingest() -> None:
+    """They are foldable (on the surface, so the allowlist gate + export cover
+    them) but routed to the identity ingest — NOT the domain fold (B2)."""
+    for name in ("devices", "capability_grants"):
+        assert name in SYNCABLE_MODELS  # on the surface (export + allowlist parity)
+        assert name in TRUST_ROOT_MODELS  # routed to the dedicated identity ingest
+        assert name not in DOMAIN_MODELS  # never the domain optimistic_db fold
 
 
-def test_an_unscoped_pull_over_device_and_grant_events_does_not_wedge(
+def test_apply_inbox_over_device_and_grant_events_does_not_wedge(
     bob: Replica, backend: FakeBackend
 ) -> None:
-    """A peer committed a device + grant to the shared log; bob's broad pull
-    ingests both without raising and the cursor advances."""
+    """A peer committed a device + grant to the shared log; bob's broad inbox
+    pull ingests both through the dedicated identity ingest without raising,
+    and the cursor advances (the DEBT-21 wedge stays closed)."""
     backend.push([_device_event(1), _grant_event(2)])
 
-    result = bob.sync.pull(collection=None)  # the broad pull DEBT-21 warned about
+    result = bob.sync.apply_inbox(collection=None)  # the broad pull DEBT-21 warned about
 
     assert result.applied == 2
     with bob.session() as session:
@@ -79,5 +88,5 @@ def test_an_unscoped_pull_over_device_and_grant_events_does_not_wedge(
         assert grant is not None and grant.resource == WORKSPACE_ID
 
     # The cursor moved past the batch — a re-pull ingests nothing new (no wedge).
-    again = bob.sync.pull(collection=None)
+    again = bob.sync.apply_inbox(collection=None)
     assert again.applied == 0

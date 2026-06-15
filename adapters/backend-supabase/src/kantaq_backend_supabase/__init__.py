@@ -28,12 +28,16 @@ from kantaq_backend_supabase.schema import (
 from kantaq_backend_supabase.sync import (
     PAGE_SIZE,
     SYNC_TABLE,
-    CommitResult,
     SupabaseSyncBackend,
     SyncBackendError,
     SyncMember,
     lookup_active_members,
 )
+
+# CommitResult moved to the port layer at the DEBT-25 cutover; re-exported here
+# from its real source so `from kantaq_backend_supabase import CommitResult` keeps
+# working for the adapter's callers.
+from kantaq_sync_engine.events import CommitResult
 
 __version__: str = "0.1.0"
 

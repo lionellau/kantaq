@@ -278,3 +278,39 @@ def test_pre_cutover_history_passes_through_unverified() -> None:
     backend = VerifyingBackend(fake, context=lambda: _context(kp.public_key, grant), cutover_rev=1)
     # rev 1 <= cutover_rev → immutable pre-cutover history, kept despite no sig.
     assert [entry.revision for entry in backend.pull()] == [1]
+
+
+class _RecordingCommit(FakeBackend):
+    """Records the require_signature the RPC was actually asked for."""
+
+    seen: bool | None = None
+
+    def commit_events(self, events, *, require_signature: bool = True):  # type: ignore[no-untyped-def]
+        self.seen = require_signature
+        return super().commit_events(events, require_signature=require_signature)
+
+
+def test_commit_events_sends_the_negotiated_require_signature_not_the_default() -> None:
+    """Go-live gate (the E05-T1 cutover against the freshly-seeded live backend):
+    the verifying wrapper sends the RPC the workspace's negotiated cutover flag
+    (``ctx.require_signature``), never the hardcoded ``True``. A pre-cutover
+    unsigned workspace must commit with ``require_signature=False`` so the RPC
+    tolerates its unsigned events instead of ``policy_denied`` with no grants."""
+    kp = generate_keypair()
+    grant = _grant(kp.private_key)
+
+    # Pre-cutover: unsigned workspace, ctx.require_signature False, unsigned event.
+    pre = _RecordingCommit()
+    pre_backend = VerifyingBackend(
+        pre, context=lambda: _context(kp.public_key, grant, require_signature=False)
+    )
+    pre_backend.commit_events([_event(kp.private_key, sign_it=False)])
+    assert pre.seen is False  # NOT the hardcoded True — the go-live gate
+
+    # Post-cutover: signed workspace, ctx.require_signature True.
+    post = _RecordingCommit()
+    post_backend = VerifyingBackend(
+        post, context=lambda: _context(kp.public_key, grant, require_signature=True)
+    )
+    post_backend.commit_events([_event(kp.private_key, sign_it=True)])
+    assert post.seen is True

@@ -274,7 +274,9 @@ genuinely new capability was introduced.
 
 ### E05 / MOD-26 offline-sync-conflicts (v0.2 spec finalized at E05-T0)
 
-Golden-rule re-run 2026-06 for the v0.2 offline-first + conflict layer (the spec spike; **no code shipped** this task). Three capability categories evaluated against the bar with current data; **build-from-scratch on the existing signed-event log in all three** — extends the MOD-04 decision ("the event protocol IS the product"; the merge/conflict engine *is* the product, not a dependency).
+Golden-rule re-run 2026-06 for the v0.2 offline-first + conflict layer (originally the E05-T0 spec spike). Three capability categories evaluated against the bar with current data; **build-from-scratch on the existing signed-event log in all three** — extends the MOD-04 decision ("the event protocol IS the product"; the merge/conflict engine *is* the product, not a dependency).
+
+**Confirmed at E05-T1 (Sprint 6):** the offline-replica + durable-outbox/inbox half shipped on this decision — `event_log.sync_state` terminal states, `SyncEngine.flush_outbox`/`apply_inbox`, the dedicated trust-root identity ingest, and the `commit_events` cutover — all on the existing engine, no framework adopted. The conflict-resolution engine + `conflict_records` collection remain E05-T2.
 
 | Need | Chosen | License | Notes |
 |---|---|---|---|

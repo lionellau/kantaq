@@ -1,0 +1,40 @@
+-- supabase/policies/0004_revoke_raw_insert.sql
+-- HAND-WRITTEN (E05-T1, DEBT-25): close the commit-visibility window FULLY by
+-- making the atomic RPC the ONLY commit path. Apply AFTER policies/
+-- 0003_append_only.sql AND ONLY AFTER every runtime has cut over to
+-- commit_events (src/kantaq/cli.py _sync_once -> SyncEngine.flush_outbox ->
+-- backend.commit_events, shipped E05-T1). Re-appliable as-is.
+--
+-- SEQUENCING (DEBT-25 — coordinate with the live deploy). Until every runtime
+-- commits through public.events, the raw INSERT path and the RPC must not run
+-- concurrently: the raw path bypasses the per-workspace advisory lock, so a raw
+-- writer concurrent with an RPC caller could still expose revision N+1 before an
+-- in-flight N (the window E24-T6 closed only AMONG RPC callers). The order is:
+--   1. deploy the v0.2 backend (migrations/0001..0002 + policies/0001..0003 +
+--      rpc/events.sql) so the RPC is available in prod;
+--   2. roll out the runtime cutover to commit_events (shipped E05-T1);
+--   3. THEN apply THIS file to revoke the raw INSERT grant.
+-- Applying it before step 2 would break every still-raw-pushing runtime, so an
+-- agent never applies it to the live shared project (schema-SOP); a human/CD job
+-- applies it once `live == repo` and the cutover is rolled out.
+--
+-- WHY THE RPC SURVIVES THE REVOKE. public.events is SECURITY DEFINER: it INSERTs
+-- into sync_events under the function owner's authority, not the caller's, so
+-- revoking the caller-role INSERT grant leaves the RPC's own
+-- INSERT .. ON CONFLICT DO NOTHING untouched. After this file the ONLY way an
+-- `authenticated` member commits an event is through the advisory-locked RPC —
+-- the visibility window is closed for ALL callers, not just RPC callers, which
+-- is the full DEBT-25 closure (E24-T6 was the partial, among-RPC-callers cut).
+
+-- Revoke the raw INSERT grant; keep SELECT (members still read their workspace's
+-- log). UPDATE/DELETE/TRUNCATE stay blocked by the 0003 append-only triggers.
+revoke insert on sync_events from authenticated;
+
+-- The sync_events_insert RLS policy is now moot (no INSERT grant left to gate)
+-- but is kept as defence-in-depth: if a future change ever re-grants INSERT, the
+-- as-yourself-in-your-workspace rule still applies. service_role keeps
+-- `grant all`; the append-only triggers still make committed history immutable.
+--
+-- POST-DEPLOY REGRESSION (Sprint-7, debt.md DEBT-25): once this is live, a
+-- direct table INSERT by `authenticated` must be denied (permission denied),
+-- while public.events still commits — proving the RPC is the sole commit path.

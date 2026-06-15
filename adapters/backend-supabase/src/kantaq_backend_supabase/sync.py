@@ -45,7 +45,7 @@ from typing import Any
 import httpx
 
 from kantaq_backend_supabase.keys import assert_client_safe_key
-from kantaq_sync_engine.events import CommittedEvent, Event, Op, fold_events
+from kantaq_sync_engine.events import CommitResult, CommittedEvent, Event, Op, fold_events
 
 _TIMEOUT = 10.0
 
@@ -96,28 +96,9 @@ def _error_message(response: httpx.Response) -> str:
     return f"HTTP {response.status_code}"
 
 
-@dataclass(frozen=True)
-class CommitResult:
-    """One event's outcome from the v0.2 atomic commit RPC (E24-T6).
-
-    ``status`` is ``"committed"`` or ``"duplicate"`` (the dedup floor was hit on
-    an idempotent re-push). ``revision`` is the assigned commit order.
-    ``stale_base_rev`` is set (to the event's ``base_rev``) when that base was
-    older than the committed head for the entity — a concurrent write landed
-    first, so the committing client mints a signed ``conflict_record`` (E05-T2).
-    ``head_rev`` is the committed head observed before this event committed.
-    """
-
-    event_id: str
-    status: str
-    revision: int
-    base_rev: int | None
-    head_rev: int
-    stale_base_rev: int | None
-
-    @property
-    def is_stale(self) -> bool:
-        return self.stale_base_rev is not None
+# CommitResult moved to kantaq_sync_engine.events (the port layer) at the DEBT-25
+# cutover so the engine can map it without importing the adapter; re-exported here
+# and from this package's __init__ for backwards compatibility.
 
 
 @dataclass(frozen=True)

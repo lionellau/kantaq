@@ -588,12 +588,19 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
         settings=get_settings(),
     )
     engine = SyncEngine(db, backend, actor_id=me.id)
-    pushed = engine.push()
-    pulled = engine.pull()
+    # DEBT-25 cutover: commit every write through the atomic RPC (flush_outbox →
+    # commit_events), never the raw push path. flush_outbox first reconciles any
+    # dropped ack, then drains the durable outbox with offline-aware backoff;
+    # apply_inbox is the crash-safe inbox (trust roots route to identity ingest).
+    flushed = engine.flush_outbox()
+    pulled = engine.apply_inbox()
+    stale = f", {flushed.stale} stale" if flushed.stale else ""
+    rejected = f", {flushed.rejected} rejected" if flushed.rejected else ""
     print(
-        f"push: {pushed.committed} committed, {pushed.already_known} already known "
-        f"(of {pushed.submitted} pending) · pull: {pulled.applied} applied, "
-        f"{pulled.own_reconciled} own reconciled · cursor {pulled.cursor}"
+        f"flush: {flushed.committed} committed, {flushed.reconciled} reconciled"
+        f"{rejected}{stale} (of {flushed.submitted} pending) · "
+        f"pull: {pulled.applied} applied, {pulled.own_reconciled} own reconciled · "
+        f"cursor {pulled.cursor}"
     )
     return 0
 

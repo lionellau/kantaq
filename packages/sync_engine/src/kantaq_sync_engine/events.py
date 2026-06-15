@@ -24,11 +24,25 @@ from kantaq_protocol import Event, Op
 
 __all__ = [
     "BackendPort",
+    "BackendUnavailable",
+    "CommitResult",
     "CommittedEvent",
     "Event",
     "Op",
     "fold_events",
 ]
+
+
+class BackendUnavailable(Exception):
+    """The backend could not be reached (transport / connectivity failure).
+
+    The offline-aware flush loop (MOD-26 §B1) catches this to back off and
+    retry; the events stay in the durable outbox and are re-attempted, so a
+    partition never strands an offline write (NFR-E05-1). This is **not** a
+    rejection — a rejection (bad signature, denied grant, stale base_rev) is a
+    terminal per-event signal that takes the event *out* of the outbox. A
+    backend raises this for a dropped connection or an unreachable host.
+    """
 
 
 @dataclass(frozen=True)
@@ -39,12 +53,54 @@ class CommittedEvent:
     event: Event
 
 
+@dataclass(frozen=True)
+class CommitResult:
+    """One event's outcome from the v0.2 atomic commit RPC (E24-T6 / MOD-05).
+
+    ``status`` is ``"committed"`` or ``"duplicate"`` (the dedup floor was hit on
+    an idempotent re-push). ``revision`` is the assigned commit order.
+    ``stale_base_rev`` is set (to the event's ``base_rev``) when that base was
+    older than the committed head for the entity — a concurrent write landed
+    first, so the committing client mints a signed ``conflict_record`` (E05-T2).
+    ``head_rev`` is the committed head observed before this event committed.
+    """
+
+    event_id: str
+    status: str
+    revision: int
+    base_rev: int | None
+    head_rev: int
+    stale_base_rev: int | None
+
+    @property
+    def is_stale(self) -> bool:
+        return self.stale_base_rev is not None
+
+
 class BackendPort(Protocol):
     """What the sync engine needs from a backend (implemented by MOD-05/28)."""
 
     def push(self, events: Iterable[Event]) -> list[CommittedEvent]:
         """Commit new events in submission order; drop (actor_id, actor_seq)
-        duplicates silently so a retry can never double-commit."""
+        duplicates silently so a retry can never double-commit.
+
+        v0.1 transport (raw PostgREST upsert). The v0.2 DEBT-25 cutover routes
+        every write through ``commit_events`` (the atomic RPC) instead; ``push``
+        stays for the convergence fixtures and pre-cutover history.
+        """
+        ...
+
+    def commit_events(
+        self, events: Iterable[Event], *, require_signature: bool = True
+    ) -> list[CommitResult]:
+        """Commit events through the v0.2 atomic RPC (E24-T6, D-09): one
+        transaction validates grant + ordering, applies the merge policy,
+        assigns the revision, and returns each event's structured outcome
+        (including ``stale_base_rev``). The DEBT-25 cutover routes every write
+        here. Client-side Ed25519 byte-verification stays at the
+        ``VerifyingBackend`` edge; ``require_signature`` is the RPC's
+        defense-in-depth presence check.
+        """
         ...
 
     def pull(self, collection: str | None = None, since: int = 0) -> list[CommittedEvent]:
