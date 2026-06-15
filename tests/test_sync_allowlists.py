@@ -35,6 +35,11 @@ NEVER_SYNC: dict[str, str] = {
     "audit_events": "MOD-07: per-replica trail",
     # devices/capability_grants joined the sync surface at E24-T7 (v0.2): see
     # test_trust_collections_join_the_surface_with_verified_ingestion below.
+    # The E17 skill registry is db-backed but managed LOCALLY in v0.2
+    # (architecture §6.1 "backend registry"); cross-replica sync is deferred,
+    # so the CRUD service writes locally + audited and never emits.
+    "skill_containers": "MOD-22: db-backed registry, off the sync allowlist in v0.2",
+    "skill_mappings": "MOD-22: db-backed registry, off the sync allowlist in v0.2",
 }
 
 

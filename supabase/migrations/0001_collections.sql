@@ -49,6 +49,28 @@ CREATE TABLE memory_entries (
 	PRIMARY KEY (id)
 );
 
+CREATE TABLE skill_containers (
+	id VARCHAR(26) NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	actor_seq INTEGER NOT NULL,
+	visibility VARCHAR(16) NOT NULL,
+	hosting_mode VARCHAR(16) NOT NULL,
+	retention_policy VARCHAR(16) NOT NULL,
+	slug VARCHAR(32) NOT NULL,
+	name VARCHAR(64) NOT NULL,
+	recommended_roles JSON NOT NULL,
+	supported_stages JSON NOT NULL,
+	required_input VARCHAR NOT NULL,
+	expected_output VARCHAR NOT NULL,
+	allowed_tools JSON NOT NULL,
+	default_write_mode VARCHAR(16) NOT NULL,
+	risk_level VARCHAR(16) NOT NULL,
+	PRIMARY KEY (id)
+);
+
+CREATE UNIQUE INDEX ix_skill_containers_slug ON skill_containers (slug);
+
 CREATE TABLE workspaces (
 	id VARCHAR(26) NOT NULL,
 	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
@@ -101,6 +123,26 @@ CREATE TABLE projects (
 );
 
 CREATE INDEX ix_projects_workspace_id ON projects (workspace_id);
+
+CREATE TABLE skill_mappings (
+	id VARCHAR(26) NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	actor_seq INTEGER NOT NULL,
+	visibility VARCHAR(16) NOT NULL,
+	hosting_mode VARCHAR(16) NOT NULL,
+	retention_policy VARCHAR(16) NOT NULL,
+	container_id VARCHAR NOT NULL,
+	scope VARCHAR(16) NOT NULL,
+	provider VARCHAR NOT NULL,
+	connection VARCHAR NOT NULL,
+	status VARCHAR(16) NOT NULL,
+	created_by VARCHAR,
+	PRIMARY KEY (id),
+	FOREIGN KEY(container_id) REFERENCES skill_containers (id)
+);
+
+CREATE INDEX ix_skill_mappings_container_id ON skill_mappings (container_id);
 
 CREATE TABLE devices (
 	id VARCHAR(26) NOT NULL,

@@ -23,6 +23,8 @@ from kantaq_test_harness.models import (
     MemoryEntry,
     MemoryLink,
     Project,
+    SkillContainer,
+    SkillMapping,
     Ticket,
     TicketRelationship,
     Token,
@@ -126,6 +128,32 @@ def build_device(rng: SeededRandom | None = None, **overrides: Any) -> Device:
     verify key — pair with a real keypair when signatures must verify."""
     r = _rng(rng)
     base = Device(id=r.ident("dev"), public_key=r.token(64), label="test runtime")
+    return replace(base, **overrides)
+
+
+def build_skill_container(rng: SeededRandom | None = None, **overrides: Any) -> SkillContainer:
+    """A db-backed skill container row (E17-T4); ``recommended_roles`` plural."""
+    r = _rng(rng)
+    base = SkillContainer(
+        id=r.ident("skc"),
+        slug="repo-investigation",
+        name="Repo investigation",
+        recommended_roles=["code_agent"],
+        supported_stages=["implementation"],
+        allowed_tools=["role_context_get", "ticket_get"],
+    )
+    return replace(base, **overrides)
+
+
+def build_skill_mapping(rng: SeededRandom | None = None, **overrides: Any) -> SkillMapping:
+    """A db-backed skill→tool mapping (E17-T4); ``connection`` is descriptive."""
+    r = _rng(rng)
+    base = SkillMapping(
+        id=r.ident("skm"),
+        container_id=r.ident("skc"),
+        provider="anthropic",
+        connection="an MCP-connected coding agent",
+    )
     return replace(base, **overrides)
 
 
