@@ -56,7 +56,10 @@ _IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*$")
 # JSON value, which PostgREST returns as the response body. ``cast`` "" binds
 # the value as-is. Module-level so the dataclass below has no mutable field.
 _RPC_ARGS: dict[str, tuple[tuple[str, str], ...]] = {
-    "events": (("p_events", "jsonb"), ("p_require_signature", "")),
+    # p_cas (E05-T3): the compare-and-swap flag — when true the RPC raises
+    # rebase_required (sqlstate 40001) instead of committing a contending write.
+    # Passed through so the fake can exercise the adapter's CAS path (test_cas_live).
+    "events": (("p_events", "jsonb"), ("p_require_signature", ""), ("p_cas", "boolean")),
 }
 
 # PostgREST → HTTP status for the SQLSTATEs this fake can produce.
