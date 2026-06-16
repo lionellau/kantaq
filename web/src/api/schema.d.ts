@@ -76,6 +76,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/conflicts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conflicts
+         * @description Open (default) or resolved conflict records, newest first. Live, no cache.
+         */
+        get: operations["list_conflicts_v1_conflicts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conflicts/{conflict_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve Conflict */
+        post: operations["resolve_conflict_v1_conflicts__conflict_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/devices": {
         parameters: {
             query?: never;
@@ -426,6 +463,23 @@ export interface paths {
          * @description Decline a proposed team entry (HUMAN only): ``proposed → rejected``.
          */
         post: operations["reject_memory_v1_memory__memory_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/metrics/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Metrics Summary */
+        get: operations["metrics_summary_v1_metrics_summary_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -830,6 +884,35 @@ export interface components {
             /** Id */
             id: string;
         };
+        /** ActorUsageOut */
+        ActorUsageOut: {
+            /** Actor Id */
+            actor_id: string;
+            /** Denials */
+            denials: number;
+            /** Est Payload Bytes */
+            est_payload_bytes: number;
+            /** Est Tokens */
+            est_tokens: number;
+            /** Last Seen */
+            last_seen: string | null;
+            /** Mcp Calls */
+            mcp_calls: number;
+            /** Proposes */
+            proposes: number;
+            /** Reads */
+            reads: number;
+            /** Role */
+            role: string;
+        };
+        /** AgentActivityOut */
+        AgentActivityOut: {
+            /** By Actor */
+            by_actor: components["schemas"]["ActorUsageOut"][];
+            totals: components["schemas"]["ActorUsageOut"];
+            /** Window Days */
+            window_days: number;
+        };
         /**
          * AgentClientSnippet
          * @description One compatible client's copy-paste MCP config (E11, MOD-24).
@@ -955,10 +1038,47 @@ export interface components {
             /** Source */
             source: string;
         };
+        /** BackendFootprintOut */
+        BackendFootprintOut: {
+            /** Bytes */
+            bytes: {
+                [key: string]: unknown;
+            };
+            capacity: components["schemas"]["CapacityOut"];
+            /** Measured */
+            measured: boolean;
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            };
+            /** Source */
+            source: string;
+        };
         /** Body_upload_attachment_v1_tickets__ticket_id__attachments_post */
         Body_upload_attachment_v1_tickets__ticket_id__attachments_post: {
             /** File */
             file: string;
+        };
+        /** CapacityOut */
+        CapacityOut: {
+            /** Db Limit Bytes */
+            db_limit_bytes: number;
+            /** Db Pct */
+            db_pct: number;
+            /** Db Used Bytes */
+            db_used_bytes: number;
+            /** Egress Limit Bytes */
+            egress_limit_bytes: number;
+            /** Egress Pct */
+            egress_pct: number | null;
+            /** Egress Used Bytes */
+            egress_used_bytes: number | null;
+            /** Headroom Warning */
+            headroom_warning: boolean;
+            /** Idle Pause Risk */
+            idle_pause_risk: boolean;
+            /** Tier */
+            tier: string;
         };
         /** CommentIn */
         CommentIn: {
@@ -980,6 +1100,42 @@ export interface components {
             id: string;
             /** Ticket Id */
             ticket_id: string;
+        };
+        /** ConflictOut */
+        ConflictOut: {
+            /** Actor */
+            actor: string;
+            /** Base Rev */
+            base_rev: number;
+            /** Candidate Values */
+            candidate_values: {
+                [key: string]: unknown;
+            };
+            /** Collection */
+            collection: string;
+            /** Contending Revisions */
+            contending_revisions: number[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Entity Id */
+            entity_id: string;
+            /** Field */
+            field: string;
+            /** Head Rev */
+            head_rev: number;
+            /** Id */
+            id: string;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Resolved By */
+            resolved_by: string | null;
+            /** Resolved Choice */
+            resolved_choice: string | null;
+            /** Status */
+            status: string;
         };
         /**
          * DeviceOut
@@ -1333,6 +1489,17 @@ export interface components {
             /** Target Date */
             target_date?: string | null;
         };
+        /** ProjectSizeOut */
+        ProjectSizeOut: {
+            /** Bytes */
+            bytes: number;
+            /** Name */
+            name: string;
+            /** Project Id */
+            project_id: string;
+            /** Rows */
+            rows: number;
+        };
         /** ProposalOut */
         ProposalOut: {
             /**
@@ -1423,6 +1590,42 @@ export interface components {
             to_id: string;
             /** Type */
             type: string;
+        };
+        /** ReplicaSizeOut */
+        ReplicaSizeOut: {
+            /** By Project */
+            by_project: components["schemas"]["ProjectSizeOut"][];
+            /** Total Bytes */
+            total_bytes: number;
+        };
+        /** ResolveIn */
+        ResolveIn: {
+            /** Choice */
+            choice: string;
+            /** New Value */
+            new_value?: unknown | null;
+        };
+        /** ResolveOut */
+        ResolveOut: {
+            /** Conflict Id */
+            conflict_id: string;
+            /** Rebase Required */
+            rebase_required: boolean;
+            /** Resolved */
+            resolved: boolean;
+        };
+        /** RetentionStatusOut */
+        RetentionStatusOut: {
+            /** Audit Anchored */
+            audit_anchored: boolean;
+            /** Audit Summarizable */
+            audit_summarizable: number;
+            /** Last Run */
+            last_run: string | null;
+            /** Next Run Due */
+            next_run_due: string | null;
+            /** Sync Compactable Below Rev */
+            sync_compactable_below_rev: number | null;
         };
         /**
          * Role
@@ -1719,6 +1922,28 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** WorkspaceMetricsOut */
+        WorkspaceMetricsOut: {
+            agents: components["schemas"]["AgentActivityOut"];
+            backend: components["schemas"]["BackendFootprintOut"] | null;
+            /** Billing Url */
+            billing_url: string | null;
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Hub Mode */
+            hub_mode: string;
+            /** Notes */
+            notes: string[];
+            replica: components["schemas"]["ReplicaSizeOut"];
+            retention: components["schemas"]["RetentionStatusOut"];
+        };
     };
     responses: never;
     parameters: never;
@@ -1791,6 +2016,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditEventOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_conflicts_v1_conflicts_get: {
+        parameters: {
+            query?: {
+                status?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_conflict_v1_conflicts__conflict_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conflict_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolveOut"];
                 };
             };
             /** @description Validation Error */
@@ -2465,6 +2756,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    metrics_summary_v1_metrics_summary_get: {
+        parameters: {
+            query?: {
+                window_days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceMetricsOut"];
                 };
             };
             /** @description Validation Error */

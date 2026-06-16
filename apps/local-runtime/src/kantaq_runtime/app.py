@@ -23,12 +23,14 @@ from kantaq_runtime import __version__
 from kantaq_runtime.agents_api import router as agents_router
 from kantaq_runtime.audit_api import router as audit_router
 from kantaq_runtime.config import Settings, get_settings
+from kantaq_runtime.conflicts_api import router as conflicts_router
 from kantaq_runtime.devices_api import router as devices_router
 from kantaq_runtime.export_api import router as export_router
 from kantaq_runtime.grants_api import router as grants_router
 from kantaq_runtime.me_api import router as me_router
 from kantaq_runtime.members_api import router as members_router
 from kantaq_runtime.memory_api import router as memory_router
+from kantaq_runtime.metrics_api import router as metrics_router
 from kantaq_runtime.proposals_api import router as proposals_router
 from kantaq_runtime.skills_api import router as skills_router
 from kantaq_runtime.sync_api import router as sync_router
@@ -79,6 +81,8 @@ def create_app(
     app.include_router(devices_router)
     app.include_router(sync_router)
     app.include_router(proposals_router)
+    app.include_router(conflicts_router)
+    app.include_router(metrics_router)
     app.include_router(telemetry_router)
     app.include_router(tracker_router)
     app.include_router(export_router)

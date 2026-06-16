@@ -45,13 +45,24 @@ def main() -> int:
 
     from kantaq_core.identity import IdentityService, Role
     from kantaq_core.tracker import TrackerService
+    from kantaq_db import new_ulid
     from kantaq_db.models import Workspace
     from kantaq_db.session import get_engine, sqlite_url
     from kantaq_mcp.tools import agent_action_propose
     from kantaq_runtime.app import create_app
     from kantaq_runtime.auth import ensure_local_identity, keychain_for
     from kantaq_runtime.config import get_settings
-    from kantaq_sync_engine import EventLogSink
+    from kantaq_sync_engine import (
+        Event,
+        EventLogSink,
+        SyncEngine,
+        conflict_record_id,
+        entity_base_rev,
+        insert_event,
+        next_actor_seq,
+        refold_entity,
+    )
+    from kantaq_test_harness.backend import FakeBackend
 
     settings = get_settings()
     engine = get_engine(sqlite_url(settings.local_db_path))
@@ -61,22 +72,73 @@ def main() -> int:
         print("e2e server: expected a fresh database (owner already exists)", file=sys.stderr)
         return 1
 
-    # Seed the approve flow: an Agent member proposes a status change on a
-    # ticket, exactly as it would through the MCP gateway.
+    backend = FakeBackend()
+
+    # Seed an open sync-conflict (E20-T5) FIRST: create + commit a ticket to the
+    # shared backend, then mint an open conflict_record on its status field. The
+    # same FakeBackend backs the injected resolve engine, so the CAS at resolve
+    # time matches the committed head. Done before the hero fixtures so those
+    # stay local-and-pending for the approve flow.
     with Session(engine) as session:
         identity = IdentityService(session)
         owner = identity.list_members()[0]
+        owner_id = owner.id
         agent = identity.invite(
             email="agent@e2e.local",
             role=Role.agent,
             scopes=["tickets.read", "proposals.write"],
         )
         workspace = session.exec(select(Workspace)).one()
+        workspace_id = workspace.id
         tracker = TrackerService(
-            session, actor_id=owner.id, source="cli", sink=EventLogSink(session, owner.id)
+            session, actor_id=owner_id, source="cli", sink=EventLogSink(session, owner_id)
         )
-        project = tracker.create_project(workspace_id=workspace.id, name="Hero Project")
+        project = tracker.create_project(workspace_id=workspace_id, name="Hero Project")
         project_id = project.id
+        conflict_ticket = tracker.create_ticket(
+            project_id=project_id, title="Conflicted ticket", status="todo"
+        )
+        conflict_ticket_id = conflict_ticket.id
+        session.commit()
+
+    sync = SyncEngine(engine, backend, actor_id=owner_id, workspace_id=workspace_id)
+    sync.flush_outbox()  # commit the project + conflict ticket to the shared backend
+
+    with Session(engine) as session:
+        head = entity_base_rev(session, "tickets", conflict_ticket_id)
+        assert head is not None
+        conflict_id = conflict_record_id(conflict_ticket_id, "status", [head])
+        cr_event = Event(
+            event_id=new_ulid(),
+            collection="conflict_records",
+            entity_id=conflict_id,
+            actor_id=owner_id,
+            actor_seq=next_actor_seq(session, owner_id),
+            op="patch",
+            payload={
+                "workspace_id": workspace_id,
+                "collection": "tickets",
+                "entity_id": conflict_ticket_id,
+                "field": "status",
+                "contending_revisions": [head],
+                "candidate_values": {"keep_a": "doing", "keep_b": "todo"},
+                "base_rev": 0,
+                "head_rev": head,
+                "actor": owner_id,
+                "status": "open",
+            },
+        )
+        committed = backend.commit_events([cr_event])
+        insert_event(session, cr_event, committed_rev=committed[0].revision)
+        refold_entity(session, "conflict_records", conflict_id)
+        session.commit()
+
+    # The hero approve-flow fixtures (kept local + pending, after the flush): a
+    # Seeded ticket + a pending agent proposal created through the real path.
+    with Session(engine) as session:
+        tracker = TrackerService(
+            session, actor_id=owner_id, source="cli", sink=EventLogSink(session, owner_id)
+        )
         ticket = tracker.create_ticket(
             project_id=project_id,
             title="Seeded ticket",
@@ -103,6 +165,8 @@ def main() -> int:
                 "token": token,
                 "ticket_id": ticket_id,
                 "project_id": project_id,
+                "conflict_id": conflict_id,
+                "conflict_ticket_id": conflict_ticket_id,
             },
             indent=2,
         ),
@@ -112,6 +176,12 @@ def main() -> int:
     import uvicorn
 
     app = create_app(settings=settings, engine=engine)
+    # Inject the resolve engine over the same FakeBackend that holds the seeded
+    # conflict's committed head, so POST /v1/conflicts/{id}/resolve CASes for real
+    # without a live backend (E20-T5; the Supabase build is the live path).
+    app.state.conflict_engine_factory = lambda **_kw: SyncEngine(
+        engine, backend, actor_id=owner_id, workspace_id=workspace_id
+    )
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
     return 0
 

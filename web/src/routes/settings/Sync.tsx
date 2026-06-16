@@ -11,7 +11,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
-import type { SyncStatus } from "../../api/types";
+import type { SyncStatus, WorkspaceMetrics } from "../../api/types";
+import MetricsDashboard from "../../components/MetricsDashboard";
 import { fmtDateTime } from "../../lib/format";
 import { useSession } from "../../lib/session";
 import * as ui from "../../lib/ui";
@@ -31,19 +32,24 @@ const PROPOSAL_POLICY_LABEL: Record<string, string> = {
 export default function Sync() {
   const { connected } = useSession();
   const [status, setStatus] = useState<SyncStatus | null>(null);
+  const [metrics, setMetrics] = useState<WorkspaceMetrics | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!connected) {
       return;
     }
-    const { data, error: apiError } = await api.GET("/v1/sync/status");
-    if (apiError !== undefined) {
+    const [statusRes, metricsRes] = await Promise.all([
+      api.GET("/v1/sync/status"),
+      api.GET("/v1/metrics/summary", { params: { query: { window_days: 30 } } }),
+    ]);
+    if (statusRes.error !== undefined) {
       setError("could not load sync status");
       return;
     }
     setError(null);
-    setStatus(data);
+    setStatus(statusRes.data);
+    setMetrics(metricsRes.data ?? null);
   }, [connected]);
 
   useEffect(() => {
@@ -131,6 +137,8 @@ export default function Sync() {
               re-decision. Set with <code>AGENT_PROPOSAL_STALE_POLICY</code> in your runtime config.
             </p>
           </div>
+
+          {metrics !== null && <MetricsDashboard metrics={metrics} />}
         </>
       )}
     </section>
