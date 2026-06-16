@@ -326,6 +326,54 @@ def test_revoking_the_grant_stops_the_derived_session(
     )
 
 
+def test_revocation_stops_the_session_within_the_wall_clock_budget(
+    gateway: Gateway,
+    engine: Engine,
+    keychain: FakeKeychain,
+    clock: FakeClock,
+    agent: MintedToken,
+    owner: MintedToken,
+    ticket: Ticket,
+) -> None:
+    """E06-T7 / NFR-E06-2 — the timed proof, measured on a **real wall clock**.
+
+    The unforgiving promise: a revoked grant stops its derived MCP session in
+    under 5 s. The gateway re-checks the grant **live on every call** against the
+    store (``_grant_live`` — no cached session that ignores revocation, which
+    would be a security hole, not a latency miss), so the stop lands on the very
+    next call. We measure with ``time.monotonic`` (not FakeClock) and assert the
+    real elapsed wall-clock from revoke → denial is well inside the budget. This
+    is the hermetic gate for the same-store path; the cross-replica propagation
+    (revoke on the backend → the 2 s sync poll lands the revoked grant → the
+    gateway's live re-check denies — D-21) is the live-Supabase smoke.
+    """
+    import time
+
+    grant_id = _issue_grant(
+        engine, keychain, clock, subject_member_id=agent.member_id, issuer_member_id=owner.member_id
+    )
+    actor = _verified(gateway, agent)
+    session = gateway.session_for(
+        actor, session_id="s-wall", grant_request=GrantSessionRequest(grant_id=grant_id)
+    )
+    assert "ticket" in gateway.handle_call(
+        actor=actor, session=session, tool_name="ticket_get", args={"ticket_id": ticket.id}
+    )
+
+    with Session(engine) as db:
+        GrantService(db, keychain, now=_naive(clock)).revoke(grant_id, actor_id=owner.member_id)
+        db.commit()
+
+    revoked_at = time.monotonic()
+    with pytest.raises(GatewayDenied) as denied:
+        gateway.handle_call(
+            actor=actor, session=session, tool_name="ticket_get", args={"ticket_id": ticket.id}
+        )
+    elapsed = time.monotonic() - revoked_at
+    assert denied.value.reason == DENY_IDENTITY
+    assert elapsed < 5.0, f"revocation took {elapsed:.4f}s wall-clock — over the 5 s budget"
+
+
 # ------------------------------------------------------- /v1/session/init
 
 

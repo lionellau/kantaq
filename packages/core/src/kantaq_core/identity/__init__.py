@@ -19,12 +19,15 @@ from kantaq_core.identity.devices import (
 )
 from kantaq_core.identity.grants import (
     DEFAULT_GRANT_TTL_SECONDS,
+    MAX_AGENT_GRANT_TTL_SECONDS,
     MAX_GRANT_TTL_SECONDS,
+    MAX_HUMAN_GRANT_TTL_SECONDS,
     GrantDeniedError,
     GrantNotFoundError,
     GrantService,
     ensure_member_grant,
     local_grant_index,
+    max_grant_ttl_seconds,
     revoke_grants_for_device,
     revoke_grants_for_member,
     verify_grant_row,
@@ -50,7 +53,9 @@ from kantaq_core.identity.tokens import (
 __all__ = [
     "DEFAULT_GRANT_TTL_SECONDS",
     "DEVICE_KEY_NAME",
+    "MAX_AGENT_GRANT_TTL_SECONDS",
     "MAX_GRANT_TTL_SECONDS",
+    "MAX_HUMAN_GRANT_TTL_SECONDS",
     "ROLE_PERMISSIONS",
     "Action",
     "DeviceNotFoundError",
@@ -71,6 +76,7 @@ __all__ = [
     "ensure_member_grant",
     "local_device",
     "local_grant_index",
+    "max_grant_ttl_seconds",
     "revoke_device",
     "revoke_grants_for_device",
     "revoke_grants_for_member",

@@ -18,7 +18,8 @@ from kantaq_core import audit
 from kantaq_core.identity import (
     DEFAULT_GRANT_TTL_SECONDS,
     DEVICE_KEY_NAME,
-    MAX_GRANT_TTL_SECONDS,
+    MAX_AGENT_GRANT_TTL_SECONDS,
+    MAX_HUMAN_GRANT_TTL_SECONDS,
     DeviceNotFoundError,
     GrantDeniedError,
     GrantService,
@@ -297,28 +298,54 @@ def test_agent_grant_expires_on_schedule(
         assert service.verify(row).reason == "expired"
 
 
-def test_ttl_ceiling_is_24_hours(
+def test_ttl_ceiling_is_role_aware(
     engine: Engine, keychain: FakeKeychain, clock: FakeClock, owner_id: str
 ) -> None:
+    """E06-T7 (FR-E06-6): agents stay hard-capped at 24 h; humans get the lifted
+    v0.2 ceiling (backend-issued grants — fast revocation is the safety net)."""
     with Session(engine) as session:
         ensure_device(session, keychain, member_id=owner_id, now=_now(clock)())
+        agent = IdentityService(session).invite(
+            email="bot@example.com", role=Role.agent, scopes=["tickets.read"]
+        )
         service = _grant_service(session, keychain, clock)
-        row = service.issue(
+
+        # Agent: 24 h is the cap — one second past it is refused.
+        agent_grant = service.issue(
+            subject_member_id=agent.member_id,
+            resource="workspace/main",
+            verbs=["tickets.read"],
+            ttl_seconds=MAX_AGENT_GRANT_TTL_SECONDS,
+            actor_id=owner_id,
+        )
+        assert agent_grant.expires_at - agent_grant.issued_at == MAX_AGENT_GRANT_TTL_SECONDS
+        with pytest.raises(GrantDeniedError, match="ceiling"):
+            service.issue(
+                subject_member_id=agent.member_id,
+                resource="workspace/main",
+                verbs=["tickets.read"],
+                ttl_seconds=MAX_AGENT_GRANT_TTL_SECONDS + 1,
+                actor_id=owner_id,
+            )
+
+        # Human (Owner): a multi-day grant is allowed; only the human ceiling + 1 refuses.
+        long_human = service.issue(
             subject_member_id=owner_id,
             resource="workspace/main",
             verbs=["tickets.read"],
-            ttl_seconds=MAX_GRANT_TTL_SECONDS,
+            ttl_seconds=MAX_AGENT_GRANT_TTL_SECONDS * 7,  # 7 days — past the old 24 h cap
             actor_id=owner_id,
         )
-        assert row.expires_at - row.issued_at == MAX_GRANT_TTL_SECONDS
+        assert long_human.expires_at - long_human.issued_at == MAX_AGENT_GRANT_TTL_SECONDS * 7
         with pytest.raises(GrantDeniedError, match="ceiling"):
             service.issue(
                 subject_member_id=owner_id,
                 resource="workspace/main",
                 verbs=["tickets.read"],
-                ttl_seconds=MAX_GRANT_TTL_SECONDS + 1,
+                ttl_seconds=MAX_HUMAN_GRANT_TTL_SECONDS + 1,
                 actor_id=owner_id,
             )
+
         with pytest.raises(GrantDeniedError, match="positive"):
             service.issue(
                 subject_member_id=owner_id,
@@ -450,7 +477,8 @@ def test_a_validly_signed_overlong_grant_still_fails_verify(
             resource="workspace/main",
             verbs=["tickets.read"],
             issued_at=issued,
-            expires_at=issued + MAX_GRANT_TTL_SECONDS + 3600,  # signed, but over ceiling
+            # signed, but over even the lifted human ceiling (owner is a human)
+            expires_at=issued + MAX_HUMAN_GRANT_TTL_SECONDS + 3600,
             created_at=ts,
             updated_at=ts,
         )
@@ -565,8 +593,9 @@ def test_ensure_member_grant_issues_role_scoped_signed_grant(
         assert "tickets.write" in grant.verbs
         assert "members.invite" in grant.verbs
         assert _grant_service(session, keychain, clock).verify(grant).ok
-        # 24 h TTL keeps the policy_ref stable for a day rather than per-hour.
-        assert grant.expires_at - grant.issued_at == MAX_GRANT_TTL_SECONDS
+        # A human self-grant gets the lifted v0.2 ceiling (E06-T7) — a stable
+        # policy_ref for weeks, not a day; fast revocation is the safety net.
+        assert grant.expires_at - grant.issued_at == MAX_HUMAN_GRANT_TTL_SECONDS
 
 
 def test_ensure_member_grant_is_idempotent_while_live(
@@ -592,7 +621,7 @@ def test_ensure_member_grant_reissues_after_expiry(
         ensure_device(session, keychain, member_id=owner_id, now=_now(clock)())
         first = ensure_member_grant(session, keychain, owner_id, now=_now(clock))
         session.commit()
-        clock.advance(MAX_GRANT_TTL_SECONDS + 1)
+        clock.advance(MAX_HUMAN_GRANT_TTL_SECONDS + 1)  # owner is human → the lifted ceiling
         second = ensure_member_grant(session, keychain, owner_id, now=_now(clock))
         session.commit()
         assert first.id != second.id
