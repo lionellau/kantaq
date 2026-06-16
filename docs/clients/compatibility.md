@@ -80,20 +80,22 @@ see the status note below.
 | Client | Version | Transport | T1 connect | T2 read | T3 propose (+ approve) | Last verified | How |
 |---|---|---|---|---|---|---|---|
 | **Codex CLI** | 0.130.0 | streamable HTTP + bearer | ✅ | ✅ | ✅ | 2026-06-14 | `make verify-agent` |
-| **Claude Code** | 2.1.145 | HTTP + bearer | ⏳ harness-ready | ⏳ | ⏳ | — | `make verify-agent` in a signed-in terminal |
+| **Claude Code** | 2.1.178 | HTTP + bearer | ✅ | ✅ | ✅ | 2026-06-16 | `make verify-agent` (signed-in CLI) |
 
 **Codex** was verified end to end: it connected with its member token, read the
 ticket (`ticket_get`), created a proposal (`agent_action_propose`, propose-only),
-and the Owner approved it — ~31 s, no human in the loop. **Claude Code** runs
-through the identical harness (only the CLI invocation differs), but in the
-sandbox used for this run `claude -p` could not reach its model-API credentials;
-run `make verify-agent` where `claude` is signed in and it fills in.
+and the Owner approved it — ~31 s, no human in the loop. **Claude Code** was
+verified the same way on 2026-06-16 (client `2.1.178`): `make verify-agent --agent
+claude` on a signed-in machine connected, read the ticket, created a proposal, and
+the Owner approved it — connect / read / propose / approve all ✓ in ~22 s. (The
+earlier sandbox run failed only because `claude -p` had no model-API credentials
+there.)
 
 ### Full-8 badge target (all 8 tests, real client)
 
 | Client | Transport | Tier (target) | Last verified | Client version | Pass rate | Notes |
 |---|---|---|---|---|---|---|
-| **Claude Code** (CLI + IDE) | HTTP | Tier 1 | _pending full real-client run_ | 2.1.145 (connect core) | — / 8 | Snippet: `.mcp.json` (`type: http`). Server side proven (scripted 8/8); real connect T1–T3 harness-ready. |
+| **Claude Code** (CLI + IDE) | HTTP | Tier 1 | T1–T3 real ✅ 2026-06-16; full-8 pending | 2.1.178 | 3 → / 8 | Snippet: `.mcp.json` (`type: http`). Server side proven (scripted 8/8); **real connect/read/propose/approve verified** via `make verify-agent --agent claude`. Badge stays uncertified until Cursor's run lands. |
 | **Cursor** | HTTP | Tier 1 | _pending real-client run_ | _pin at run_ | — / 8 | Snippet: `.cursor/mcp.json` (bare `url`). Server side proven (scripted 8/8). |
 | **Codex** (CLI) | HTTP | Tier 1 (HTTP) | _T1–T3 real ✅; full 8 pending_ | 0.130.0 (connect core) | 3 → / 8 | Snippet: `~/.codex/config.toml` (env-var bearer). Server side proven (scripted 8/8); real connect/read/propose **verified** (~31 s). |
 
