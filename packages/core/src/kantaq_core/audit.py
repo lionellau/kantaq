@@ -306,6 +306,7 @@ def snapshot(row: SQLModel) -> dict[str, Any]:
 @dataclass
 class _ReadTally:
     total: int = 0
+    byte_total: int = 0
     by_object: dict[str, int] = field(default_factory=dict)
 
 
@@ -328,12 +329,17 @@ class AgentReadLog:
         with self._lock:
             return sum(t.total for t in self._tallies.values())
 
-    def record(self, actor_id: str, object_ref: str | None = None) -> None:
+    def record(
+        self, actor_id: str, object_ref: str | None = None, *, payload_bytes: int = 0
+    ) -> None:
         if not actor_id or not actor_id.strip():
             raise AuditWriteError("agent reads must be attributed: actor_id is required")
+        if payload_bytes < 0:
+            raise AuditWriteError("agent read payload_bytes must be non-negative")
         with self._lock:
             tally = self._tallies.setdefault(actor_id, _ReadTally())
             tally.total += 1
+            tally.byte_total += payload_bytes
             if object_ref is not None:
                 tally.by_object[object_ref] = tally.by_object.get(object_ref, 0) + 1
 
@@ -346,7 +352,11 @@ class AgentReadLog:
                 session,
                 actor_id=actor_id,
                 action=AGENT_READ_ACTION,
-                after={"reads": tally.total, "objects": tally.by_object},
+                after={
+                    "reads": tally.total,
+                    "bytes": tally.byte_total,
+                    "objects": tally.by_object,
+                },
                 source="mcp",
                 now=now,
             )

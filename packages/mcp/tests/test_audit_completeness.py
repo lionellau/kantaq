@@ -57,10 +57,12 @@ def test_scripted_session_leaves_a_complete_trail(
     assert len(reads) == 1
     assert reads[0].actor_id == agent.member_id
     assert reads[0].source == "mcp"
-    assert reads[0].after == {
-        "reads": 2,
-        "objects": {f"tickets/{ticket.id}": 2},
-    }
+    assert reads[0].after is not None
+    assert reads[0].after["reads"] == 2
+    assert reads[0].after["objects"] == {f"tickets/{ticket.id}": 2}
+    # MOD-08: the gateway tallies the JSON payload size of each read, so the
+    # summary carries real bytes (the feed for metrics' est_tokens), not 0.
+    assert reads[0].after["bytes"] > 0
 
     proposals = audit_rows("proposal.create")
     assert [row.actor_id for row in proposals] == [agent.member_id]
