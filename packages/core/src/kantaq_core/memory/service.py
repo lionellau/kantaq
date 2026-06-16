@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -36,7 +37,8 @@ from sqlalchemy import update as sa_update
 from sqlalchemy.engine import CursorResult
 from sqlmodel import Session, col, select
 
-from kantaq_core import audit
+from kantaq_core import audit, memory_policy
+from kantaq_core.memory_policy import MemoryPolicy
 from kantaq_core.tracker.events import DomainEvent, EventSink, Op
 from kantaq_db.models import MemoryEntry, MemoryLink, Ticket
 
@@ -59,6 +61,19 @@ REVIEW_STATUSES: tuple[str, ...] = ("draft", "proposed", "approved", "stale", "r
 # v0.2 human-gated promotion workflow (FR-E13-3).
 WRITABLE_REVIEW_STATUSES: tuple[str, ...] = ("draft", "stale")
 MEMORY_VISIBILITIES: tuple[str, ...] = ("local", "team")
+
+# The six UX-facing labels the (visibility, review_status, space) triple folds
+# down to (PRD §8.8). This is the closed vocabulary; ``domain_visibility`` below
+# is the single mapping that assigns exactly one of these — the MOD-19 "single
+# source of truth" rule. A test pins the function's range == this set.
+DOMAIN_VISIBILITIES: tuple[str, ...] = (
+    "private_local",
+    "agent_run_private",
+    "personal_synced",
+    "proposal_context",
+    "shared_project",
+    "shared_workspace",
+)
 
 # Keys a provenance dict may carry ({origin, actor_id, captured_at, detail}).
 _PROVENANCE_KEYS = frozenset({"origin", "actor_id", "captured_at", "detail"})
@@ -88,11 +103,21 @@ _PATCHABLE = frozenset(
 
 
 def domain_visibility(visibility: str, review_status: str, space: str) -> str:
-    """The UX-facing visibility label (PRD §8.8) — the one mapping table.
+    """The UX-facing visibility label (PRD §8.8) — the one mapping, six states.
 
-    The protocol stores ``visibility`` + ``review_status``; the UI speaks
-    ``private_local`` / ``personal_synced`` / …. Keeping the mapping here (and
-    nowhere else) is the MOD-19 "single source of truth" rule.
+    The protocol stores ``visibility`` + ``review_status`` (plus the ``space``
+    grouping); the UI speaks ``private_local`` / ``shared_project`` / …. The six
+    possible labels are :data:`DOMAIN_VISIBILITIES`. Keeping this mapping here
+    (and nowhere else) is the MOD-19 "single source of truth" rule.
+
+    An ``approved`` ``team`` entry's **share scope** is read from its ``space``:
+    a ``workspace`` note is shared workspace-wide (``shared_workspace``); every
+    other space is narrower than the whole workspace — a project or something
+    living inside one (``project``/``ticket``/``codebase``/``decision``/
+    ``release``) — so it shares at project scope (``shared_project``). This is
+    the PRD §8.8 "project-/workspace-scoped" split, resolved against the locked
+    MOD-19 space vocabulary; ``space`` is already on the entry, so no new field
+    is needed.
     """
     if visibility == "local":
         if space == "agent_run" and review_status == "draft":
@@ -101,7 +126,7 @@ def domain_visibility(visibility: str, review_status: str, space: str) -> str:
     if review_status == "proposed":
         return "proposal_context"
     if review_status == "approved":
-        return "shared_workspace"
+        return "shared_workspace" if space == "workspace" else "shared_project"
     return "personal_synced"
 
 
@@ -138,6 +163,22 @@ class MemoryConflictError(MemoryGraphError):
     ``proposals.ProposalConflictError`` so the two human-gated decision paths
     share one double-apply guard.
     """
+
+
+@dataclass(frozen=True)
+class MemorySearchResult:
+    """The outcome of a policy-filtered search (:meth:`MemoryService.search`).
+
+    ``included`` is the only thing a caller hands back to an agent — **no entry
+    the policy excludes is ever in it**. ``excluded`` pairs each withheld entry
+    with its MOD-21 reason code (``out_of_scope:<space>``, ``review_status:…``,
+    ``privacy_filter:visibility_local``, ``expired``, …) for a preview surface.
+    Both hold the live ``MemoryEntry`` rows (not the read-only protocol view), so
+    a caller can render their title/body without a second fetch.
+    """
+
+    included: tuple[MemoryEntry, ...]
+    excluded: tuple[tuple[MemoryEntry, str], ...]
 
 
 class MemoryService:
@@ -464,6 +505,46 @@ class MemoryService:
             # contains; filter the narrowed rows in Python (DEBT-05 scale).
             rows = [r for r in rows if needle in r.title.lower() or needle in r.body.lower()]
         return sorted(rows, key=lambda r: r.id, reverse=True)
+
+    def search(
+        self,
+        *,
+        policy: MemoryPolicy | None = None,
+        space: str | None = None,
+        type: str | None = None,  # noqa: A002 — mirrors the model field
+        q: str | None = None,
+        include_expired: bool = False,
+    ) -> MemorySearchResult:
+        """Policy-filtered search — the one enforced read path (extends MOD-21).
+
+        Narrows with :meth:`list_entries`, then — when a ``policy`` is given (an
+        agent session) — runs the MOD-21 ``memory_policy.filter`` so **no entry
+        the policy excludes is ever returned**. With ``policy=None`` (a human /
+        unscoped session) the result is unfiltered: the device owner reads their
+        own memory, ``local`` notes included (the ``human_teammate`` baseline).
+
+        This is the single place search-time enforcement lives, so every search
+        surface (the ``memory_search`` MCP tool today; any later HTTP/CLI search)
+        inherits the same guarantee instead of re-implementing the filter. The
+        privacy gate in ``memory_policy.decide`` is checked first and decisively,
+        so a ``local`` entry can never be re-admitted by a scope/status rule —
+        **NFR-E16-1 / NFR-E13-1 hold by construction**, not as a downstream
+        filter. ``now`` is the service clock (naive-UTC, the store's encoding),
+        so expiry is deterministic under FakeClock and never mixes tz-awareness.
+        """
+        rows = self.list_entries(space=space, type=type, q=q, include_expired=include_expired)
+        if policy is None:
+            return MemorySearchResult(included=tuple(rows), excluded=())
+        result = memory_policy.filter(rows, policy, now=self._now())
+        # Rebuild from the MemoryEntry rows (filter returns the read-only
+        # protocol view): keep MemoryEntry typing + the list_entries order, and
+        # pair every withheld row with its reason. filter partitions all rows, so
+        # each row lands in exactly one of kept / reasons.
+        kept = {entry.id for entry in result.included}
+        reasons = {entry.id: reason for entry, reason in result.excluded}
+        included = tuple(row for row in rows if row.id in kept)
+        excluded = tuple((row, reasons[row.id]) for row in rows if row.id in reasons)
+        return MemorySearchResult(included=included, excluded=excluded)
 
     def delete_entry(self, memory_id: str) -> None:
         """Delete an entry and its links; team rows tombstone, local rows don't."""

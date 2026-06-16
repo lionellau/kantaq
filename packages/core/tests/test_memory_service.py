@@ -10,6 +10,10 @@ from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, select
 
 from kantaq_core.memory import (
+    DOMAIN_VISIBILITIES,
+    MEMORY_SPACES,
+    MEMORY_VISIBILITIES,
+    REVIEW_STATUSES,
     MemoryNotFoundError,
     MemoryService,
     MemoryValidationError,
@@ -359,10 +363,30 @@ def test_team_link_audits_on_the_ticket(
         ("team", "draft", "workspace", "personal_synced"),
         ("team", "stale", "project", "personal_synced"),
         ("team", "proposed", "workspace", "proposal_context"),
+        # approved splits by share scope (the sixth state, E13-T5): a workspace
+        # note shares workspace-wide; every other space is project-scoped.
         ("team", "approved", "workspace", "shared_workspace"),
+        ("team", "approved", "project", "shared_project"),
+        ("team", "approved", "ticket", "shared_project"),
+        ("team", "approved", "codebase", "shared_project"),
+        ("team", "approved", "release", "shared_project"),
     ],
 )
 def test_domain_visibility_single_source_of_truth(
     visibility: str, review_status: str, space: str, expected: str
 ) -> None:
     assert domain_visibility(visibility, review_status, space) == expected
+
+
+def test_domain_visibility_range_is_the_closed_vocabulary() -> None:
+    """Every (visibility, review_status, space) triple folds to exactly one of
+    the six DOMAIN_VISIBILITIES — the range is the closed vocabulary, nothing
+    outside it, and every label is reachable (the single-source-of-truth set)."""
+    seen = {
+        domain_visibility(visibility, review_status, space)
+        for visibility in MEMORY_VISIBILITIES
+        for review_status in REVIEW_STATUSES
+        for space in MEMORY_SPACES
+    }
+    assert seen == set(DOMAIN_VISIBILITIES)
+    assert len(DOMAIN_VISIBILITIES) == 6

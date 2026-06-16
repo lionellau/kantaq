@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 from sqlmodel import select
 
+from kantaq_core.memory_policy import policy_for
 from kantaq_db import EventLog, MemoryEntry
 from kantaq_test_harness.backend import FakeBackend
 from kantaq_test_harness.replica import WORKSPACE_ID, Replica, make_replica
@@ -172,3 +173,44 @@ def test_other_replica_never_learns_the_local_entry(
         assert session.get(MemoryEntry, local_id) is None
         replicated = session.get(MemoryEntry, team_id)
         assert replicated is not None and replicated.title == "public-to-team"
+
+
+def test_policy_filtered_search_after_promote_never_returns_the_local_source(
+    alice: Replica, backend: FakeBackend
+) -> None:
+    """E13-T5: the never-sync proof re-run across promote, through the search path.
+
+    Promote a ``local`` entry → the new ``team`` ``proposed`` copy is shared, but
+    the local source stays private. An agent's policy-filtered ``search`` returns
+    the shared copy and **never** the local source (the privacy gate drops it,
+    reasoned), and the local source still emits zero events and never appears in
+    a push. This ties E13-T5's two halves — the enforced search and the
+    never-sync wall — into one end-to-end proof."""
+    policy = policy_for("code_agent")  # `codebase` is in scope for code_agent
+    with alice.session() as session:
+        memory = alice.memory_service(session)
+        local = memory.create_entry(title="rationale", space="codebase", visibility="local")
+        proposed = memory.promote(local.id)
+        local_id, proposed_id = local.id, proposed.id
+
+        # The agent's policy-filtered search sees the shared (team, proposed)
+        # copy but never the local source — the privacy gate is decisive.
+        result = memory.search(policy=policy)
+        included_ids = {entry.id for entry in result.included}
+        assert proposed_id in included_ids
+        assert local_id not in included_ids
+        reasons = {entry.id: reason for entry, reason in result.excluded}
+        assert reasons[local_id] == "privacy_filter:visibility_local"
+
+    # The original local row produced no events at all (never-sync wall holds).
+    local_events = [row for row in _memory_event_rows(alice) if row.entity_id == local_id]
+    assert local_events == []
+
+    alice.sync.push()
+    pushed = backend.pull(collection=None, since=0)
+    # No pushed event is about the local row — its id never leaves the machine.
+    assert not any(entry.event.entity_id == local_id for entry in pushed)
+    payload_dump = json.dumps([asdict(entry.event) for entry in pushed], default=str)
+    assert local_id not in payload_dump
+    # The promoted team copy did push (the channel itself works).
+    assert any(entry.event.entity_id == proposed_id for entry in pushed)

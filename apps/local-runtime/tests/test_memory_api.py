@@ -359,6 +359,19 @@ def test_local_to_proposed_to_approved_happy_path(
     assert approved.json()["domain_visibility"] == "shared_workspace"
 
 
+def test_approved_project_scoped_entry_is_shared_project(
+    client: TestClient, owner_token: str, agent_token: str
+) -> None:
+    """E13-T5 sixth state: an approved entry whose space is not ``workspace``
+    shares at project scope — ``shared_project`` (vs ``shared_workspace`` above)."""
+    local = _create_memory(client, owner_token, title="why B", space="project", visibility="local")
+    proposed = client.post(f"/v1/memory/{local['id']}/promote", headers=_bearer(agent_token)).json()
+    assert proposed["space"] == "project"
+    approved = client.post(f"/v1/memory/{proposed['id']}/approve", headers=_bearer(owner_token))
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["domain_visibility"] == "shared_project"
+
+
 def test_approve_an_already_decided_entry_409(client: TestClient, owner_token: str) -> None:
     team = _create_memory(client, owner_token, title="shared")
     client.post(f"/v1/memory/{team['id']}/promote", headers=_bearer(owner_token))

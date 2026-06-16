@@ -2,6 +2,7 @@
 
 from kantaq_core.memory.service import (
     CONFIDENCE_LEVELS,
+    DOMAIN_VISIBILITIES,
     MEMORY_SOURCES,
     MEMORY_SPACES,
     MEMORY_TYPES,
@@ -11,6 +12,7 @@ from kantaq_core.memory.service import (
     MemoryConflictError,
     MemoryGraphError,
     MemoryNotFoundError,
+    MemorySearchResult,
     MemoryService,
     MemoryValidationError,
     domain_visibility,
@@ -18,6 +20,7 @@ from kantaq_core.memory.service import (
 
 __all__ = [
     "CONFIDENCE_LEVELS",
+    "DOMAIN_VISIBILITIES",
     "MEMORY_SOURCES",
     "MEMORY_SPACES",
     "MEMORY_TYPES",
@@ -27,6 +30,7 @@ __all__ = [
     "MemoryConflictError",
     "MemoryGraphError",
     "MemoryNotFoundError",
+    "MemorySearchResult",
     "MemoryService",
     "MemoryValidationError",
     "domain_visibility",
