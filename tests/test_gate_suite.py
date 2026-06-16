@@ -12,10 +12,17 @@ A gate that has never failed is not known to work (the MOD-30 Platform/CI rule:
   6. red-team containment       (MOD-18)  — `make test` / packages/mcp (E08-T5)
   + conformance smoke           (MOD-17)  — tests/test_conformance_smoke.py (E27-T4)
 
+v0.2 adds two gates (E27-T5), each proven to bite in its owning file:
+  + full conformance suite      (MOD-15/17) — tests/test_conformance_suite.py
+      (a tampered signed event refused at every hop, for every collection)
+  + export round-trip gate      (MOD-23)    — tests/test_export_roundtrip_gate.py
+      (a one-byte-corrupted bundle refused on import; ?since delta round-trips)
+
 Each gate is wired in CI by its owning module. This module is the single
 auditable place that proves each one *fails on a seeded regression*, exercising
 the real gate primitives (not re-implementing them): tamper a vector, drop an
-untrusted marker, break the resolver, expire/rotate a grant, slow the flow.
+untrusted marker, break the resolver, expire/rotate a grant, slow the flow,
+tamper a signed event for a non-smoke collection.
 """
 
 from __future__ import annotations
