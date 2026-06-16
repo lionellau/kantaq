@@ -3,7 +3,8 @@
  *
  * Three tabs (FR-E20-2): **proposals** (pending agent writes, shown as a
  * field-level diff against the live ticket plus the memory cited for that
- * ticket), **memory promotions** (an empty state until v0.2, MOD-27), and
+ * ticket), **memory promotions** (an empty state — the approve/reject UI is a
+ * deferred follow-up, MOD-19 / DEBT-28; the backend loop is API-complete), and
  * **denied calls** (recent gateway denials, read live from audit). A count
  * badge rides each tab; when no proposal is pending the proposals tab shows the
  * Inbox-zero state.

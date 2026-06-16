@@ -400,8 +400,9 @@ export interface paths {
          * Promote Memory
          * @description Propose an entry into the shared collection (E13-T4, the PROPOSE step).
          *
-         *     Agents may call this (it needs only ``memory.write``). A ``local`` source is
-         *     never mutated — a new ``team`` ``proposed`` row is returned; a ``team``
+         *     **Human/web-only** — agents propose via the gateway ``memory_promote`` tool,
+         *     never the HTTP API (an ``Agent``-role token is 403 here). A ``local`` source
+         *     is never mutated — a new ``team`` ``proposed`` row is returned; a ``team``
          *     ``{draft,stale}`` row transitions in place. Human approval comes next.
          */
         post: operations["promote_memory_v1_memory__memory_id__promote_post"];
