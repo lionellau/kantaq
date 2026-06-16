@@ -202,9 +202,13 @@ def test_policy_filtered_search_after_promote_never_returns_the_local_source(
         reasons = {entry.id: reason for entry, reason in result.excluded}
         assert reasons[local_id] == "privacy_filter:visibility_local"
 
-    # The original local row produced no events at all (never-sync wall holds).
+    # The original local row produced no events at all (never-sync wall holds);
+    # the promoted team copy emitted exactly its one patch (the syncable half
+    # travels — and nothing spurious rode along), mirroring the T4 proof.
     local_events = [row for row in _memory_event_rows(alice) if row.entity_id == local_id]
     assert local_events == []
+    proposed_events = [row for row in _memory_event_rows(alice) if row.entity_id == proposed_id]
+    assert [row.op for row in proposed_events] == ["patch"]
 
     alice.sync.push()
     pushed = backend.pull(collection=None, since=0)

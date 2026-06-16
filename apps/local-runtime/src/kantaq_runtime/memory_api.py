@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
-from kantaq_core.identity import Action, VerifiedActor
+from kantaq_core.identity import Action, Role, VerifiedActor
 from kantaq_core.memory import (
     MemoryConflictError,
     MemoryNotFoundError,
@@ -38,6 +38,30 @@ router = APIRouter(prefix="/v1", tags=["memory"])
 EngineDep = Annotated[Engine, Depends(get_engine_dep)]
 ReaderActor = Annotated[VerifiedActor, Depends(require_action(Action.memory_read))]
 WriterActor = Annotated[VerifiedActor, Depends(require_action(Action.memory_write))]
+
+
+def _human_reader(actor: ReaderActor) -> VerifiedActor:
+    """An agent must read memory through the policy-enforced MCP gateway, never
+    this HTTP API.
+
+    The gateway applies the per-role memory policy on every read (MOD-21, the
+    8-check #6): an agent sees only what its context-role policy admits and never
+    another actor's ``local`` notes. The HTTP API has **no agent context role** to
+    filter by, so it reads unfiltered — correct for the human/device owner (who
+    sees their own ``local`` notes, the ``human_teammate`` baseline) but a privacy
+    hole for an agent token. So we **fail closed**: an ``Agent``-role token is
+    refused here (mirroring the gateway's denial of a role-less agent read), and
+    agents stay on the gateway path where the policy is enforced.
+    """
+    if actor.role == Role.agent:
+        raise HTTPException(
+            status_code=403,
+            detail=("agents read memory through the policy-enforced MCP gateway, not the HTTP API"),
+        )
+    return actor
+
+
+HumanReaderActor = Annotated[VerifiedActor, Depends(_human_reader)]
 # Approve/reject are a human decision — strictly stronger than memory.write.
 # An agent token (memory.read/memory.write only) never carries memory.approve,
 # so it is 403 here even though it can propose via the write routes.
@@ -166,7 +190,7 @@ def _domain(
 
 @router.get("/memory", response_model=list[MemoryOut])
 def list_memory(
-    actor: ReaderActor,
+    actor: HumanReaderActor,
     engine: EngineDep,
     space: str | None = None,
     type: str | None = None,  # noqa: A002 — mirrors the field name
@@ -209,7 +233,7 @@ def create_memory(
 
 
 @router.get("/memory/{memory_id}", response_model=MemoryOut)
-def get_memory(memory_id: str, actor: ReaderActor, engine: EngineDep) -> MemoryOut:
+def get_memory(memory_id: str, actor: HumanReaderActor, engine: EngineDep) -> MemoryOut:
     with Session(engine) as session:
         try:
             return MemoryOut.from_row(_service(session, actor).get_entry(memory_id))
@@ -308,7 +332,7 @@ def link_memory(
 
 
 @router.get("/memory/{memory_id}/links", response_model=list[MemoryLinkOut])
-def memory_links(memory_id: str, actor: ReaderActor, engine: EngineDep) -> list[MemoryLinkOut]:
+def memory_links(memory_id: str, actor: HumanReaderActor, engine: EngineDep) -> list[MemoryLinkOut]:
     with Session(engine) as session:
         try:
             rows = _service(session, actor).links_for_entry(memory_id)
@@ -320,7 +344,7 @@ def memory_links(memory_id: str, actor: ReaderActor, engine: EngineDep) -> list[
 @router.get("/tickets/{ticket_id}/memory", response_model=list[LinkedMemoryOut])
 def ticket_memory(
     ticket_id: str,
-    actor: ReaderActor,
+    actor: HumanReaderActor,
     engine: EngineDep,
     include_expired: bool = False,
 ) -> list[LinkedMemoryOut]:

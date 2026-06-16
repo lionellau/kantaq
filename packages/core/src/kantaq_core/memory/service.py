@@ -338,7 +338,11 @@ class MemoryService:
           at ``review_status="proposed"`` carrying the source's content; the
           original keeps ``visibility="local"`` and its ``review_status``, and
           emits nothing (NFR-E13-1 re-proven across promote). The new row's
-          ``provenance`` records the source id.
+          ``provenance.detail`` records the lineage **id-free** (the literal
+          ``"promoted from a local entry"``) — it must **not** embed the source
+          id, because the new row syncs and no id of the ``local`` entry may
+          leave the machine (NFR-E13-1); the precise source id lives only in the
+          never-syncing local audit ``object_ref``.
         * A ``team`` row in ``{draft, stale}`` transitions **in place** to
           ``proposed`` (no copy).
         * Any other ``team`` state (already proposed/approved/rejected) is
