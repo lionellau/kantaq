@@ -6,10 +6,12 @@
 
 import type {
   Activity,
+  ActorUsage,
   AgentSession,
   AgentSnippet,
   AuditCall,
   Comment,
+  Conflict,
   Device,
   Grant,
   LinkedMemory,
@@ -25,6 +27,7 @@ import type {
   SyncStatus,
   TelemetryView,
   Ticket,
+  WorkspaceMetrics,
 } from "../api/types";
 
 const T0 = "2026-01-01T00:00:00";
@@ -350,6 +353,105 @@ export function buildSnippet(overrides: Partial<AgentSnippet> = {}): AgentSnippe
       },
     ],
     instructions: "save as .mcp.json",
+    ...overrides,
+  };
+}
+
+export function buildConflict(overrides: Partial<Conflict> = {}): Conflict {
+  return {
+    id: "cr-1",
+    collection: "tickets",
+    entity_id: "tick-1",
+    field: "status",
+    candidate_values: { keep_a: "doing", keep_b: "todo" },
+    contending_revisions: [4, 5],
+    base_rev: 4,
+    head_rev: 5,
+    actor: "mbr-bob",
+    status: "open",
+    resolved_by: null,
+    resolved_choice: null,
+    created_at: T0,
+    resolved_at: null,
+    ...overrides,
+  };
+}
+
+export function buildActorUsage(overrides: Partial<ActorUsage> = {}): ActorUsage {
+  return {
+    actor_id: "agent-1",
+    role: "Agent",
+    mcp_calls: 0,
+    reads: 0,
+    proposes: 0,
+    denials: 0,
+    est_payload_bytes: 0,
+    est_tokens: 0,
+    last_seen: null,
+    ...overrides,
+  };
+}
+
+export function buildWorkspaceMetrics(overrides: Partial<WorkspaceMetrics> = {}): WorkspaceMetrics {
+  return {
+    generated_at: T0,
+    hub_mode: "supabase",
+    counts: {
+      workspaces: 1,
+      projects: 2,
+      tickets: 12,
+      comments: 30,
+      ticket_relationships: 3,
+      members: 4,
+      agent_proposals: 5,
+      memory_entries: 8,
+      memory_links: 6,
+      audit_events: 120,
+    },
+    replica: {
+      total_bytes: 262_144,
+      by_project: [
+        { project_id: "proj-1", name: "Apollo", bytes: 200_000, rows: 30 },
+        { project_id: "(unassigned)", name: "(unassigned)", bytes: 62_144, rows: 134 },
+      ],
+    },
+    backend: {
+      measured: false,
+      source: "estimate",
+      rows: { total: 200, by_table: { tickets: 12, audit_events: 120 } },
+      bytes: { total: 120_000_000, by_table: { tickets: 25_908, audit_events: 97_320 } },
+      capacity: {
+        tier: "free",
+        db_limit_bytes: 500_000_000,
+        db_used_bytes: 120_000_000,
+        db_pct: 0.24,
+        egress_limit_bytes: 5_000_000_000,
+        egress_used_bytes: null,
+        egress_pct: null,
+        headroom_warning: false,
+        idle_pause_risk: false,
+      },
+    },
+    agents: {
+      window_days: 30,
+      by_actor: [buildActorUsage({ actor_id: "agent-1", reads: 40, proposes: 3, mcp_calls: 43 })],
+      totals: buildActorUsage({
+        actor_id: "(all)",
+        role: "(all)",
+        reads: 40,
+        proposes: 3,
+        mcp_calls: 43,
+      }),
+    },
+    retention: {
+      audit_summarizable: 0,
+      audit_anchored: false,
+      sync_compactable_below_rev: null,
+      last_run: null,
+      next_run_due: null,
+    },
+    notes: ["est_tokens is a payload-size proxy, not the agent's model tokens"],
+    billing_url: "https://supabase.com/dashboard/project/abc/settings/billing",
     ...overrides,
   };
 }

@@ -522,7 +522,10 @@ def _sync_login(auth: SupabaseAuth, keychain: Keychain, email: str) -> int:
 
 
 def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) -> int:
+    from sqlmodel import Session
+
     from kantaq_backend_supabase import SupabaseSyncBackend, lookup_active_members
+    from kantaq_core import retention
     from kantaq_db.session import get_engine
     from kantaq_runtime.config import get_settings
     from kantaq_sync_engine import SyncEngine
@@ -598,6 +601,15 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
         proposal_stale_policy=get_settings().agent_proposal_stale_policy.value
     )
     pulled = engine.apply_inbox()
+    # Retention (MOD-27 §Retention 3): the sync cycle is the periodic thing that
+    # genuinely runs, so retention rides it, throttled to once/day via a
+    # local_settings marker. v0.2 degrades safely — the audit half refuses an
+    # unanchored range (E07-T5) and the sync_events half reports the watermark
+    # (the DELETE is backend pg_cron); both are no-ops here until those land.
+    with Session(db) as rsession:
+        if retention.due(rsession):
+            retention.run(rsession)
+            rsession.commit()
     stale = f", {flushed.stale} stale" if flushed.stale else ""
     rejected = f", {flushed.rejected} rejected" if flushed.rejected else ""
     rebased = f", {flushed.rebased} rebased" if flushed.rebased else ""

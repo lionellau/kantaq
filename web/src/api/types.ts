@@ -25,6 +25,14 @@ export type AgentSession = components["schemas"]["AgentSessionOut"];
 export type AuditCall = components["schemas"]["AuditEventOut"];
 export type SkillContainer = components["schemas"]["SkillContainerOut"];
 export type SkillMapping = components["schemas"]["SkillMappingOut"];
+// E20-T5 — sync-conflict review (MOD-26 §B4) + the metrics surface (MOD-27).
+export type Conflict = components["schemas"]["ConflictOut"];
+export type ResolveResult = components["schemas"]["ResolveOut"];
+export type WorkspaceMetrics = components["schemas"]["WorkspaceMetricsOut"];
+export type ActorUsage = components["schemas"]["ActorUsageOut"];
+
+// The resolve choices the conflict tab offers (mirrors the runtime's RESOLVE_CHOICES).
+export const RESOLVE_CHOICES = ["keep-A", "keep-B", "new-value"] as const;
 
 // Mirrors kantaq_core.skills.service (E17 / MOD-22); values validated server-side.
 export const SKILL_MAPPING_SCOPES = ["personal", "workspace"] as const;

@@ -18,15 +18,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
-import type { AuditCall, LinkedMemory, Proposal, Ticket } from "../api/types";
+import type { AuditCall, Conflict, LinkedMemory, Proposal, Ticket } from "../api/types";
 import CallList from "../components/CallList";
+import ConflictCard from "../components/ConflictCard";
 import ProposalCard from "../components/ProposalCard";
 import Tabs from "../components/Tabs";
 import { useSession } from "../lib/session";
 import * as ui from "../lib/ui";
 import { usePolling } from "../lib/usePolling";
 
-type TabId = "proposals" | "memory" | "denied";
+type TabId = "proposals" | "conflicts" | "memory" | "denied";
 
 export default function Inbox() {
   const { connected } = useSession();
@@ -35,6 +36,7 @@ export default function Inbox() {
   const [tickets, setTickets] = useState<Record<string, Ticket>>({});
   const [memory, setMemory] = useState<Record<string, LinkedMemory[]>>({});
   const [denied, setDenied] = useState<AuditCall[]>([]);
+  const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -43,11 +45,12 @@ export default function Inbox() {
     if (!connected) {
       return;
     }
-    const [proposalsRes, deniedRes] = await Promise.all([
+    const [proposalsRes, deniedRes, conflictsRes] = await Promise.all([
       api.GET("/v1/proposals", { params: { query: { status: "pending" } } }),
       api.GET("/v1/audit/range", {
         params: { query: { action: "tool.deny", source: "mcp", limit: 200 } },
       }),
+      api.GET("/v1/conflicts", { params: { query: { status: "open" } } }),
     ]);
     if (proposalsRes.error !== undefined) {
       setError("could not load the queue");
@@ -57,6 +60,7 @@ export default function Inbox() {
     const pending = proposalsRes.data ?? [];
     setProposals(pending);
     setDenied(deniedRes.data ?? []);
+    setConflicts(conflictsRes.data ?? []);
 
     // Fetch each proposal's ticket (for the before-values) and its cited memory.
     const ticketIds = [...new Set(pending.map((p) => p.ticket_id))];
@@ -108,6 +112,37 @@ export default function Inbox() {
     void refresh();
   }
 
+  async function resolve(
+    conflict: Conflict,
+    choice: "keep-A" | "keep-B" | "new-value",
+    newValue?: string,
+  ) {
+    setBusy(conflict.id);
+    setNotice(null);
+    const {
+      data,
+      response,
+      error: apiError,
+    } = await api.POST("/v1/conflicts/{conflict_id}/resolve", {
+      params: { path: { conflict_id: conflict.id } },
+      body: { choice, new_value: newValue ?? null },
+    });
+    setBusy(null);
+    if (apiError !== undefined) {
+      setNotice(
+        response?.status === 409
+          ? "conflict resolution needs the shared backend — sign in and sync first"
+          : "could not resolve the conflict",
+      );
+    } else if (data?.rebase_required === true) {
+      // The field moved since this record was minted — nothing applied; re-decide.
+      setNotice("The field changed since this conflict — re-decide against the current value.");
+    } else {
+      setNotice("Resolved — your choice is recorded and synced.");
+    }
+    void refresh();
+  }
+
   if (!connected) {
     return (
       <section>
@@ -135,6 +170,7 @@ export default function Inbox() {
       <Tabs
         tabs={[
           { id: "proposals", label: "Proposals", count: pendingCount },
+          { id: "conflicts", label: "Sync conflicts", count: conflicts.length },
           { id: "memory", label: "Memory promotions" },
           { id: "denied", label: "Denied calls", count: denied.length },
         ]}
@@ -154,6 +190,22 @@ export default function Inbox() {
                   citedMemory={memory[proposal.ticket_id] ?? []}
                   busy={busy === proposal.id}
                   onDecide={(decision) => void decide(proposal, decision)}
+                />
+              ))}
+            </ul>
+          ))}
+
+        {tab === "conflicts" &&
+          (conflicts.length === 0 ? (
+            <p style={ui.muted}>No sync conflicts — every field converged cleanly. 🎉</p>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: 12 }}>
+              {conflicts.map((conflict) => (
+                <ConflictCard
+                  key={conflict.id}
+                  conflict={conflict}
+                  busy={busy === conflict.id}
+                  onResolve={(choice, newValue) => void resolve(conflict, choice, newValue)}
                 />
               ))}
             </ul>

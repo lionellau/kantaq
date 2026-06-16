@@ -9,6 +9,7 @@ import type { Proposal } from "../api/types";
 import { clearToken, setToken } from "../lib/session";
 import {
   buildAuditCall,
+  buildConflict,
   buildLinkedMemory,
   buildMemoryEntry,
   buildProposal,
@@ -141,5 +142,77 @@ describe("the Inbox queue", () => {
     renderApp("/inbox");
     const tab = await screen.findByRole("tab", { name: /Proposals/ });
     expect(within(tab).getByText("1")).toBeDefined();
+  });
+});
+
+describe("the Inbox sync-conflict tab (E20-T5 / MOD-26 §B4)", () => {
+  it("renders a conflict with both candidate values + the field path", async () => {
+    server.on("GET /v1/conflicts", [buildConflict()]);
+    renderApp("/inbox");
+    fireEvent.click(await screen.findByRole("tab", { name: /Sync conflicts/ }));
+
+    expect(await screen.findByText(/tickets\/tick-1/)).toBeDefined();
+    expect(screen.getByTestId("conflict-keep-a").textContent).toBe("doing");
+    expect(screen.getByTestId("conflict-keep-b").textContent).toBe("todo");
+  });
+
+  it("keep-A posts the resolution and clears on success", async () => {
+    let open = [buildConflict()];
+    server
+      .on("GET /v1/conflicts", () => open)
+      .on("POST /v1/conflicts/{conflict_id}/resolve", () => {
+        open = [];
+        return { conflict_id: "cr-1", resolved: true, rebase_required: false };
+      });
+    renderApp("/inbox");
+    fireEvent.click(await screen.findByRole("tab", { name: /Sync conflicts/ }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Keep A" }));
+
+    await waitFor(() => expect(screen.getByText(/Resolved —/)).toBeDefined());
+    const call = server.calls.find(
+      (c) => c.method === "POST" && c.path === "/v1/conflicts/cr-1/resolve",
+    );
+    expect(call).toBeDefined();
+  });
+
+  it("surfaces a rebase_required (the field moved) as a re-decide notice", async () => {
+    server
+      .on("GET /v1/conflicts", [buildConflict()])
+      .on("POST /v1/conflicts/{conflict_id}/resolve", {
+        conflict_id: "cr-1",
+        resolved: false,
+        rebase_required: true,
+      });
+    renderApp("/inbox");
+    fireEvent.click(await screen.findByRole("tab", { name: /Sync conflicts/ }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Keep B" }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/re-decide against the current value/)).toBeDefined(),
+    );
+  });
+
+  it("explains a 409 (no backend) on resolve", async () => {
+    server
+      .on("GET /v1/conflicts", [buildConflict()])
+      .on(
+        "POST /v1/conflicts/{conflict_id}/resolve",
+        () => new Response(JSON.stringify({ detail: "needs sync" }), { status: 409 }),
+      );
+    renderApp("/inbox");
+    fireEvent.click(await screen.findByRole("tab", { name: /Sync conflicts/ }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Keep A" }));
+
+    await waitFor(() => expect(screen.getByText(/needs the shared backend/)).toBeDefined());
+  });
+
+  it("shows the conflict-zero state when there are none", async () => {
+    server.on("GET /v1/conflicts", []);
+    renderApp("/inbox");
+    fireEvent.click(await screen.findByRole("tab", { name: /Sync conflicts/ }));
+    expect(await screen.findByText(/No sync conflicts/)).toBeDefined();
   });
 });

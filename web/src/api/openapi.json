@@ -57,6 +57,92 @@
         "title": "ActivityOut",
         "type": "object"
       },
+      "ActorUsageOut": {
+        "properties": {
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "denials": {
+            "title": "Denials",
+            "type": "integer"
+          },
+          "est_payload_bytes": {
+            "title": "Est Payload Bytes",
+            "type": "integer"
+          },
+          "est_tokens": {
+            "title": "Est Tokens",
+            "type": "integer"
+          },
+          "last_seen": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen"
+          },
+          "mcp_calls": {
+            "title": "Mcp Calls",
+            "type": "integer"
+          },
+          "proposes": {
+            "title": "Proposes",
+            "type": "integer"
+          },
+          "reads": {
+            "title": "Reads",
+            "type": "integer"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor_id",
+          "role",
+          "mcp_calls",
+          "reads",
+          "proposes",
+          "denials",
+          "est_payload_bytes",
+          "est_tokens",
+          "last_seen"
+        ],
+        "title": "ActorUsageOut",
+        "type": "object"
+      },
+      "AgentActivityOut": {
+        "properties": {
+          "by_actor": {
+            "items": {
+              "$ref": "#/components/schemas/ActorUsageOut"
+            },
+            "title": "By Actor",
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ActorUsageOut"
+          },
+          "window_days": {
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_days",
+          "by_actor",
+          "totals"
+        ],
+        "title": "AgentActivityOut",
+        "type": "object"
+      },
       "AgentClientSnippet": {
         "description": "One compatible client's copy-paste MCP config (E11, MOD-24).\n\nThe same loopback URL, shaped for each client's config file and auth style:\n\n- **Claude Code** \u2014 ``.mcp.json`` (``type: http`` + ``url`` + an inline\n  ``Authorization`` bearer).\n- **Cursor** \u2014 ``.cursor/mcp.json`` (bare ``url`` for a remote server + the\n  inline bearer).\n- **Codex** \u2014 ``~/.codex/config.toml`` (`[mcp_servers.kantaq]` with ``url``\n  + ``bearer_token_env_var``); the token rides an **env var**, never the\n  file (``setup`` carries the export).\n\n``text`` is the exact string to paste, rendered for ``format`` (``mcp_json``\nor ``toml``). Like the parent response, nothing here carries a real token \u2014\nonly the placeholder the web client substitutes locally, wherever it appears\n(``text`` for the header clients, ``setup`` for Codex).",
         "properties": {
@@ -393,6 +479,40 @@
         "title": "AuditEventOut",
         "type": "object"
       },
+      "BackendFootprintOut": {
+        "properties": {
+          "bytes": {
+            "additionalProperties": true,
+            "title": "Bytes",
+            "type": "object"
+          },
+          "capacity": {
+            "$ref": "#/components/schemas/CapacityOut"
+          },
+          "measured": {
+            "title": "Measured",
+            "type": "boolean"
+          },
+          "rows": {
+            "additionalProperties": true,
+            "title": "Rows",
+            "type": "object"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "measured",
+          "source",
+          "rows",
+          "bytes",
+          "capacity"
+        ],
+        "title": "BackendFootprintOut",
+        "type": "object"
+      },
       "Body_upload_attachment_v1_tickets__ticket_id__attachments_post": {
         "properties": {
           "file": {
@@ -405,6 +525,73 @@
           "file"
         ],
         "title": "Body_upload_attachment_v1_tickets__ticket_id__attachments_post",
+        "type": "object"
+      },
+      "CapacityOut": {
+        "properties": {
+          "db_limit_bytes": {
+            "title": "Db Limit Bytes",
+            "type": "integer"
+          },
+          "db_pct": {
+            "title": "Db Pct",
+            "type": "number"
+          },
+          "db_used_bytes": {
+            "title": "Db Used Bytes",
+            "type": "integer"
+          },
+          "egress_limit_bytes": {
+            "title": "Egress Limit Bytes",
+            "type": "integer"
+          },
+          "egress_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Egress Pct"
+          },
+          "egress_used_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Egress Used Bytes"
+          },
+          "headroom_warning": {
+            "title": "Headroom Warning",
+            "type": "boolean"
+          },
+          "idle_pause_risk": {
+            "title": "Idle Pause Risk",
+            "type": "boolean"
+          },
+          "tier": {
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tier",
+          "db_limit_bytes",
+          "db_used_bytes",
+          "db_pct",
+          "egress_limit_bytes",
+          "egress_used_bytes",
+          "egress_pct",
+          "headroom_warning",
+          "idle_pause_risk"
+        ],
+        "title": "CapacityOut",
         "type": "object"
       },
       "CommentIn": {
@@ -454,6 +641,111 @@
           "created_at"
         ],
         "title": "CommentOut",
+        "type": "object"
+      },
+      "ConflictOut": {
+        "properties": {
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "base_rev": {
+            "title": "Base Rev",
+            "type": "integer"
+          },
+          "candidate_values": {
+            "additionalProperties": true,
+            "title": "Candidate Values",
+            "type": "object"
+          },
+          "collection": {
+            "title": "Collection",
+            "type": "string"
+          },
+          "contending_revisions": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Contending Revisions",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "head_rev": {
+            "title": "Head Rev",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "resolved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By"
+          },
+          "resolved_choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Choice"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "collection",
+          "entity_id",
+          "field",
+          "candidate_values",
+          "contending_revisions",
+          "base_rev",
+          "head_rev",
+          "actor",
+          "status",
+          "resolved_by",
+          "resolved_choice",
+          "created_at",
+          "resolved_at"
+        ],
+        "title": "ConflictOut",
         "type": "object"
       },
       "DeviceOut": {
@@ -1438,6 +1730,34 @@
         "title": "ProjectPatch",
         "type": "object"
       },
+      "ProjectSizeOut": {
+        "properties": {
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_id",
+          "name",
+          "bytes",
+          "rows"
+        ],
+        "title": "ProjectSizeOut",
+        "type": "object"
+      },
       "ProposalOut": {
         "properties": {
           "created_at": {
@@ -1634,6 +1954,128 @@
           "created_at"
         ],
         "title": "RelationOut",
+        "type": "object"
+      },
+      "ReplicaSizeOut": {
+        "properties": {
+          "by_project": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectSizeOut"
+            },
+            "title": "By Project",
+            "type": "array"
+          },
+          "total_bytes": {
+            "title": "Total Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_bytes",
+          "by_project"
+        ],
+        "title": "ReplicaSizeOut",
+        "type": "object"
+      },
+      "ResolveIn": {
+        "properties": {
+          "choice": {
+            "title": "Choice",
+            "type": "string"
+          },
+          "new_value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Value"
+          }
+        },
+        "required": [
+          "choice"
+        ],
+        "title": "ResolveIn",
+        "type": "object"
+      },
+      "ResolveOut": {
+        "properties": {
+          "conflict_id": {
+            "title": "Conflict Id",
+            "type": "string"
+          },
+          "rebase_required": {
+            "title": "Rebase Required",
+            "type": "boolean"
+          },
+          "resolved": {
+            "title": "Resolved",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "conflict_id",
+          "resolved",
+          "rebase_required"
+        ],
+        "title": "ResolveOut",
+        "type": "object"
+      },
+      "RetentionStatusOut": {
+        "properties": {
+          "audit_anchored": {
+            "title": "Audit Anchored",
+            "type": "boolean"
+          },
+          "audit_summarizable": {
+            "title": "Audit Summarizable",
+            "type": "integer"
+          },
+          "last_run": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run"
+          },
+          "next_run_due": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run Due"
+          },
+          "sync_compactable_below_rev": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Compactable Below Rev"
+          }
+        },
+        "required": [
+          "audit_summarizable",
+          "audit_anchored",
+          "sync_compactable_below_rev",
+          "last_run",
+          "next_run_due"
+        ],
+        "title": "RetentionStatusOut",
         "type": "object"
       },
       "Role": {
@@ -2464,6 +2906,76 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "WorkspaceMetricsOut": {
+        "properties": {
+          "agents": {
+            "$ref": "#/components/schemas/AgentActivityOut"
+          },
+          "backend": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BackendFootprintOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "billing_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Url"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "hub_mode": {
+            "title": "Hub Mode",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "replica": {
+            "$ref": "#/components/schemas/ReplicaSizeOut"
+          },
+          "retention": {
+            "$ref": "#/components/schemas/RetentionStatusOut"
+          }
+        },
+        "required": [
+          "generated_at",
+          "hub_mode",
+          "counts",
+          "replica",
+          "backend",
+          "agents",
+          "retention",
+          "notes",
+          "billing_url"
+        ],
+        "title": "WorkspaceMetricsOut",
+        "type": "object"
       }
     }
   },
@@ -2616,6 +3128,106 @@
         "summary": "Audit Range",
         "tags": [
           "audit"
+        ]
+      }
+    },
+    "/v1/conflicts": {
+      "get": {
+        "description": "Open (default) or resolved conflict records, newest first. Live, no cache.",
+        "operationId": "list_conflicts_v1_conflicts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "open",
+              "title": "Status",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConflictOut"
+                  },
+                  "title": "Response List Conflicts V1 Conflicts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Conflicts",
+        "tags": [
+          "conflicts"
+        ]
+      }
+    },
+    "/v1/conflicts/{conflict_id}/resolve": {
+      "post": {
+        "operationId": "resolve_conflict_v1_conflicts__conflict_id__resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conflict_id",
+            "required": true,
+            "schema": {
+              "title": "Conflict Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Conflict",
+        "tags": [
+          "conflicts"
         ]
       }
     },
@@ -3587,6 +4199,49 @@
         "summary": "Reject Memory",
         "tags": [
           "memory"
+        ]
+      }
+    },
+    "/v1/metrics/summary": {
+      "get": {
+        "operationId": "metrics_summary_v1_metrics_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Window Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceMetricsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Metrics Summary",
+        "tags": [
+          "metrics"
         ]
       }
     },
