@@ -131,6 +131,10 @@ _LAZY: dict[str, str] = {
     "build_ticket_relationship": "kantaq_test_harness.builders:build_ticket_relationship",
     "build_token": "kantaq_test_harness.builders:build_token",
     "build_workspace": "kantaq_test_harness.builders:build_workspace",
+    # The MOD-27 / E26-T0 cost-calibration profile (imports the ORM; rides the
+    # lazy path like replica so the plugin import stays lean — coverage rule).
+    "seed_cost_profile": "kantaq_test_harness.cost_profile:seed_cost_profile",
+    "PROFILE": "kantaq_test_harness.cost_profile:PROFILE",
 }
 
 
@@ -173,6 +177,7 @@ __all__ = [
     "Member",
     "MemoryEntry",
     "MemoryLink",
+    "PROFILE",
     "PrivacyClass",
     "Project",
     "SeededRandom",
@@ -201,4 +206,5 @@ __all__ = [
     "categories_covered",
     "is_untrusted_wrapped",
     "load_injection_corpus",
+    "seed_cost_profile",
 ]
