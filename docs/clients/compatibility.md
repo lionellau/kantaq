@@ -6,6 +6,9 @@ which tier they earn, and the evidence — client version, last-verified date,
 and pass rate. It is re-run every release; a regression downgrades the badge in
 the next README.
 
+> **v0.2 refresh (2026-06-16).** Re-verified at the v0.2 close — the Tier-1
+> matrix below is current; no client regressed.
+
 > **The badge rule (FR-E11-4).** The README advertises a tier **only when that
 > tier's clients fully pass** — every required test, against the pinned version.
 > Until then the tier is aspirational and the README does not claim it. A row is

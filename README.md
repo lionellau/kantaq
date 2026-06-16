@@ -62,6 +62,8 @@ Per the badge rule (FR-E11-4), the **Tier-1 (Reference)** badge is advertised as
 | [docs/mcp.md](docs/mcp.md) | the MCP gateway, the eight checks, the tool catalog, connection snippets |
 | [docs/clients/compatibility.md](docs/clients/compatibility.md) | the Tier-1 matrix and the badge rule |
 | [docs/portability.md](docs/portability.md) | export, import, and the lossless round-trip procedure |
+| [docs/sync.md](docs/sync.md) | offline reconcile, conflict review, and retention (v0.2) |
+| [docs/blog/what-a-4-person-team-actually-pays.md](docs/blog/what-a-4-person-team-actually-pays.md) | the real monthly cost — Free $0 → Pro $25 → VPS $5–10 (v0.2) |
 | [docs/stack.md](docs/stack.md) | the stack decision record (ADR-0001) and tool licenses |
 
 ## Repository layout
