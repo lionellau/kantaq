@@ -6,6 +6,105 @@ release line (v0.0.5 → v0.3) described in the project docs.
 
 ## [Unreleased]
 
+### Added — Sprint 7: v0.2 release (E05, E06, E07, E17, E20, E23, E26, E27, E29)
+
+The second and final v0.2 sprint: the offline conflict engine is finished, grants
+are backend-issued with sub-5-second revocation, retention holds the cost ceiling,
+the metrics dashboard and conflict review ship, a real Linear export re-imports in
+CI, and the v0.2 docs are live. Schema reaches **v15**. Cutting the `0.2.0` tag
+(this `[Unreleased]` block → `[0.2.0]`, the package version bump, and the
+maintainer's live-schema apply) is the remaining release step.
+
+- **Conflict engine finished + the RISK-04 race matrix** (E05-T3/T4, MOD-26/MOD-30,
+  PR #59): a stale agent proposal rebases (`rebase_required`), tombstones never
+  resurrect, and `resolve_conflict` writes the resolution as a new audited
+  compare-and-swap event. The load-bearing fix is a **CAS-reject in `events.sql`**
+  (a new `p_cas` arg): a contended write now raises `rebase_required` and **commits
+  nothing** (atomic under the per-workspace advisory lock), closing two
+  adversarially-found commit-then-flag data-loss holes; the per-field scan is
+  factored into `kantaq.event_conflicts()` so the reject can never drift from the
+  reported `conflicts[]`. The offline/online/race matrix (N-way partition heal,
+  edit-vs-delete, stale-proposal rebase) is deterministic and green — **RISK-04
+  closed**. A follow-up (PR #62) fixed the Supabase adapter silently dropping the
+  RPC's `conflicts[]` (so a same-field edit minted no `conflict_record` on real
+  Supabase). Local-only `event_log.origin_proposal_id` (migration `0013`, schema
+  **v13**). Records **D-17** (agent-proposal staleness policy); advances DEBT-25.
+- **Backend-issued grants + <5s revocation + signed invite** (E06-T7/T8,
+  MOD-06/MOD-08, PR #72): grant issuance is role-aware (agents stay capped at 24 h;
+  humans get the lifted v0.2 ceiling, with backend revocation as the control, not a
+  short TTL). A **wall-clock timed proof** (`time.monotonic`) revokes a derived
+  session and asserts the gateway's live per-call re-check denies sub-second
+  (NFR-E06-2) — the cross-replica live-Supabase revocation smoke is owed at the
+  maintainer apply (DEBT-30). Signed `twp://invite` bundles (`kantaq_protocol.invites`
+  + `POST /v1/invitations` craft/accept) verify against the issuer device root;
+  forged / expired / cross-workspace / agent-role / craft-an-Owner invites are
+  refused. `capability_grants` window widened INTEGER→BIGINT (migration `0015`,
+  schema **v15**). Records **D-21/D-22**; closes **DEBT-04, DEBT-26**.
+- **Retention + RFC 6962 Merkle anchors** (E07-T4/T5, MOD-07/MOD-17/MOD-27/MOD-05,
+  PR #71): `sync_events` compacts after 30 days **below the min-acked-revision
+  watermark** (never wall-clock alone — a replica that fell behind is re-snapshotted,
+  never stranded) via pg_cron + a guarded DELETE-only bypass of the append-only
+  trigger; detailed MCP audit rows summarize after 30 days, **anchor-gated** (the
+  run refuses an unanchored range). Merkle anchors fold the linear hash chain into
+  O(log n) proofs (RFC 6962 `0x00`/`0x01` domain-separated hashing on stdlib
+  `hashlib` — no Python Merkle library cleared the golden-rule bar). `audit_anchors`
+  collection (schema **v14**, append-only, off the sync allowlist). Closes the
+  FR-E07-5 prereq of the audit-summary half of retention.
+- **Recommendation eval** (E17-T6, MOD-22): the 30-fixture confusion matrix
+  (TP=51 / FP=0 / FN=0 / TN=69, precision/recall/accuracy = 1.000), the
+  recommendation contract-shape pin, and the user-mapping-reflected test —
+  confirmed green for the v0.2 close-out (the substance shipped in E17-T3/T5,
+  commit `3dfd539`).
+- **Conflict review + the metrics dashboard** (E20-T5, MOD-12/MOD-26/MOD-27,
+  PR #66): the **Inbox → Sync conflicts** tab (renders both candidate values,
+  base_rev, the losing actor, the field path; keep-A / keep-B / new-value → the CAS
+  `resolve_conflict`) and the **Settings → Sync** metrics dashboard (capacity gauge,
+  replica-by-project, the agent-activity table, retention status, and a "View
+  billing in Supabase ↗" deep-link — D-16). `GET /v1/conflicts`,
+  `POST /v1/conflicts/{id}/resolve`, `GET /v1/metrics/summary` (OpenAPI + TS client
+  regenerated); a Playwright e2e resolves a seeded conflict end-to-end. Resolving
+  needs `tickets.write`, so an agent never silently resolves a human's conflict.
+  Records **D-18** (ride-flagged).
+- **Linear importer** (E23-T3, MOD-23, PR #67): `kantaq import linear` maps status
+  → lifecycle stage (MOD-20, both terminal statuses → `learn`), Parent →
+  `Ticket.parent_id`, and comments/threads → the activity feed; idempotent on a
+  domain-separated `(workspace, kind, linear_id)` id. The synthetic JobWinAI-shaped
+  fixture imports clean (269 tickets / 185 relations / 407 comments / 26 `[Epic]`
+  parents, every edge case); the **real JobWinAI export smoke** (local, uncommitted
+  — DEBT-17) imported the same counts clean and idempotent (re-import 0 new).
+  Records **D-19**.
+- **Workspace metrics & retention estimator** (E26-T1, MOD-27, PR #65):
+  `core.metrics.summary()` (counts, replica size by project, per-actor agent
+  observability, the **non-dollar** capacity gauge vs the Free 500 MB / 5 GB
+  ceilings, retention status) lands the rows/bytes estimate **within 10% of
+  `pg_total_relation_size`** (−1.76% on the seeded 394,535-row profile);
+  `core.retention.run()` refuses unanchored ranges and reports the safe watermark.
+  `est_tokens` is fed by the MOD-08 gateway payload-byte tally (PR #70), labelled a
+  payload-size proxy, not the agent's model tokens. Records **D-20**; the dollar
+  bill stays in the Supabase console (D-16).
+- **Full conformance suite + export round-trip CI gate** (E27-T5,
+  MOD-15/MOD-17/MOD-23, PR #68): a signed event round-trips client A → backend →
+  client B **verified at every hop, for every syncable collection**; the export
+  round-trip (+ incremental `?since=cursor`, + the Linear-imported round-trip) is an
+  automated gate. Each is proven by a deliberately-failing fixture; a coverage check
+  fails loudly if a syncable collection is added without a case. CI stays under
+  10 minutes.
+- **v0.2 docs + the cost-model post** (E29-T4, MOD-16, PR #69): the **"what a
+  4-person team actually pays"** cost-model post (Free $0 / 500 MB → Pro $25 flat →
+  VPS $5–10; `<$10` reachable only via the VPS path, and we say so instead of
+  rounding the claim) grounded in the MOD-27 numbers (the ~290 MB measured 6-month
+  4-person footprint, the estimator within 1.8%), **`docs/sync.md`** (offline
+  reconcile, conflict review, watermark-safe retention; cross-links protocol.md),
+  the `portability.md` v0.2 round-trip note, and the `clients/compatibility.md` v0.2
+  re-verification (matrix current, last-verified 2026-06-16). The README links both
+  new docs; the docs-profile gate (`tests/docs/test_v02_docs.py`) pins the set and
+  that the cost claim matches the MOD-27 numbers; the internal-link gate confirms
+  every link resolves.
+- **DoD test-gap closure** (PR #73): standing `red_team.py` regressions for the E06
+  escalation findings (a tampered role can't lift the grant ceiling; an agent can't
+  craft a human-tier grant), the Settings → Sync dashboard headless-QA Playwright
+  e2e, an idle-pause vitest case, and the sync-cycle retention-wiring test.
+
 ### Added — Sprint 6: v0.2 foundations (E24-T6/T7, E13-T4, E17-T4)
 
 - **Atomic commit RPC** (E24-T6, MOD-05, D-09): `supabase/rpc/events.sql` —
