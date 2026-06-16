@@ -203,6 +203,7 @@ export function buildSyncStatus(overrides: Partial<SyncStatus> = {}): SyncStatus
     committed_events: 0,
     total_events: 0,
     last_committed_at: null,
+    agent_proposal_stale_policy: "auto_rebase",
     ...overrides,
   };
 }

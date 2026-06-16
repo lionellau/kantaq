@@ -1874,6 +1874,10 @@
       },
       "SyncStatusOut": {
         "properties": {
+          "agent_proposal_stale_policy": {
+            "title": "Agent Proposal Stale Policy",
+            "type": "string"
+          },
           "backend_configured": {
             "title": "Backend Configured",
             "type": "boolean"
@@ -1913,7 +1917,8 @@
           "pending_events",
           "committed_events",
           "total_events",
-          "last_committed_at"
+          "last_committed_at",
+          "agent_proposal_stale_policy"
         ],
         "title": "SyncStatusOut",
         "type": "object"

@@ -20,6 +20,24 @@ class HubMode(StrEnum):
     postgres = "postgres"
 
 
+class ProposalStalePolicy(StrEnum):
+    """How a stale agent proposal is handled on sync (MOD-26 §B3 / E05-T3).
+
+    When a human approves an agent proposal whose ticket write turns out to be
+    based on a revision the team has moved past, this decides whether to bounce
+    it back to ``rebase_required`` for re-decision. Either way the agent's stale
+    value never silently wins (the §8.5 propose-first rule).
+    """
+
+    # Smooth default: bounce only on a genuine field clash; a proposal that
+    # touched a different field than the intervening edit auto-merges, so the
+    # human is never nagged for a needless re-approval.
+    auto_rebase = "auto_rebase"
+    # Conservative: re-confirm every proposal that raced any change since it was
+    # made, conflicting or not.
+    strict_rebase = "strict_rebase"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -49,6 +67,12 @@ class Settings(BaseSettings):
     # through; everything above it must verify. A fresh workspace cuts over at
     # 0 (sign from the start); an existing one at its current backend head.
     sign_cutover_rev: int = 0
+    # How a stale agent proposal is handled on sync (MOD-26 §B3 / E05-T3). A
+    # workspace setting: ``auto_rebase`` (default) only re-decides a proposal
+    # that genuinely conflicts; ``strict_rebase`` re-confirms any that raced a
+    # change. Set via env / .env (AGENT_PROPOSAL_STALE_POLICY); surfaced
+    # read-only in Settings → Sync so the active policy is discoverable.
+    agent_proposal_stale_policy: ProposalStalePolicy = ProposalStalePolicy.auto_rebase
 
 
 def get_settings() -> Settings:

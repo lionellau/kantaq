@@ -1526,6 +1526,8 @@ export interface components {
         };
         /** SyncStatusOut */
         SyncStatusOut: {
+            /** Agent Proposal Stale Policy */
+            agent_proposal_stale_policy: string;
             /** Backend Configured */
             backend_configured: boolean;
             /** Committed Events */

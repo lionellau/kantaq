@@ -43,6 +43,16 @@ describe("Settings → Sync", () => {
     expect(screen.getByText(/A remote backend is configured/)).toBeDefined();
   });
 
+  it("surfaces the agent-proposal staleness policy (read-only)", async () => {
+    server.on(
+      "GET /v1/sync/status",
+      buildSyncStatus({ agent_proposal_stale_policy: "strict_rebase" }),
+    );
+    renderApp("/settings/sync");
+
+    expect((await screen.findByTestId("proposal-stale-policy")).textContent).toMatch(/Strict/);
+  });
+
   it("guards when not connected", () => {
     clearToken();
     renderApp("/settings/sync");
