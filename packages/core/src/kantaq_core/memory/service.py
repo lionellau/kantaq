@@ -527,9 +527,11 @@ class MemoryService:
         unscoped session) the result is unfiltered: the device owner reads their
         own memory, ``local`` notes included (the ``human_teammate`` baseline).
 
-        This is the single place search-time enforcement lives, so every search
-        surface (the ``memory_search`` MCP tool today; any later HTTP/CLI search)
-        inherits the same guarantee instead of re-implementing the filter. The
+        This is the single place search-time enforcement lives for the
+        **agent-facing** path: the ``memory_search`` MCP tool delegates here
+        instead of re-implementing the filter. (The HTTP read API does **not**
+        route through this — it is the human surface and reads unfiltered; agents
+        are fenced off it entirely, so they never reach an unfiltered read.) The
         privacy gate in ``memory_policy.decide`` is checked first and decisively,
         so a ``local`` entry can never be re-admitted by a scope/status rule —
         **NFR-E16-1 / NFR-E13-1 hold by construction**, not as a downstream
