@@ -51,6 +51,7 @@ from kantaq_sync_engine.events import (
     CommitResult,
     CommittedEvent,
     Event,
+    FieldConflict,
     Op,
     RebaseRequired,
     SessionInit,
@@ -348,6 +349,20 @@ class SupabaseSyncBackend:
             base_rev=int(base) if base is not None else None,
             head_rev=int(row["head_rev"]),
             stale_base_rev=int(stale) if stale is not None else None,
+            # The RPC's rich per-field conflicts[] (E05-T2 / MOD-26 §B4) — the raw
+            # tuple the committing client mints a conflict_record from. MUST be
+            # surfaced here: the engine's _mint_conflict_records gates on
+            # ``result.conflicts``, so dropping it silently disables conflict-record
+            # minting against the real backend (caught by test_cas_live).
+            conflicts=tuple(
+                FieldConflict(
+                    field=c["field"],
+                    contending_revision=int(c["contending_revision"]),
+                    head_value=c.get("head_value"),
+                    incoming_value=c.get("incoming_value"),
+                )
+                for c in (row.get("conflicts") or ())
+            ),
         )
 
     @staticmethod
