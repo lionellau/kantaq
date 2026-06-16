@@ -19,14 +19,14 @@ from typing import Literal
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
-# Bump this whenever a migration changes the version row. Version 14 adds the
-# audit_anchors collection (E07-T5 / MOD-07 / FR-E07-5) — the RFC 6962 Merkle
-# anchor over an audit range. A declared collection (16→17) but NEVER_SYNC, so
-# the sync allowlist stays 12.
-EXPECTED_SCHEMA_VERSION = 14
+# Bump this whenever a migration changes the version row. Version 15 widens
+# capability_grants.issued_at/expires_at from 32-bit INTEGER to BIGINT (DEBT-26
+# closed) — removing the Year-2038 grant-window ceiling the v0.2 lifted human
+# TTLs (E06-T7) push toward. No collection/allowlist change (17 / 12 hold).
+EXPECTED_SCHEMA_VERSION = 15
 # The Alembic head revision that defines the expected schema. Kept in sync with
 # the migration filename in ``migrations/versions``.
-HEAD_REVISION = "0014"
+HEAD_REVISION = "0015"
 
 Status = Literal["ok", "uninitialized", "mismatch"]
 
