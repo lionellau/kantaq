@@ -139,6 +139,14 @@ ATTACK_CATALOG: tuple[Attack, ...] = (
         "(allowed call, but the private id must never appear — NFR-E16-1 gather seam)",
         None,
     ),
+    Attack(
+        "exfil-out-of-scope-memory-via-promote",
+        AttackCategory.EXFILTRATION,
+        "a code_agent reads + Inbox-injects a release-space team note it is scoped "
+        "out of by PROMOTING it (memory_promote) — the write surface enforces the "
+        "same policy gate as memory_get, so the read-via-write path is denied",
+        "memory_policy",
+    ),
     # ---- bulk write: mass-mutate in one shot ---------------------------------
     Attack(
         "bulk-rate-limit-flood",

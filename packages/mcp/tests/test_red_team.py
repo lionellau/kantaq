@@ -34,7 +34,7 @@ from kantaq_core.identity import (
     ensure_device,
 )
 from kantaq_core.memory.service import MemoryService
-from kantaq_db.models import AgentProposal, AuditEvent, Comment, Ticket
+from kantaq_db.models import AgentProposal, AuditEvent, Comment, MemoryEntry, Ticket
 from kantaq_mcp.catalog import CATALOG
 from kantaq_mcp.gateway import (
     DENY_COLLECTION_SCOPE,
@@ -327,6 +327,26 @@ def test_exfil_memory_without_a_role(arena: Arena) -> None:
         {"memory_id": arena.codebase_mem_id},
         "memory_policy",
     )
+
+
+def test_exfil_out_of_scope_memory_via_promote(arena: Arena) -> None:
+    """The write-surface twin of exfil-out-of-scope-memory: a code_agent that holds
+    ``memory.write`` cannot read (the returned body) or mutate (Inbox-inject) a
+    release-space team entry it is scoped out of by PROMOTING it — ``memory_promote``
+    enforces the same policy gate as ``memory_get``, so the gateway denies it."""
+    s = arena.session(suffix="promote-exfil", granted_verbs=(*MALICIOUS_VERBS, "memory.write"))
+    _assert_bounded(
+        arena,
+        "exfil-out-of-scope-memory-via-promote",
+        s,
+        "memory_promote",
+        {"memory_id": arena.release_mem_id},
+        "memory_policy",
+    )
+    # The denial fired before any write: the entry was never flipped to proposed.
+    with Session(arena.engine) as db:
+        entry = db.get(MemoryEntry, arena.release_mem_id)
+        assert entry is not None and entry.review_status == "draft"
 
 
 def test_exfil_cross_collection_read(arena: Arena) -> None:

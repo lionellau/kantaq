@@ -565,11 +565,17 @@ def memory_promote(
     **signed** event past the cutover (``scope.signer``), so it lands in every
     member's Inbox and is shared only once a human approves it.
 
-    No read-policy gate is applied: promotion is a propose-write the device
-    owner's agent performs on the owner's own notes (the privacy gate would
-    wrongly forbid promoting a ``local`` entry — exactly the headline use case),
-    and the agent must already hold the entry's id (it can never *discover* a
-    ``local`` id, since the read tools filter it out).
+    **Authorization (8-check #6 parity with the reads).** An agent may promote
+    only what its role policy admits — the same gate ``memory_get`` enforces — so
+    it cannot read-and-Inbox-inject an entry it is scoped out of (``promote``
+    flips a ``team`` ``{draft,stale}`` row in place and this tool returns its
+    ``body``; a ``role_context_preview`` discloses excluded *team* ids, so the id
+    is reachable). The one gate deliberately **not** applied is the privacy
+    (``local``) floor: the device owner's agent proposes the owner's own
+    ``local`` note (the headline use case the floor would forbid), and a
+    ``local`` id is never discoverable cross-scope (the read tools filter it
+    out). A role-less agent is denied either way — declare a context role to
+    touch memory.
     """
     memory_id = args.get("memory_id")
     if not isinstance(memory_id, str) or not memory_id.strip():
@@ -577,9 +583,23 @@ def memory_promote(
     sink = EventLogSink(session, actor_id, signer=scope.signer)
     service = MemoryService(session, actor_id=actor_id, source="mcp", sink=sink, now=now)
     try:
-        promoted = service.promote(memory_id)
+        entry = service.get_entry(memory_id)
     except MemoryNotFoundError as exc:
         raise ToolError("not_found", str(exc)) from exc
+    if entry.visibility == "team":
+        # Full read gate: denies a role-less agent and a policy-excluded team
+        # entry (scope/status/expiry); team rows always clear the privacy floor.
+        _gate_memory_read(entry, scope, now())
+    elif scope.memory_policy is None and scope.is_agent:
+        # A local row skips the privacy floor (it would wrongly deny), but a
+        # role-less agent still cannot touch memory.
+        raise PolicyDenied(
+            "an agent session must declare a context role (mcp-agent-role) to promote memory",
+            entry_id=entry.id,
+            reason="no_agent_role",
+        )
+    try:
+        promoted = service.promote(memory_id)
     except MemoryValidationError as exc:
         raise ToolError("validation", str(exc)) from exc
     return {"entry": _memory_out(promoted)}

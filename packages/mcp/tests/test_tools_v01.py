@@ -223,6 +223,17 @@ def test_memory_promote_requires_a_memory_id(session: Session) -> None:
     assert err.value.code == "validation"
 
 
+def test_memory_promote_unknown_id_is_not_found(session: Session) -> None:
+    with pytest.raises(ToolError) as err:
+        tools.memory_promote(
+            session,
+            actor_id=ACTOR,
+            args={"memory_id": "mem_missing0000000000000000"},
+            now=FakeClock().now,
+        )
+    assert err.value.code == "not_found"
+
+
 def test_memory_promote_rejects_an_already_decided_entry(
     session: Session, seed: dict[str, object], clock: FakeClock
 ) -> None:
@@ -238,6 +249,55 @@ def test_memory_promote_rejects_an_already_decided_entry(
             session, actor_id=ACTOR, args={"memory_id": team.id}, now=_now(clock), scope=CODE_SCOPE
         )
     assert err.value.code == "validation"
+
+
+def test_memory_promote_denies_an_out_of_scope_team_entry(
+    session: Session, seed: dict[str, object]
+) -> None:
+    """SEC (8-check #6 parity): a code_agent cannot promote a `release`-space team
+    entry it is scoped out of — promote enforces the same policy gate as
+    memory_get, so an agent can neither read the returned body nor Inbox-inject a
+    fenced entry. (`rel` is a team entry in the release space, excluded for code.)"""
+    rel_id = seed["rel"].id  # type: ignore[attr-defined]
+    with pytest.raises(PolicyDenied) as denied:
+        tools.memory_promote(
+            session,
+            actor_id=ACTOR,
+            args={"memory_id": rel_id},
+            now=FakeClock().now,
+            scope=CODE_SCOPE,
+        )
+    assert denied.value.reason == "exclude_scope:release"
+
+
+def test_memory_promote_denies_a_role_less_agent(
+    session: Session, seed: dict[str, object], clock: FakeClock
+) -> None:
+    """SEC: a role-less agent must declare a context role to touch memory — for a
+    team entry (full gate) and a local one (privacy-floor skipped, role floor kept)
+    alike."""
+    code_id = seed["code"].id  # type: ignore[attr-defined]  # team, in-scope space
+    with pytest.raises(PolicyDenied) as g_team:
+        tools.memory_promote(
+            session,
+            actor_id=ACTOR,
+            args={"memory_id": code_id},
+            now=FakeClock().now,
+            scope=NO_ROLE_AGENT,
+        )
+    assert g_team.value.reason == "no_agent_role"
+
+    mem = MemoryService(session, actor_id=ACTOR, source="mcp", now=_now(clock))
+    local = mem.create_entry(title="private", space="codebase", visibility="local")
+    with pytest.raises(PolicyDenied) as g_local:
+        tools.memory_promote(
+            session,
+            actor_id=ACTOR,
+            args={"memory_id": local.id},
+            now=_now(clock),
+            scope=NO_ROLE_AGENT,
+        )
+    assert g_local.value.reason == "no_agent_role"
 
 
 def test_memory_promote_signs_the_emitted_event(
