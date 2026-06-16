@@ -202,6 +202,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Craft Invitation
+         * @description Build + device-sign a ``twp://invite`` for a new member (Maintainer+).
+         */
+        post: operations["craft_invitation_v1_invitations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/invitations/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Invitation
+         * @description Verify a ``twp://invite`` against the device root and admit the member.
+         */
+        post: operations["accept_invitation_v1_invitations_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/lifecycle/stages": {
         parameters: {
             query?: never;
@@ -859,6 +899,26 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AcceptIn */
+        AcceptIn: {
+            /** Invite */
+            invite: string;
+        };
+        /** AcceptOut */
+        AcceptOut: {
+            /** Email */
+            email: string;
+            /** Member Id */
+            member_id: string;
+            /** Reused */
+            reused: boolean;
+            /** Role */
+            role: string;
+            /** Status */
+            status: string;
+            /** Token */
+            token: string | null;
+        };
         /**
          * ActivityOut
          * @description One activity entry: an audit row scoped to this ticket (MOD-07).
@@ -1136,6 +1196,27 @@ export interface components {
             resolved_choice: string | null;
             /** Status */
             status: string;
+        };
+        /** CraftIn */
+        CraftIn: {
+            /** Email */
+            email: string;
+            /** @default Member */
+            role: components["schemas"]["Role"];
+            /**
+             * Ttl Seconds
+             * @default 604800
+             */
+            ttl_seconds: number;
+        };
+        /** CraftOut */
+        CraftOut: {
+            /** Expires At */
+            expires_at: number;
+            /** Invite */
+            invite: string;
+            /** Invite Id */
+            invite_id: string;
         };
         /**
          * DeviceOut
@@ -2259,6 +2340,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GrantOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    craft_invitation_v1_invitations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CraftIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CraftOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_invitation_v1_invitations_accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcceptOut"];
                 };
             };
             /** @description Validation Error */

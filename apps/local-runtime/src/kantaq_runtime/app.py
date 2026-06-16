@@ -27,6 +27,7 @@ from kantaq_runtime.conflicts_api import router as conflicts_router
 from kantaq_runtime.devices_api import router as devices_router
 from kantaq_runtime.export_api import router as export_router
 from kantaq_runtime.grants_api import router as grants_router
+from kantaq_runtime.invitations_api import router as invitations_router
 from kantaq_runtime.me_api import router as me_router
 from kantaq_runtime.members_api import router as members_router
 from kantaq_runtime.memory_api import router as memory_router
@@ -78,6 +79,7 @@ def create_app(
     app.include_router(members_router)
     app.include_router(me_router)
     app.include_router(grants_router)
+    app.include_router(invitations_router)
     app.include_router(devices_router)
     app.include_router(sync_router)
     app.include_router(proposals_router)
