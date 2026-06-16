@@ -41,6 +41,13 @@ SYNC_POLICIES_FILE = Path("supabase") / "policies" / "0002_sync_rls.sql"
 # (E24-T7) — hand-written backend artifacts; apply after the two 0002 files.
 EVENTS_RPC = Path("supabase") / "rpc" / "events.sql"
 APPEND_ONLY_POLICIES = Path("supabase") / "policies" / "0003_append_only.sql"
+REVOKE_RAW_INSERT_POLICIES = Path("supabase") / "policies" / "0004_revoke_raw_insert.sql"
+# E07-T4 retention (FR-E26-2, MOD-05 + MOD-27): the ack-watermark table, its RLS,
+# and the watermark-safe sync_events compaction (+ guarded pg_cron schedule).
+# Apply after the 0003 append-only trigger (the compaction relies on its GUC bypass).
+SYNC_ACKS_MIGRATION = Path("supabase") / "migrations" / "0003_sync_acks.sql"
+SYNC_ACKS_POLICIES = Path("supabase") / "policies" / "0005_sync_acks_rls.sql"
+RETENTION_RPC = Path("supabase") / "rpc" / "retention.sql"
 
 _HEADER = """\
 -- supabase/migrations/0001_collections.sql

@@ -339,6 +339,27 @@ def test_audit_is_append_only_even_for_the_owner(backend: Engine) -> None:
     assert intact[0].action == "ticket.update"
 
 
+def test_audit_anchors_are_append_only_even_for_the_owner(backend: Engine) -> None:
+    """E07-T5: an anchor is immutable at the DB — the server half of "the anchor
+    still proves the pre-retention range" (a client cannot rewrite/erase the root)."""
+    hexv = "aa" * 32  # a 64-hex stand-in root/tip
+    seeded = service(backend).attempt(  # the runtime writes anchors; seed past RLS
+        "insert into audit_anchors (id, created_at, updated_at, actor_seq, visibility,"
+        " hosting_mode, retention_policy, actor_id, range_start, range_end, merkle_root,"
+        f" tree_size, chain_tip) values ('anc_a', {ENVELOPE}, 'mbr_alice', 'aud_a', 'aud_a',"
+        f" '{hexv}', 1, '{hexv}')"
+    )
+    assert seeded.ok
+    alice = member(backend, "alice@acme.dev")  # Owner of workspace A
+    assert [r.id for r in alice.fetch_all("select id from audit_anchors")] == ["anc_a"]
+    tamper = alice.attempt("update audit_anchors set merkle_root = 'cover-up' where id = 'anc_a'")
+    assert not tamper.ok and "permission denied" in tamper.error
+    erase = alice.attempt("delete from audit_anchors where id = 'anc_a'")
+    assert not erase.ok and "permission denied" in erase.error
+    intact = service(backend).fetch_all("select merkle_root from audit_anchors where id = 'anc_a'")
+    assert intact[0].merkle_root == hexv
+
+
 def test_audit_events_are_written_only_as_yourself(backend: Engine) -> None:
     bob = member(backend, "bob@acme.dev")
     forged = bob.attempt(

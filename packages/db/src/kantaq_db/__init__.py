@@ -14,6 +14,7 @@ from kantaq_db.meta import COLLECTION_META, CollectionMeta, PrivacyClass, collec
 from kantaq_db.models import (
     COLLECTION_MODELS,
     AgentProposal,
+    AuditAnchorRow,
     AuditEvent,
     CapabilityGrantRow,
     Comment,
@@ -42,6 +43,7 @@ __all__ = [
     "COLLECTION_META",
     "COLLECTION_MODELS",
     "AgentProposal",
+    "AuditAnchorRow",
     "AuditEvent",
     "CapabilityGrantRow",
     "Comment",

@@ -123,9 +123,25 @@ class BlobRef:
 
 @dataclass(frozen=True, slots=True)
 class AuditAnchor:
-    """A periodic hash anchor over an audit range (E07; populated in v0.2)."""
+    """An RFC 6962 Merkle anchor over an audit range (E07-T5, FR-E07-5).
+
+    Commits the inclusive audit-row id range ``[range_start, range_end]`` to a
+    Merkle ``root`` over ``tree_size`` leaves — each leaf the canonical content
+    of one row, the same bytes the linear hash chain (``hashing.chain_hash``)
+    binds — so even a fully re-chained forgery inside the range is caught: a
+    summarize that blanked + re-chained different content would produce a
+    different root than the one this anchor fixed *before* the prune. This is
+    why the audit summarize (MOD-27 retention) anchors first, then summarizes.
+    ``chain_tip`` is the ``range_end`` row's ``chain_hash`` — the linear-chain
+    link the Merkle range folds onto, tying the two constructions together.
+    ``external_pin`` optionally records an out-of-band attestation of ``root``
+    (the optional external-pin hook); ``None`` when unpinned.
+    """
 
     anchor_id: str
     range_start: str
     range_end: str
-    chain_hash: str
+    root: str
+    tree_size: int
+    chain_tip: str
+    external_pin: str | None = None

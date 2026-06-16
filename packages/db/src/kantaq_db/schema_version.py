@@ -19,14 +19,14 @@ from typing import Literal
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
-# Bump this whenever a migration changes the version row. Version 13 adds the
-# local-only event_log.origin_proposal_id column (E05-T3 / MOD-26 §B3) — the
-# proposal-rebase marker; not a collection, so the 16-collection / 12-allowlist
-# gates are unchanged.
-EXPECTED_SCHEMA_VERSION = 13
+# Bump this whenever a migration changes the version row. Version 14 adds the
+# audit_anchors collection (E07-T5 / MOD-07 / FR-E07-5) — the RFC 6962 Merkle
+# anchor over an audit range. A declared collection (16→17) but NEVER_SYNC, so
+# the sync allowlist stays 12.
+EXPECTED_SCHEMA_VERSION = 14
 # The Alembic head revision that defines the expected schema. Kept in sync with
 # the migration filename in ``migrations/versions``.
-HEAD_REVISION = "0013"
+HEAD_REVISION = "0014"
 
 Status = Literal["ok", "uninitialized", "mismatch"]
 

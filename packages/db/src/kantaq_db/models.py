@@ -357,6 +357,37 @@ class ConflictRecord(CollectionBase, table=True):
     resolved_at: datetime | None = Field(default=None)  # resolution time (created_at = detect time)
 
 
+class AuditAnchorRow(CollectionBase, table=True):
+    """An RFC 6962 Merkle anchor over a range of this replica's audit trail (MOD-07 v0.2 / E07-T5).
+
+    The deferred "Merkle anchor" the v0.1 hash chain names: ``audit.write`` chains
+    each ``audit_events`` row linearly; this folds a committed range into one
+    ``merkle_root`` (RFC 6962, ``kantaq_protocol.merkle``) over ``tree_size``
+    leaves — each leaf the canonical content of one row, the same bytes the chain
+    binds. The anchor is fixed **before** the MOD-27 retention summarize blanks +
+    re-chains expired detail, so the original content stays provable: a re-chained
+    forgery yields a different root than the one stored here. Like ``audit_events``
+    it is append-only and **off the sync allowlist** (each replica anchors its own
+    trail); architecture §2 has the backend hold anchors, so it mirrors to both
+    stores (D-07). ``chain_tip`` is the ``range_end`` row's ``chain_hash`` (ties
+    the Merkle range to the linear chain); ``external_pin`` optionally records an
+    out-of-band attestation of ``merkle_root`` (the optional external-pin hook).
+    """
+
+    __tablename__ = "audit_anchors"
+
+    # The member that produced the anchor (the runtime's owner). Bound by RLS
+    # exactly like audit_events.actor_id: insert-as-self, select within the
+    # actor's workspace — anchors never cross a workspace boundary.
+    actor_id: str = Field(index=True)
+    range_start: str = Field(index=True, max_length=26)  # first audit-row id in the range
+    range_end: str = Field(index=True, max_length=26)  # last audit-row id in the range
+    merkle_root: str = Field(max_length=64)  # RFC 6962 root, 64 lowercase hex
+    tree_size: int  # leaves (audit rows) the root commits to
+    chain_tip: str = Field(max_length=64)  # the range_end row's chain_hash
+    external_pin: str | None = Field(default=None)  # optional out-of-band attestation
+
+
 class SchemaVersion(SQLModel, table=True):
     """Single-row table guarding boot (FR-E02-4).
 
@@ -473,7 +504,7 @@ def new_id() -> str:
     return new_ulid()
 
 
-# The 15 collection table classes, in the canonical order (matches meta.py).
+# The 17 collection table classes, in the canonical order (matches meta.py).
 COLLECTION_MODELS: tuple[type[CollectionBase], ...] = (
     Workspace,
     Project,
@@ -491,4 +522,5 @@ COLLECTION_MODELS: tuple[type[CollectionBase], ...] = (
     SkillContainerRow,
     SkillMappingRow,
     ConflictRecord,
+    AuditAnchorRow,
 )
