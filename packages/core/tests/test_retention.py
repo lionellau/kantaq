@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy.engine import Engine
-from sqlmodel import Session, SQLModel
+from sqlmodel import Session, SQLModel, select
 
 from kantaq_core import audit, retention
 from kantaq_db import LocalSetting
@@ -80,15 +80,57 @@ def test_throttle_and_last_run_marker(session: Session) -> None:
     assert retention.due(session, now=NOW + timedelta(days=1, minutes=1)) is True
 
 
-def test_anchored_range_would_summarize(session: Session, monkeypatch) -> None:
-    """The E07-T5 seam: when a range is anchored, the audit half stops refusing.
+def test_anchor_then_summarize_blanks_detail_and_keeps_the_chain(session: Session) -> None:
+    """E07-T4b: with an actor to anchor, the audit half anchors-then-summarizes —
+    expired mcp detail is blanked, verify_chain stays ok over the re-chained log,
+    and a Merkle anchor was fixed over the original pre-retention range."""
+    from kantaq_db import AuditAnchorRow
 
-    v0.2 ships the refuse path; this proves the gate is the anchor (not a
-    hard-coded skip) by flipping the seam and asserting it no longer refuses.
-    """
+    _seed_mcp_detail(session, age_days=40, n=3)  # expired → summarized
+    _seed_mcp_detail(session, age_days=5, n=1)  # fresh → untouched (scope control)
+
+    report = retention.run(session, now=NOW, actor_id="mbr_owner")
+    session.commit()
+
+    assert report.audit_summarized == 3
+    assert report.audit_skipped_unanchored == 0
+
+    rows = audit.read_range(session, source="mcp")
+    old = [r for r in rows if r.created_at < NOW - timedelta(days=30)]
+    fresh = [r for r in rows if r.created_at >= NOW - timedelta(days=30)]
+    assert len(old) == 3 and all(r.before is None and r.after is None for r in old)
+    assert len(fresh) == 1 and all(r.before is not None for r in fresh)
+
+    # The chain still verifies end-to-end — re-chained over the blanked content.
+    assert audit.verify_chain(session).ok
+    # An anchor was fixed over the original 3-row pre-retention range.
+    anchor = session.exec(select(AuditAnchorRow)).first()
+    assert anchor is not None and anchor.tree_size == 3
+
+
+def test_summarize_is_idempotent_and_preserves_agent_read_summaries(session: Session) -> None:
+    """A second run finds nothing left to blank; agent.read aggregates are never blanked."""
     _seed_mcp_detail(session, age_days=40, n=2)
-    monkeypatch.setattr(retention, "range_is_anchored", lambda _s: True)
-    # The summarize execution itself lands with E07-T5 (Merkle anchor); v0.2
-    # raises rather than ship an unprovable below-app-layer prune.
-    with pytest.raises(NotImplementedError):
-        retention.run(session, now=NOW)
+    # An aggregated agent.read summary in the expired window — its `after` IS the
+    # retained summary, so it must survive the prune.
+    audit.write(
+        session,
+        actor_id="agent_bot",
+        action="agent.read",
+        source="mcp",
+        after={"reads": 9, "objects": {"tickets/t1": 9}},
+        now=NOW - timedelta(days=40),
+    )
+    session.commit()
+
+    first = retention.run(session, now=NOW, actor_id="mbr_owner")
+    session.commit()
+    assert first.audit_summarized == 2
+
+    second = retention.run(session, now=NOW, actor_id="mbr_owner")
+    session.commit()
+    assert second.audit_summarized == 0  # nothing left with before/after
+
+    summaries = [r for r in audit.read_range(session, action="agent.read") if r.after]
+    assert summaries and summaries[0].after == {"reads": 9, "objects": {"tickets/t1": 9}}
+    assert audit.verify_chain(session).ok

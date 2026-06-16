@@ -27,19 +27,20 @@ Timestamps are injectable (``now=``) so tests drive them with FakeClock.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from threading import Lock
 from typing import Any
 
-from sqlalchemy import Delete, Update, event
+from sqlalchemy import Delete, Update, bindparam, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Mapper, ORMExecuteState
 from sqlalchemy.orm import Session as SASession
 from sqlmodel import Session, SQLModel, col, select
 
-from kantaq_db import AuditEvent
-from kantaq_protocol import chain_hash
+from kantaq_db import AuditAnchorRow, AuditEvent
+from kantaq_protocol import canonicalize, chain_hash, merkle_root
 
 # Where a write came from. "app" = the human UI/API path, "cli" = kantaq CLI,
 # "mcp" = an agent via the MCP gateway, "sync" = the sync engine replaying.
@@ -296,6 +297,150 @@ def verify_chain(
     if last_id is None:
         return ChainVerification(True, CHAIN_EMPTY, None)
     return ChainVerification(True, CHAIN_OK, last_id)
+
+
+def anchor_range(
+    session: Session,
+    *,
+    actor_id: str,
+    start_id: str | None = None,
+    end_id: str | None = None,
+    now: datetime | None = None,
+    pin: Callable[[str], str | None] | None = None,
+) -> AuditAnchorRow:
+    """Fold an audit range into one RFC 6962 Merkle anchor (FR-E07-5).
+
+    Builds the Merkle root (``kantaq_protocol.merkle``) over the canonical
+    content of every ``audit_events`` row in ``[start_id, end_id]`` (id order) —
+    the *same* bytes the linear chain binds (``_chain_record``) — and stores an
+    ``audit_anchors`` row committing the range. The anchor is the immutable proof
+    of the range's **original** content: the MOD-27 retention summarize calls
+    this *before* it blanks + re-chains expired detail, so a later re-chained
+    forgery yields a different root than the one fixed here.
+
+    ``actor_id`` attributes the anchor (the runtime's owner) — RLS binds it like
+    ``audit_events.actor_id`` so an anchor never crosses a workspace. Omit
+    ``start_id`` to anchor from genesis; omit ``end_id`` to anchor to the current
+    tip. ``pin`` is the optional external-pin hook — if given it is called with
+    the root hex and may return an out-of-band attestation stored on the row (a
+    hook failure is the caller's concern; ``anchor_range`` does not swallow it).
+
+    Raises ``AuditWriteError`` if the range holds no rows, or if any row in it is
+    ``unchained`` (``chain_hash is None``) — an anchor over a partly-unchained
+    range would not be sound. The transaction stays the caller's (flush, no commit).
+    """
+    stmt = select(AuditEvent).order_by(col(AuditEvent.id).asc())
+    if start_id is not None:
+        stmt = stmt.where(col(AuditEvent.id) >= start_id)
+    if end_id is not None:
+        stmt = stmt.where(col(AuditEvent.id) <= end_id)
+    rows = list(session.exec(stmt.execution_options(populate_existing=True)).all())
+    if not rows:
+        raise AuditWriteError("cannot anchor an empty audit range")
+
+    leaves: list[bytes] = []
+    tip = ""
+    for row in rows:
+        if row.chain_hash is None:
+            raise AuditWriteError(f"cannot anchor an unchained row ({row.id}); chain it first")
+        leaves.append(canonicalize(_chain_record(row)))
+        tip = row.chain_hash  # after the loop: the range_end row's link
+
+    root = merkle_root(leaves)
+    external_pin = pin(root) if pin is not None else None
+    ts = now or datetime.now(UTC)
+    anchor = AuditAnchorRow(
+        actor_id=actor_id,
+        range_start=rows[0].id,
+        range_end=rows[-1].id,
+        merkle_root=root,
+        tree_size=len(rows),
+        chain_tip=tip,
+        external_pin=external_pin,
+        created_at=ts,
+        updated_at=ts,
+    )
+    session.add(anchor)
+    session.flush()
+    return anchor
+
+
+def range_is_anchored(session: Session, *, end_id: str) -> bool:
+    """Whether a Merkle anchor covers the audit prefix ending at ``end_id`` (E07-T5 seam).
+
+    ``True`` when some ``audit_anchors`` row's ``range_end`` reaches at least
+    ``end_id`` — every row up to the retention cutoff is committed to a root.
+    The MOD-27 retention summarize gates on this: it refuses an unanchored range
+    (``audit_skipped_unanchored``) rather than blanking detail it cannot prove
+    was faithfully replaced. ULIDs sort lexically, so the string compare is the
+    "covers up to" test for the contiguous pre-retention prefix.
+    """
+    hit = session.exec(
+        select(AuditAnchorRow.id).where(col(AuditAnchorRow.range_end) >= end_id).limit(1)
+    ).first()
+    return hit is not None
+
+
+def summarize_rows(session: Session, *, row_ids: list[str], now: datetime | None = None) -> int:
+    """Blank ``before``/``after`` on the given rows + re-chain forward (E07-T4b / MOD-27).
+
+    The sanctioned audit-summarize: expired detailed MCP rows are **kept** (chain
+    continuity + attribution) but their heavy ``before``/``after`` snapshots are
+    blanked — the bytes win the retention ceiling buys. Because the hash chain
+    binds ``before``/``after`` into every link, blanking is a content change, so
+    this re-chains every row from the earliest blanked id to the tip; otherwise
+    ``verify_chain`` would read the blanked rows as ``tampered``. The proof the
+    summary faithfully replaced the original detail (rather than a re-chained
+    forgery) is the **Merkle anchor**, which the caller fixes over the ORIGINAL
+    content *before* this runs (anchor-first; MOD-27): a forged re-chain yields a
+    different root than the anchored one.
+
+    This is the one **sanctioned below-app-layer path** — textual SQL the
+    append-only guards cannot refuse (DEBT-01) — made non-tampering by the
+    re-chain. The transaction stays the caller's (flush, no commit). Returns the
+    number of rows blanked.
+    """
+    del now  # accepted for symmetry with audit.write/anchor_range; timestamps unchanged
+    if not row_ids:
+        return 0
+    # Anchor-first is the invariant, not a convention: blanking + re-chaining
+    # detail with no Merkle anchor over it would leave a chain that verifies but
+    # commits to stripped content with no proof it faithfully replaced the
+    # original — the exact unprovable prune the spec forbids. Enforce it here so
+    # no caller can omit the anchor step (SEC review fix).
+    if not range_is_anchored(session, end_id=max(row_ids)):
+        raise AuditWriteError(
+            "summarize_rows requires a Merkle anchor over the range first "
+            "(call anchor_range); refusing an unanchored, unprovable prune"
+        )
+    first = min(row_ids)
+    blank = text("UPDATE audit_events SET before = NULL, after = NULL WHERE id IN :ids").bindparams(
+        bindparam("ids", expanding=True)
+    )
+    session.execute(blank, {"ids": list(row_ids)})
+
+    # Re-chain from the earliest blanked row to the tip, seeded from the row just
+    # before it (unchanged). A fresh read (populate_existing) sees the blanked
+    # content the new links must commit to.
+    previous = session.exec(
+        select(AuditEvent.chain_hash)
+        .where(col(AuditEvent.id) < first)
+        .order_by(col(AuditEvent.id).desc())
+        .limit(1)
+    ).first()
+    rows = session.exec(
+        select(AuditEvent)
+        .where(col(AuditEvent.id) >= first)
+        .order_by(col(AuditEvent.id).asc())
+        .execution_options(populate_existing=True)
+    ).all()
+    relink = text("UPDATE audit_events SET chain_hash = :h WHERE id = :id")
+    for row in rows:
+        new_hash = chain_hash(previous, _chain_record(row))
+        session.execute(relink, {"h": new_hash, "id": row.id})
+        previous = new_hash
+    session.flush()
+    return len(row_ids)
 
 
 def snapshot(row: SQLModel) -> dict[str, Any]:

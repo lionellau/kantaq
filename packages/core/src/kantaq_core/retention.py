@@ -32,8 +32,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlmodel import Session, col, func, select
+from sqlmodel import Session, col, select
 
+from kantaq_core import audit
 from kantaq_db import AuditEvent, LocalSetting
 
 LAST_RUN_KEY = "retention.last_run"
@@ -48,15 +49,27 @@ class RetentionReport:
     ran_at: datetime
 
 
-def range_is_anchored(session: Session) -> bool:
-    """Whether the pre-retention audit range is covered by a Merkle anchor.
+def range_is_anchored(
+    session: Session, *, now: datetime | None = None, audit_ttl_days: int = 30
+) -> bool:
+    """Whether the expired pre-retention audit range is covered by a Merkle anchor.
 
-    The seam for E07-T5: when the v0.2 Merkle anchor (FR-E07-5) lands, this reads
-    the anchor table and reports coverage over the to-be-summarized range. Until
-    then no anchor mechanism exists, so the audit summarize half refuses (the
-    documented safe degrade — MOD-27 §Dependencies).
+    Computes the cutoff and asks ``audit.range_is_anchored`` whether an anchor
+    reaches the newest row older than it (E07-T5). ``True`` when nothing is
+    expired yet — no range to prove. Read-only — the metrics dashboard's
+    ``audit_anchored`` status calls it; ``run`` is what *creates* the anchor.
     """
-    return False
+    ts = _naive(now) if now is not None else datetime.now(UTC).replace(tzinfo=None)
+    cutoff = ts - timedelta(days=audit_ttl_days)
+    end_id = session.exec(
+        select(AuditEvent.id)
+        .where(col(AuditEvent.created_at) < cutoff)
+        .order_by(col(AuditEvent.id).desc())
+        .limit(1)
+    ).first()
+    if end_id is None:
+        return True
+    return audit.range_is_anchored(session, end_id=end_id)
 
 
 def last_run(session: Session) -> datetime | None:
@@ -83,27 +96,51 @@ def run(
     audit_ttl_days: int = 30,
     sync_ttl_days: int = 30,
     safe_watermark_rev: int | None = None,
+    actor_id: str | None = None,
 ) -> RetentionReport:
-    """Summarize expired audit detail (anchor-gated) + report sync compaction.
+    """Anchor + summarize expired audit detail, and report the sync watermark.
 
-    The transaction stays the caller's (mirrors ``audit.write``); ``run`` flushes
-    the ``retention.last_run`` marker but does not commit.
+    The audit half (E07-T4b): expired detailed MCP rows (``source="mcp"`` past
+    the TTL, still carrying ``before``/``after``, excluding the ``agent.read``
+    aggregates) are summarized — but **anchor first** (MOD-27): ``run`` fixes a
+    Merkle anchor over the ORIGINAL pre-retention range, then blanks + re-chains
+    via ``audit.summarize_rows``, so the prune stays provable. Without an
+    ``actor_id`` to attribute the anchor the prune would be unprovable, so it
+    **refuses** (``audit_skipped_unanchored``) — the documented safe degrade. The
+    sync half only *reports* ``safe_watermark_rev`` (the DELETE is backend
+    pg_cron). The transaction stays the caller's (flush, no commit).
     """
     ts = _naive(now) if now is not None else datetime.now(UTC).replace(tzinfo=None)
     audit_cutoff = ts - timedelta(days=audit_ttl_days)
 
-    expired = int(
-        session.exec(
-            select(func.count())
-            .select_from(AuditEvent)
-            .where(col(AuditEvent.source) == "mcp", col(AuditEvent.created_at) < audit_cutoff)
-        ).one()
-    )
+    detail = [
+        row
+        for row in session.exec(
+            select(AuditEvent)
+            .where(
+                col(AuditEvent.source) == "mcp",
+                col(AuditEvent.created_at) < audit_cutoff,
+                col(AuditEvent.action) != audit.AGENT_READ_ACTION,
+            )
+            .order_by(col(AuditEvent.id).asc())
+        ).all()
+        if row.before is not None or row.after is not None
+    ]
 
-    if range_is_anchored(session):  # E07-T5 seam; False in v0.2 → the refuse path runs
-        summarized, skipped = _summarize_anchored(session, audit_cutoff), 0
-    else:
-        summarized, skipped = 0, expired
+    summarized, skipped = 0, 0
+    if detail:
+        end_id = session.exec(
+            select(AuditEvent.id)
+            .where(col(AuditEvent.created_at) < audit_cutoff)
+            .order_by(col(AuditEvent.id).desc())
+            .limit(1)
+        ).first()
+        if actor_id is not None and end_id is not None:
+            if not audit.range_is_anchored(session, end_id=end_id):
+                audit.anchor_range(session, actor_id=actor_id, end_id=end_id, now=ts)
+            summarized = audit.summarize_rows(session, row_ids=[r.id for r in detail], now=ts)
+        else:
+            skipped = len(detail)  # no actor to anchor with → cannot prove the prune
 
     _stamp_last_run(session, ts)
     return RetentionReport(
@@ -111,20 +148,6 @@ def run(
         audit_skipped_unanchored=skipped,
         sync_compactable_below_rev=safe_watermark_rev,
         ran_at=ts,
-    )
-
-
-def _summarize_anchored(session: Session, cutoff: datetime) -> int:  # pragma: no cover - E07-T5
-    """Fold anchored expired MCP detail into summaries + re-anchor the chain.
-
-    Reachable only once ``range_is_anchored`` returns True (E07-T5 Merkle anchor).
-    Left unimplemented in v0.2 by design — the audit summarize half is gated on
-    that anchor (MOD-27 §Dependencies); shipping a re-chaining below-app-layer
-    mutation with no anchor to prove it against would be the exact unprovable
-    prune the spec forbids.
-    """
-    raise NotImplementedError(
-        "audit summarize requires the E07-T5 Merkle anchor; v0.2 refuses unanchored ranges"
     )
 
 
