@@ -31,6 +31,7 @@ __all__ = [
     "Event",
     "FieldConflict",
     "Op",
+    "RebaseRequired",
     "SessionInit",
     "SyncVersionUnsupported",
     "fold_events",
@@ -52,6 +53,29 @@ class SyncVersionUnsupported(Exception):
     never strands its pending writes. Non-destructive by construction: the caller
     sees the raise, the local log is exactly as it was.
     """
+
+
+class RebaseRequired(Exception):
+    """A compare-and-swap (CAS) commit was refused because the entity's field
+    head moved past the write's base (MOD-26 §B3/B4 / E05-T3).
+
+    Raised by ``commit_events(..., cas=True)`` when a committed write WOULD
+    contend with the committed head — used for conflict *resolutions* (a stale
+    resolution must not land against a live newer contender) and approved agent
+    *proposals* (an agent never silently lands a write whose base the team has
+    moved past). Atomic: the RPC commits NOTHING for the call, so there is no
+    half-applied value to undo and no partition window — the caller re-surfaces
+    the conflict_record / flips the proposal to ``rebase_required`` and the
+    pending write simply re-submits and re-rejects until the base is fresh.
+
+    ``event`` is the offending write; ``conflicts`` carries the per-field detail
+    (the contender the human re-decides against).
+    """
+
+    def __init__(self, event: Event, conflicts: tuple[FieldConflict, ...] = ()) -> None:
+        super().__init__(f"event {event.event_id} needs rebase: its base is behind the field head")
+        self.event = event
+        self.conflicts = conflicts
 
 
 class BackendUnavailable(Exception):
@@ -156,7 +180,7 @@ class BackendPort(Protocol):
         ...
 
     def commit_events(
-        self, events: Iterable[Event], *, require_signature: bool = True
+        self, events: Iterable[Event], *, require_signature: bool = True, cas: bool = False
     ) -> list[CommitResult]:
         """Commit events through the v0.2 atomic RPC (E24-T6, D-09): one
         transaction validates grant + ordering, applies the merge policy,
@@ -165,6 +189,13 @@ class BackendPort(Protocol):
         here. Client-side Ed25519 byte-verification stays at the
         ``VerifyingBackend`` edge; ``require_signature`` is the RPC's
         defense-in-depth presence check.
+
+        ``cas`` (MOD-26 §B3/B4 / E05-T3) makes the call a compare-and-swap: if
+        any committed write in it WOULD contend with the entity's committed field
+        head, the RPC commits NOTHING and raises ``RebaseRequired`` (atomic).
+        Used for conflict resolutions and approved agent proposals — writes that
+        must not silently land against a moved head. Ordinary writes leave it
+        ``False`` (commit-and-flag, ride-flagged).
         """
         ...
 

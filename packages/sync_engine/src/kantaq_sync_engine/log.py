@@ -80,6 +80,18 @@ class AuthoritativeWriteError(Exception):
     """
 
 
+class AppendOnlyWriteError(Exception):
+    """A ``patch`` or ``tombstone`` was written to an ``append_only`` collection
+    (MOD-26 §B3).
+
+    Append-only collections (comments) are "created once, never patched": each
+    append is a distinct immutable entity, so they never conflict. v0.2 enforces
+    that at the write surface rather than assuming it — a ``patch``/``tombstone``
+    on an append-only collection is a bug (it would invite a field-merge on a log
+    that must stay append-only), so the sink refuses it.
+    """
+
+
 def next_actor_seq(session: Session, actor_id: str) -> int:
     """The actor's next sequence number (1-based, gapless per local log)."""
     last = session.exec(
@@ -127,8 +139,15 @@ def insert_event(
     *,
     committed_rev: int | None = None,
     now: datetime | None = None,
+    origin_proposal_id: str | None = None,
 ) -> EventLog:
-    """Append one event row (no commit — the transaction is the caller's)."""
+    """Append one event row (no commit — the transaction is the caller's).
+
+    ``origin_proposal_id`` (MOD-26 §B3 / E05-T3) tags a ticket write that is the
+    apply of an approved agent proposal, so ``flush_outbox`` can bounce a
+    stale-and-contending one to ``rebase_required`` instead of minting an
+    ordinary conflict_record. Local infra; NULL for every other event.
+    """
     row = EventLog(
         event_id=event.event_id,
         collection=event.collection,
@@ -144,6 +163,7 @@ def insert_event(
         # An ingested remote event arrives already committed; a fresh local
         # write starts in the durable outbox as 'pending' (MOD-26 §B1).
         sync_state=(SYNC_STATE_COMMITTED if committed_rev is not None else SYNC_STATE_PENDING),
+        origin_proposal_id=origin_proposal_id,
         created_at=now or datetime.now(UTC),
     )
     session.add(row)
@@ -222,6 +242,21 @@ def event_by_id(session: Session, event_id: str) -> EventLog | None:
     return session.get(EventLog, event_id)
 
 
+def mark_proposal_origin(session: Session, actor_id: str, actor_seq: int, proposal_id: str) -> None:
+    """Tag the event at ``(actor_id, actor_seq)`` as the apply of a proposal
+    (MOD-26 §B3 / E05-T3).
+
+    Called right after a proposal's ticket write is emitted so ``flush_outbox``
+    can route a stale-and-contending one to ``rebase_required`` rather than an
+    ordinary conflict_record. No-op if the row is absent (the write produced no
+    event, e.g. a no-change diff)."""
+    row = event_row(session, actor_id, actor_seq)
+    if row is not None:
+        row.origin_proposal_id = proposal_id
+        session.add(row)
+        session.flush()
+
+
 def _resolution_key(row: EventLog) -> tuple[int, int, str, int]:
     committed = row.committed_rev
     if committed is not None:
@@ -273,6 +308,14 @@ class EventLogSink:
             raise AuthoritativeWriteError(
                 f"{event.collection!r} is authoritative_tx — it commits synchronously "
                 "via the atomic RPC, never as an optimistic outbox event (MOD-26 §B1)"
+            )
+        # append_only (comments) is created once, never patched: a patch/tombstone
+        # would invite a field-merge on a log that must stay append-only. Only an
+        # 'append' op is allowed (MOD-26 §B3, "enforced, not assumed").
+        if meta is not None and meta.merge_policy == "append_only" and event.op != "append":
+            raise AppendOnlyWriteError(
+                f"{event.collection!r} is append_only — only an 'append' op is allowed, "
+                f"not {event.op!r} (MOD-26 §B3)"
             )
         signer = self._signer
         protocol_event = Event(

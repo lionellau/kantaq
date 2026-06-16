@@ -223,12 +223,17 @@ class VerifyingBackend:
         return self.inner.push(batch)
 
     def commit_events(
-        self, events: Iterable[Event], *, require_signature: bool = True
+        self, events: Iterable[Event], *, require_signature: bool = True, cas: bool = False
     ) -> list[CommitResult]:
         """The DEBT-25 commit path: verify every event (the authoritative
         client-side Ed25519 wall — the RPC cannot check the bytes, D-09) before
         committing; reject the batch atomically if any fail, then delegate to
         the atomic RPC.
+
+        ``cas`` (MOD-26 §B3/B4) is passed straight through to the RPC — a
+        compare-and-swap commit that raises ``RebaseRequired`` (committing
+        nothing) if a write would contend with the moved head. The verifying
+        wrapper adds nothing to the CAS decision; it only owns signature/grant.
 
         The RPC's ``require_signature`` (its defense-in-depth signature-*presence*
         check) tracks the workspace's negotiated cutover state — the same
@@ -250,7 +255,7 @@ class VerifyingBackend:
             if not verdict.ok:
                 self._deny(event, verdict)
                 raise EventRejected(verdict, event)
-        return self.inner.commit_events(batch, require_signature=ctx.require_signature)
+        return self.inner.commit_events(batch, require_signature=ctx.require_signature, cas=cas)
 
     def pull(self, collection: str | None = None, since: int = 0) -> list[CommittedEvent]:
         """Return only the committed events that verify; drop + audit the rest."""
