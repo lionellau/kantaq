@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Column, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Column, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -244,9 +244,13 @@ class CapabilityGrantRow(CollectionBase, table=True):
 
     The signed fields mirror ``kantaq_protocol.CapabilityGrant`` exactly —
     ``issued_at``/``expires_at`` are unix seconds (ints), not datetimes, so
-    the row reconstructs byte-identical signing bytes. ``token_id`` links the
-    grant to the member token that authorized issuance: rotating or revoking
-    that token revokes its derived grants (FR-E06-6's v0.1 slice).
+    the row reconstructs byte-identical signing bytes. They are **BIGINT**
+    (DEBT-26 closed, migration 0015): 32-bit INTEGER would cap the grant window
+    at the Year-2038 ceiling, which the v0.2 lifted human grant TTLs (E06-T7)
+    push toward; widening to 64-bit removes it. The signed *value* is unchanged
+    (the codec bounds ints at |n| ≤ 2^53−1), so existing signatures stay valid.
+    ``token_id`` links the grant to the member token that authorized issuance:
+    rotating or revoking that token revokes its derived grants (FR-E06-6).
     Merge policy is ``authoritative_tx`` — never optimistically synced.
     """
 
@@ -256,8 +260,8 @@ class CapabilityGrantRow(CollectionBase, table=True):
     issuer: str = Field(foreign_key="devices.id", index=True)
     resource: str
     verbs: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
-    issued_at: int
-    expires_at: int
+    issued_at: int = Field(sa_column=Column(BigInteger, nullable=False))
+    expires_at: int = Field(sa_column=Column(BigInteger, nullable=False))
     revokes: str | None = Field(default=None)
     sig: str | None = Field(default=None, max_length=128)
     token_id: str | None = Field(default=None, foreign_key="tokens.id", index=True)

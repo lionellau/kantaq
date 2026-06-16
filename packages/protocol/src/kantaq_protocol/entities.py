@@ -145,3 +145,28 @@ class AuditAnchor:
     tree_size: int
     chain_tip: str
     external_pin: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Invite:
+    """A signed onboarding bundle — the protocol-correct join (DEBT-04, E06-T8).
+
+    A maintainer's runtime crafts and signs this with its device key; the
+    invitee's runtime verifies it against the issuer's device **root** (the
+    carried ``issuer`` device id resolves to a known verify key) and, on accept,
+    admits the member with the carried ``role`` and grant scope. ``invite_id`` is
+    the idempotency key; ``issued_at``/``expires_at`` are integer unix seconds UTC
+    (a forged or expired invite is refused). ``subject_email`` is who the invite
+    is for; ``resource``/``verbs`` are the grant the accepted member receives.
+    """
+
+    invite_id: str
+    workspace_id: str
+    subject_email: str
+    role: str
+    resource: str
+    verbs: tuple[str, ...]
+    issuer: str
+    issued_at: int
+    expires_at: int
+    sig: str | None = None

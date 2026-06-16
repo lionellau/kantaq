@@ -7,9 +7,11 @@ agents by their token scopes). The runtime's device key signs it via MOD-17;
 verification is the protocol's offline check plus this store's knowledge
 (roots from the ``devices`` table, revocations from ``revoked_at``).
 
-Lifetimes (FR-E06-5): default 1 hour; **24 hours is the hard ceiling for
-everyone in v0.1** — the spec demands it for agents, and humans get the same
-defensive cap until backend-issued grants land (v0.2, FR-E06-6).
+Lifetimes (FR-E06-5/6): default 1 hour. **Agents are hard-capped at 24 h** (a
+compromised agent's grant must expire fast). **Humans get the lifted v0.2
+ceiling** (E06-T7, backend-issued grants): fast revocation (< 5 s, NFR-E06-2,
+proven by the timed test) is the safety net, so a human grant may outlive 24 h —
+revocation, not expiry, is the control. See ``max_grant_ttl_seconds``.
 
 Rotation invalidates derived grants (E06-T6): every grant records the
 ``token_id`` it was authorized under; ``rotate_token``/``revoke_member``
@@ -44,7 +46,39 @@ from kantaq_protocol import (
 )
 
 DEFAULT_GRANT_TTL_SECONDS = 3600  # 1 hour (FR-E06-5 default)
-MAX_GRANT_TTL_SECONDS = 86_400  # 24 hours (FR-E06-5 ceiling, applied to all)
+# Agent grants stay short-lived — the spec's hard cap for a token-scoped actor
+# whose blast radius must expire fast (FR-E06-5). v0.1 applied this 24 h cap to
+# *everyone* as a defensive default until backend-issued grants landed.
+MAX_AGENT_GRANT_TTL_SECONDS = 86_400  # 24 hours
+# v0.2 (E06-T7, FR-E06-6): backend-issued grants LIFT the human ceiling — a human
+# grant may outlive 24 h because fast revocation (< 5 s, NFR-E06-2, proven by the
+# timed test) is the safety net, not a short TTL. Agents keep the 24 h cap.
+# Honest-naming: the device still produces the Ed25519 signature (no Ed25519 in
+# Postgres, D-09); the backend "issues" by being the issuance authority + the
+# revocation propagator (the capability_grants sync that reaches the gateway's
+# live per-call re-check within the budget — D-21).
+MAX_HUMAN_GRANT_TTL_SECONDS = 30 * 86_400  # 30 days
+# Back-compat alias: the agent ceiling was historically "the ceiling" (24 h).
+MAX_GRANT_TTL_SECONDS = MAX_AGENT_GRANT_TTL_SECONDS
+
+
+def max_grant_ttl_seconds(role: str) -> int:
+    """The grant-lifetime ceiling for a subject's role (E06-T7, FR-E06-6).
+
+    Agents are capped at 24 h (a compromised agent's grant must expire fast);
+    humans get the lifted v0.2 ceiling because backend revocation reaches their
+    derived sessions in < 5 s — revocation, not expiry, is the control. **Fails
+    closed**: an unknown/garbage role (e.g. a corrupted ``members.role`` the
+    store backstop reads directly) gets the *most restrictive* 24 h cap, never
+    the lifted human one (SEC review).
+    """
+    if role == Role.agent.value:
+        return MAX_AGENT_GRANT_TTL_SECONDS
+    try:
+        Role(role)
+    except ValueError:
+        return MAX_AGENT_GRANT_TTL_SECONDS  # unknown role → most restrictive
+    return MAX_HUMAN_GRANT_TTL_SECONDS
 
 
 class GrantDeniedError(IdentityError):
@@ -109,11 +143,15 @@ def verify_grant_row(
     )
     if not result.ok:
         return result
-    if row.expires_at - row.issued_at > MAX_GRANT_TTL_SECONDS:
-        return GrantVerification(False, GRANT_INVALID_VALIDITY)
     subject = session.get(Member, row.subject)
     if subject is None or subject.status == "revoked":
         return GrantVerification(False, GRANT_REVOKED)
+    # The store backstop, now role-aware (E06-T7): a validly-signed row still
+    # fails closed if its lifetime exceeds its subject's role ceiling — agents
+    # 24 h, humans the lifted v0.2 ceiling — so a synced/imported grant can never
+    # out-privilege what issuance allows for that role.
+    if row.expires_at - row.issued_at > max_grant_ttl_seconds(subject.role):
+        return GrantVerification(False, GRANT_INVALID_VALIDITY)
     return result
 
 
@@ -145,8 +183,9 @@ class GrantService:
         """A signed, role-derived, short-lived grant (E06-T5, FR-E06-4/5).
 
         Fails closed: an unknown verb, a verb outside the subject's role (or
-        an agent's token scopes), a TTL outside (0, 24 h], a missing device
-        key, or a revoked subject all refuse — nothing is written.
+        an agent's token scopes), a TTL outside (0, the subject's role ceiling]
+        (24 h for agents, the lifted human ceiling for humans — E06-T7), a
+        missing device key, or a revoked subject all refuse — nothing is written.
         """
         member = self._session.get(Member, subject_member_id)
         if member is None:
@@ -172,9 +211,10 @@ class GrantService:
         ttl = DEFAULT_GRANT_TTL_SECONDS if ttl_seconds is None else ttl_seconds
         if ttl <= 0:
             raise GrantDeniedError("grant ttl must be positive")
-        if ttl > MAX_GRANT_TTL_SECONDS:
+        ceiling = max_grant_ttl_seconds(member.role)
+        if ttl > ceiling:
             raise GrantDeniedError(
-                f"grant ttl exceeds the {MAX_GRANT_TTL_SECONDS} s (24 h) ceiling"
+                f"grant ttl {ttl}s exceeds the {ceiling}s ceiling for role {member.role!r}"
             )
 
         device = local_device(self._session, self._keychain)
@@ -346,7 +386,7 @@ def ensure_member_grant(
         subject_member_id=member_id,
         resource=resource,
         verbs=verbs,
-        ttl_seconds=MAX_GRANT_TTL_SECONDS,
+        ttl_seconds=max_grant_ttl_seconds(member.role),
         actor_id=member_id,
     )
 

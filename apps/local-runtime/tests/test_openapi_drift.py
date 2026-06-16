@@ -40,6 +40,8 @@ EXPECTED_PATHS = (
     "/v1/telemetry",
     "/v1/grants",
     "/v1/grants/{grant_id}/revoke",
+    "/v1/invitations",
+    "/v1/invitations/accept",
     "/v1/devices",
     "/v1/devices/{device_id}/revoke",
     "/v1/sync/status",

@@ -1,6 +1,65 @@
 {
   "components": {
     "schemas": {
+      "AcceptIn": {
+        "properties": {
+          "invite": {
+            "minLength": 1,
+            "title": "Invite",
+            "type": "string"
+          }
+        },
+        "required": [
+          "invite"
+        ],
+        "title": "AcceptIn",
+        "type": "object"
+      },
+      "AcceptOut": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "member_id": {
+            "title": "Member Id",
+            "type": "string"
+          },
+          "reused": {
+            "title": "Reused",
+            "type": "boolean"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token"
+          }
+        },
+        "required": [
+          "member_id",
+          "email",
+          "role",
+          "status",
+          "token",
+          "reused"
+        ],
+        "title": "AcceptOut",
+        "type": "object"
+      },
       "ActivityOut": {
         "description": "One activity entry: an audit row scoped to this ticket (MOD-07).",
         "properties": {
@@ -746,6 +805,55 @@
           "resolved_at"
         ],
         "title": "ConflictOut",
+        "type": "object"
+      },
+      "CraftIn": {
+        "properties": {
+          "email": {
+            "maxLength": 254,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role",
+            "default": "Member"
+          },
+          "ttl_seconds": {
+            "default": 604800,
+            "exclusiveMinimum": 0.0,
+            "maximum": 2592000.0,
+            "title": "Ttl Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "CraftIn",
+        "type": "object"
+      },
+      "CraftOut": {
+        "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "integer"
+          },
+          "invite": {
+            "title": "Invite",
+            "type": "string"
+          },
+          "invite_id": {
+            "title": "Invite Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "invite",
+          "invite_id",
+          "expires_at"
+        ],
+        "title": "CraftOut",
         "type": "object"
       },
       "DeviceOut": {
@@ -3478,6 +3586,90 @@
         "summary": "Revoke Grant",
         "tags": [
           "grants"
+        ]
+      }
+    },
+    "/v1/invitations": {
+      "post": {
+        "description": "Build + device-sign a ``twp://invite`` for a new member (Maintainer+).",
+        "operationId": "craft_invitation_v1_invitations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CraftIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CraftOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Craft Invitation",
+        "tags": [
+          "invitations"
+        ]
+      }
+    },
+    "/v1/invitations/accept": {
+      "post": {
+        "description": "Verify a ``twp://invite`` against the device root and admit the member.",
+        "operationId": "accept_invitation_v1_invitations_accept_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Accept Invitation",
+        "tags": [
+          "invitations"
         ]
       }
     },

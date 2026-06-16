@@ -181,15 +181,33 @@ def test_role_widening_is_refused_at_the_api(
     assert "may not be granted" in response.json()["detail"]
 
 
-def test_ttl_above_24h_is_refused(client: TestClient, member: tuple[str, str]) -> None:
-    _, token = member
-    response = client.post(
+def test_ttl_is_role_aware_at_the_api(
+    client: TestClient, member: tuple[str, str], owner: tuple[str, str], agent: tuple[str, str]
+) -> None:
+    """E06-T7: a human member may now exceed 24 h (the lifted v0.2 ceiling — fast
+    revocation is the safety net); an agent grant over 24 h is still refused."""
+    _, member_token = member
+    human = client.post(
         "/v1/grants",
-        json={"resource": "w/1", "verbs": ["tickets.read"], "ttl_seconds": 86_401},
-        headers=_bearer(token),
+        json={"resource": "w/1", "verbs": ["tickets.read"], "ttl_seconds": 7 * 86_400},
+        headers=_bearer(member_token),
     )
-    assert response.status_code == 403
-    assert "ceiling" in response.json()["detail"]
+    assert human.status_code == 201, human.text  # 7 days, well past the old 24 h cap
+
+    _, owner_token = owner
+    agent_id, _ = agent
+    refused = client.post(
+        "/v1/grants",
+        json={
+            "resource": "w/1",
+            "verbs": ["tickets.read"],
+            "member_id": agent_id,
+            "ttl_seconds": 86_401,
+        },
+        headers=_bearer(owner_token),
+    )
+    assert refused.status_code == 403
+    assert "ceiling" in refused.json()["detail"]
 
 
 # ------------------------------------------------------------- list + revoke
