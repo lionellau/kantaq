@@ -526,6 +526,7 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
 
     from kantaq_backend_supabase import SupabaseSyncBackend, lookup_active_members
     from kantaq_core import retention
+    from kantaq_core.identity import local_device
     from kantaq_db.session import get_engine
     from kantaq_runtime.config import get_settings
     from kantaq_sync_engine import SyncEngine
@@ -577,14 +578,15 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
 
     me = mine[0]
     db = get_engine(_db_url())
+    supabase_backend = SupabaseSyncBackend(
+        url,
+        anon_key,
+        workspace_id=me.workspace_id,
+        access_token=current_token,
+        refresh=refresh_session,
+    )
     backend = _verifying_backend(
-        SupabaseSyncBackend(
-            url,
-            anon_key,
-            workspace_id=me.workspace_id,
-            access_token=current_token,
-            refresh=refresh_session,
-        ),
+        supabase_backend,
         db=db,
         actor_id=me.id,
         workspace_id=me.workspace_id,
@@ -601,14 +603,29 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
         proposal_stale_policy=get_settings().agent_proposal_stale_policy.value
     )
     pulled = engine.apply_inbox()
+    # E07-T4: report this replica's acked pull position so the backend retention
+    # compaction (kantaq.compact_sync_events) computes a safe watermark and never
+    # prunes below what a live replica still needs; read the watermark back for
+    # the dashboard. Per-machine (the device is the replica, D-01); best-effort —
+    # a transient/offline failure just defers the report (the compaction holds).
+    watermark: int | None = None
+    try:
+        with Session(db) as dsession:
+            device = local_device(dsession, keychain)
+        replica_id = device.id if device is not None else me.id
+        supabase_backend.update_ack_watermark(
+            member_id=me.id, replica_id=replica_id, acked_rev=pulled.cursor
+        )
+        watermark = supabase_backend.safe_watermark_rev()
+    except Exception:  # noqa: BLE001 - best-effort watermark; never break the sync cycle
+        watermark = None
     # Retention (MOD-27 §Retention 3): the sync cycle is the periodic thing that
-    # genuinely runs, so retention rides it, throttled to once/day via a
-    # local_settings marker. v0.2 degrades safely — the audit half refuses an
-    # unanchored range (E07-T5) and the sync_events half reports the watermark
-    # (the DELETE is backend pg_cron); both are no-ops here until those land.
+    # genuinely runs, so retention rides it, throttled to once/day. The audit half
+    # anchors-then-summarizes the expired pre-retention range (E07-T5/T4b); the
+    # sync_events half reports the watermark above (the DELETE is backend pg_cron).
     with Session(db) as rsession:
         if retention.due(rsession):
-            retention.run(rsession)
+            retention.run(rsession, actor_id=me.id, safe_watermark_rev=watermark)
             rsession.commit()
     stale = f", {flushed.stale} stale" if flushed.stale else ""
     rejected = f", {flushed.rejected} rejected" if flushed.rejected else ""

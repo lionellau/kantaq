@@ -266,3 +266,51 @@ def test_sync_policies_file_reapplies_cleanly(sync_pg: Engine) -> None:
     apply_sql(sync_pg, read_repo_sql(SYNC_POLICIES_FILE))
     bob = member(sync_pg, "bob@acme.dev")
     assert [r.entity_id for r in bob.fetch_all("select entity_id from sync_events")] == ["tkt_a"]
+
+
+# --- the ack watermark (E07-T4): a member moves only its own ack rows ---------
+
+_ACK_INSERT = (
+    "insert into sync_acks (workspace_id, member_id, replica_id, acked_rev) values "
+)
+
+
+def test_a_member_records_its_own_ack(sync_pg: Engine) -> None:
+    bob = member(sync_pg, "bob@acme.dev")  # mbr_bob, ws_a
+    ok = bob.attempt(_ACK_INSERT + "('ws_a', 'mbr_bob', 'dev_bob', 5)")
+    assert ok.ok and ok.rowcount == 1
+
+
+def test_a_member_cannot_record_an_ack_as_a_peer(sync_pg: Engine) -> None:
+    """The cross-member stranding fix: bob cannot write a row attributed to alice,
+    so he can never raise the MIN-acked watermark to prune a row alice still needs."""
+    bob = member(sync_pg, "bob@acme.dev")  # mbr_bob, ws_a
+    forged = bob.attempt(_ACK_INSERT + "('ws_a', 'mbr_alice', 'dev_x', 999999)")
+    assert not forged.ok, "bob recorded an ack attributed to alice"
+
+
+def test_a_member_cannot_strand_a_peer_by_updating_their_ack(sync_pg: Engine) -> None:
+    """alice's ack row, seeded past RLS; bob cannot raise it to over-report her
+    pull position (which would delete events alice has not yet pulled)."""
+    service(sync_pg).attempt(_ACK_INSERT + "('ws_a', 'mbr_alice', 'dev_alice', 3)")
+    bob = member(sync_pg, "bob@acme.dev")
+    hijack = bob.attempt("update sync_acks set acked_rev = 999999 where member_id = 'mbr_alice'")
+    assert hijack.denied, "bob over-reported alice's ack"
+    intact = service(sync_pg).fetch_all(
+        "select acked_rev from sync_acks where member_id = 'mbr_alice'"
+    )
+    assert intact[0].acked_rev == 3
+
+
+def test_a_member_cannot_touch_another_workspaces_acks(sync_pg: Engine) -> None:
+    cher = member(sync_pg, "cher@other.dev")  # ws_b Owner
+    cross = cher.attempt(_ACK_INSERT + "('ws_a', 'mbr_cher', 'dev_c', 1)")
+    assert not cross.ok, "a ws_b member wrote a ws_a watermark"
+
+
+def test_sync_acks_has_no_client_delete(sync_pg: Engine) -> None:
+    service(sync_pg).attempt(_ACK_INSERT + "('ws_a', 'mbr_bob', 'dev_bob', 1)")
+    erase = member(sync_pg, "bob@acme.dev").attempt(
+        "delete from sync_acks where member_id = 'mbr_bob'"
+    )
+    assert not erase.ok, "a client deleted an ack row"

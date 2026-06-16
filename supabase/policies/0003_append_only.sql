@@ -13,11 +13,18 @@
 -- evident; this makes it impossible through the ordinary write paths).
 --
 -- The atomic commit RPC (supabase/rpc/events.sql) only ever INSERTs .. ON
--- CONFLICT DO NOTHING, so it is unaffected. The Sprint-7 retention compaction
--- (MOD-05 / MOD-27) deletes below a safe ack watermark; it will introduce a
--- guarded bypass (a service-role pg_cron job setting a session GUC these
--- triggers check) at that time — deliberately NOT added here so v0.2 keeps the
--- strict immutability guarantee.
+-- CONFLICT DO NOTHING, so it is unaffected.
+--
+-- THE SANCTIONED RETENTION BYPASS (E07-T4 / MOD-05 / MOD-27). The Sprint-7
+-- sync_events compaction (kantaq.compact_sync_events, supabase/rpc/retention.sql,
+-- run by service_role under pg_cron) deletes rows below the safe ack watermark
+-- and older than the TTL. It sets the transaction-local GUC
+-- `kantaq.retention_compaction='on'`, which this function checks. The bypass is
+-- DELETE-only on purpose: a committed row can be aged out, but never rewritten
+-- (UPDATE) or the log wiped (TRUNCATE) — those still raise unconditionally. The
+-- GUC is SET LOCAL (transaction-scoped, never leaks) and only service_role both
+-- holds the DELETE grant and runs the job, so this is the one narrow, audited,
+-- watermark-bounded path; every other write path keeps v0.2's strict immutability.
 --
 -- TWO triggers are needed: a row-level one for UPDATE/DELETE and a
 -- statement-level one for TRUNCATE (TRUNCATE fires neither a row trigger nor an
@@ -25,14 +32,23 @@
 -- BYPASSRLS — so without this second trigger it could wipe the whole log,
 -- defeating the very guarantee this file makes).
 
--- One function serves both triggers below. It references neither OLD nor NEW so
--- it is valid for the statement-level TRUNCATE trigger (where OLD is null) as
--- well as the row-level UPDATE/DELETE trigger; TG_OP names the blocked write.
+-- One function serves both triggers below. It references OLD only inside the
+-- DELETE branch (where OLD is valid); the TRUNCATE path (TG_OP='TRUNCATE', OLD
+-- null) and the UPDATE path always fall through to the raise, so the function
+-- stays valid for the statement-level TRUNCATE trigger too. TG_OP names the
+-- blocked write.
 create or replace function kantaq.sync_events_no_rewrite()
 returns trigger
 language plpgsql
 as $$
 begin
+  -- The one sanctioned mutation: a watermark-bounded retention DELETE, flagged
+  -- by the transaction-local GUC the compaction job sets. DELETE only — never
+  -- UPDATE or TRUNCATE — so committed history can age out but never be rewritten.
+  if tg_op = 'DELETE'
+     and current_setting('kantaq.retention_compaction', true) = 'on' then
+    return old;
+  end if;
   raise exception
     'sync_events is append-only: % is not permitted on committed history',
     tg_op

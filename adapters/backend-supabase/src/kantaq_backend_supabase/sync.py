@@ -40,6 +40,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -65,6 +66,12 @@ _TIMEOUT = 10.0
 PAGE_SIZE = 500
 
 SYNC_TABLE = "sync_events"
+
+# The ack-watermark table (E07-T4 / MOD-05): the runtime reports its pull
+# position here so the backend retention compaction can compute the safe
+# watermark (MIN acked_rev across live replicas) and never prune a row a lagging
+# replica still needs.
+ACKS_TABLE = "sync_acks"
 
 # The v0.2 atomic commit RPC (E24-T6), exposed by PostgREST at /rest/v1/rpc/events.
 EVENTS_RPC = "rpc/events"
@@ -241,6 +248,63 @@ class SupabaseSyncBackend:
     def snapshot(self, collection: str) -> dict[str, dict[str, Any]]:
         """The backend's fold of a collection (LWW by commit order)."""
         return fold_events(entry.event for entry in self.pull(collection))
+
+    # ------------------------------------------------- the ack watermark (E07-T4)
+
+    def update_ack_watermark(
+        self, *, member_id: str, replica_id: str, acked_rev: int, now: datetime | None = None
+    ) -> None:
+        """Report this replica's acked pull position (MOD-05 ack watermark, E07-T4).
+
+        The backend retention compaction (``kantaq.compact_sync_events``) reads
+        ``sync_acks`` to compute ``safe_watermark_rev`` = MIN(acked_rev) across
+        replicas still live within the TTL, so it never prunes a row a lagging
+        replica still needs. ``acked_rev`` is the replica's confirmed pull cursor
+        (``PullResult.cursor``); under-reporting it only makes compaction more
+        conservative, never unsafe. RLS scopes the upsert to this workspace AND to
+        ``member_id`` (which is in the key), so a member can only move its own
+        ack rows — never a peer's (the cross-member stranding fix).
+        """
+        ts = (now or datetime.now(UTC)).isoformat()
+        self._request(
+            "POST",
+            f"/{ACKS_TABLE}",
+            params={"on_conflict": "workspace_id,member_id,replica_id"},
+            headers={"Prefer": "resolution=merge-duplicates"},
+            json=[
+                {
+                    "workspace_id": self._workspace_id,
+                    "member_id": member_id,
+                    "replica_id": replica_id,
+                    "acked_rev": acked_rev,
+                    "updated_at": ts,
+                }
+            ],
+        )
+
+    def safe_watermark_rev(self, *, ttl_days: int = 30, now: datetime | None = None) -> int | None:
+        """The lowest acked revision across replicas still live within ``ttl_days``.
+
+        What ``core.retention.run`` reports as ``sync_compactable_below_rev`` (the
+        DELETE itself runs backend-side under pg_cron — this is the *report*).
+        ``None`` when no live replica has acked, so the runtime surfaces "hold"
+        rather than a blind floor; a replica silent past the TTL is excluded
+        (it re-snapshots) and so cannot pin the watermark forever.
+        """
+        cutoff = ((now or datetime.now(UTC)) - timedelta(days=ttl_days)).isoformat()
+        response = self._request(
+            "GET",
+            f"/{ACKS_TABLE}",
+            params={
+                "select": "acked_rev",
+                "workspace_id": f"eq.{self._workspace_id}",
+                "updated_at": f"gte.{cutoff}",
+                "order": "acked_rev.asc",
+                "limit": "1",
+            },
+        )
+        rows = response.json()
+        return int(rows[0]["acked_rev"]) if rows else None
 
     # --------------------------------------------------------- v0.2 atomic RPC
 

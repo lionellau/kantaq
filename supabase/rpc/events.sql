@@ -101,6 +101,7 @@ as $$
     when 'skill_containers' then 'lww'
     when 'skill_mappings' then 'lww'
     when 'conflict_records' then 'authoritative_tx'
+    when 'audit_anchors' then 'append_only'  -- E07-T5: never synced, declared for meta parity
     else null
   end
 $$;

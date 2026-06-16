@@ -18,6 +18,9 @@ from kantaq_backend_supabase.schema import (
     COLLECTIONS_MIGRATION,
     EVENTS_RPC,
     POLICIES_FILE,
+    RETENTION_RPC,
+    SYNC_ACKS_MIGRATION,
+    SYNC_ACKS_POLICIES,
     SYNC_MIGRATION,
     SYNC_POLICIES_FILE,
     read_repo_sql,
@@ -88,5 +91,10 @@ def sync_pg() -> Iterator[Engine]:
         apply_sql(engine, read_repo_sql(SYNC_POLICIES_FILE))
         apply_sql(engine, read_repo_sql(EVENTS_RPC))
         apply_sql(engine, read_repo_sql(APPEND_ONLY_POLICIES))
+        # E07-T4 retention: the ack-watermark table + RLS + the compaction
+        # function (the pg_cron schedule self-skips where the extension is absent).
+        apply_sql(engine, read_repo_sql(SYNC_ACKS_MIGRATION))
+        apply_sql(engine, read_repo_sql(SYNC_ACKS_POLICIES))
+        apply_sql(engine, read_repo_sql(RETENTION_RPC))
         apply_sql(engine, SYNC_SEED)
         yield engine

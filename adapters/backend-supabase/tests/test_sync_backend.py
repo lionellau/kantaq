@@ -282,3 +282,48 @@ def test_lookup_refuses_a_service_role_key_and_surfaces_errors() -> None:
         lookup_active_members(
             URL, ANON_KEY, JWT, client=httpx.Client(transport=httpx.MockTransport(handler))
         )
+
+
+# --- the ack watermark (E07-T4): the PostgREST dialect for sync_acks ---------
+
+
+def test_update_ack_watermark_upserts_to_sync_acks() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["on_conflict"] = request.url.params.get("on_conflict")
+        captured["prefer"] = request.headers.get("Prefer")
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(201, json=[])
+
+    _backend(handler).update_ack_watermark(member_id="mbr_a", replica_id="dev_x", acked_rev=42)
+
+    assert captured["path"] == "/rest/v1/sync_acks"
+    # member_id is in the upsert key so RLS binds the row to its writer (a member
+    # can only move its own ack rows — the cross-member stranding fix).
+    assert captured["on_conflict"] == "workspace_id,member_id,replica_id"
+    assert "resolution=merge-duplicates" in captured["prefer"]
+    row = captured["body"][0]
+    assert (row["workspace_id"], row["member_id"], row["replica_id"]) == ("ws_a", "mbr_a", "dev_x")
+    assert row["acked_rev"] == 42
+    assert "updated_at" in row  # the staleness key the compaction filters live replicas on
+
+
+def test_safe_watermark_rev_reads_the_lowest_live_ack() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["params"] = dict(request.url.params)
+        return httpx.Response(200, json=[{"acked_rev": 7}])
+
+    assert _backend(handler).safe_watermark_rev() == 7
+    assert seen["params"]["order"] == "acked_rev.asc"  # the MIN across live replicas
+    assert seen["params"]["limit"] == "1"
+    assert seen["params"]["workspace_id"] == "eq.ws_a"
+    assert seen["params"]["updated_at"].startswith("gte.")  # live = acked within the TTL
+
+
+def test_safe_watermark_rev_holds_when_no_live_replica() -> None:
+    backend = _backend(lambda _request: httpx.Response(200, json=[]))
+    assert backend.safe_watermark_rev() is None  # no live ack → report "hold", not a blind floor
