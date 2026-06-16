@@ -45,6 +45,7 @@ Audit policy (v0.0.5, per MOD-07's action vocabulary and PRD §8.6):
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -79,6 +80,21 @@ DEFAULT_READ_FLUSH_INTERVAL = timedelta(seconds=60)
 # member to attribute to, and MOD-07 forbids defaulting silently — so the row
 # says so explicitly.
 UNKNOWN_ACTOR = "unknown"
+
+
+def _read_payload_bytes(result: dict[str, Any]) -> int:
+    """Wire size of a read result, for the MOD-08 payload tally (E26-T1 feed).
+
+    The agent receives this dict as JSON, so its UTF-8 byte length is the input
+    to ``metrics.summary``'s ``est_payload_bytes``/``est_tokens``. Measuring is
+    best-effort observability — it must never fail a read — so a value the JSON
+    encoder cannot serialize falls back to ``str`` and, failing even that, 0.
+    """
+    try:
+        return len(json.dumps(result, default=str, separators=(",", ":")).encode("utf-8"))
+    except (TypeError, ValueError):
+        return 0
+
 
 # The 8-check deny vocabulary (FR-E09-3) plus the operational liveness/rate cuts.
 DENY_IDENTITY = "identity"
@@ -419,6 +435,7 @@ class Gateway:
             self._read_log.record(
                 session.member_id,
                 object_ref=spec.read_ref(args) if spec.read_ref is not None else None,
+                payload_bytes=_read_payload_bytes(result),
             )
             self._flush_reads_if_due()
         return result
