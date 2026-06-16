@@ -85,13 +85,17 @@ Any failure raises and nothing is half-imported.
 
 ## Scope
 
-v0.1 ships the export producer, this importer **library**, the automated fixture
-round-trip, and this manual procedure. The public `POST /v1/import` endpoint and
-the round-trip **CI gate** are v0.2 (DEBT-03); this importer is the seam they will
-call.
+v0.1 shipped the export producer, this importer **library**, the automated
+fixture round-trip, and this manual procedure. **v0.2 adds the round-trip CI
+gate** (export → import → re-export, plus the incremental `?since=cursor` delta —
+each proven by a deliberately-failing fixture) and a **Linear importer** that
+maps a Linear export into protocol collections idempotently (`kantaq import
+linear`). The public `POST /v1/import` HTTP endpoint remains a v0.2-late item
+(DEBT-03); this importer is the seam it will call.
 
 ## See also
 
 - [protocol.md](protocol.md) — a bundle is a signed event log at rest; the same codec, signatures, and grants verify it.
+- [sync.md](sync.md) — offline reconcile, conflict review, and the retention that keeps the logs bounded.
 - [security.md](security.md) — the verified-ingestion contract the importer mirrors.
 - [clients/compatibility.md](clients/compatibility.md) — the clients that speak this protocol and the tier they earn.
