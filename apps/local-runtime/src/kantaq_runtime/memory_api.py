@@ -40,31 +40,44 @@ ReaderActor = Annotated[VerifiedActor, Depends(require_action(Action.memory_read
 WriterActor = Annotated[VerifiedActor, Depends(require_action(Action.memory_write))]
 
 
-def _human_reader(actor: ReaderActor) -> VerifiedActor:
-    """An agent must read memory through the policy-enforced MCP gateway, never
-    this HTTP API.
+def _deny_agent(actor: VerifiedActor) -> VerifiedActor:
+    """The whole HTTP memory API is human/web-only: agents use the gateway.
 
-    The gateway applies the per-role memory policy on every read (MOD-21, the
-    8-check #6): an agent sees only what its context-role policy admits and never
-    another actor's ``local`` notes. The HTTP API has **no agent context role** to
-    filter by, so it reads unfiltered — correct for the human/device owner (who
-    sees their own ``local`` notes, the ``human_teammate`` baseline) but a privacy
-    hole for an agent token. So we **fail closed**: an ``Agent``-role token is
-    refused here (mirroring the gateway's denial of a role-less agent read), and
-    agents stay on the gateway path where the policy is enforced.
+    An agent talks to kantaq only through the policy-enforced MCP gateway
+    (docs/mcp.md), never this runtime HTTP API:
+
+    * **Reads** need the agent's *context role* (`code_agent`/…) to filter by,
+      and only a gateway session carries it (`mcp-agent-role`). A plain HTTP
+      bearer token has no context role, so the HTTP layer cannot filter an agent
+      read — it would hand over another actor's `local` notes. The gateway's
+      `memory_search`/`memory_get` apply the policy (MOD-21, the 8-check #6).
+    * **Writes** (promotion) run through the gateway's `memory_promote` tool, so
+      every promotion is audited and passes the 8 checks.
+
+    So an `Agent`-role token is refused here (403), **fail closed**, mirroring the
+    gateway's denial of a role-less agent read. (Humans — Owner/Member/Viewer —
+    are unaffected; `memory.approve` already 403s agents on approve/reject.)
     """
     if actor.role == Role.agent:
         raise HTTPException(
             status_code=403,
-            detail=("agents read memory through the policy-enforced MCP gateway, not the HTTP API"),
+            detail="agents use the policy-enforced MCP gateway for memory, not the HTTP API",
         )
     return actor
 
 
+def _human_reader(actor: ReaderActor) -> VerifiedActor:
+    return _deny_agent(actor)
+
+
+def _human_writer(actor: WriterActor) -> VerifiedActor:
+    return _deny_agent(actor)
+
+
 HumanReaderActor = Annotated[VerifiedActor, Depends(_human_reader)]
+HumanWriterActor = Annotated[VerifiedActor, Depends(_human_writer)]
 # Approve/reject are a human decision — strictly stronger than memory.write.
-# An agent token (memory.read/memory.write only) never carries memory.approve,
-# so it is 403 here even though it can propose via the write routes.
+# An agent token (memory.read/memory.write only) never carries memory.approve.
 ApproverActor = Annotated[VerifiedActor, Depends(require_action(Action.memory_approve))]
 # Write routes only (it ensures the member's self-grant), so a read never signs.
 SignerDep = Annotated[EventSigner | None, Depends(get_event_signer)]
@@ -211,7 +224,7 @@ def list_memory(
 
 @router.post("/memory", response_model=MemoryOut, status_code=201)
 def create_memory(
-    body: MemoryIn, actor: WriterActor, engine: EngineDep, signer: SignerDep
+    body: MemoryIn, actor: HumanWriterActor, engine: EngineDep, signer: SignerDep
 ) -> MemoryOut:
     with Session(engine) as session:
         try:
@@ -245,7 +258,7 @@ def get_memory(memory_id: str, actor: HumanReaderActor, engine: EngineDep) -> Me
 def update_memory(
     memory_id: str,
     body: MemoryPatch,
-    actor: WriterActor,
+    actor: HumanWriterActor,
     engine: EngineDep,
     signer: SignerDep,
 ) -> MemoryOut:
@@ -261,7 +274,7 @@ def update_memory(
 
 @router.post("/memory/{memory_id}/promote", response_model=MemoryOut)
 def promote_memory(
-    memory_id: str, actor: WriterActor, engine: EngineDep, signer: SignerDep
+    memory_id: str, actor: HumanWriterActor, engine: EngineDep, signer: SignerDep
 ) -> MemoryOut:
     """Propose an entry into the shared collection (E13-T4, the PROPOSE step).
 
@@ -304,7 +317,9 @@ def reject_memory(
 
 
 @router.delete("/memory/{memory_id}", status_code=204)
-def delete_memory(memory_id: str, actor: WriterActor, engine: EngineDep, signer: SignerDep) -> None:
+def delete_memory(
+    memory_id: str, actor: HumanWriterActor, engine: EngineDep, signer: SignerDep
+) -> None:
     with Session(engine) as session:
         try:
             _service(session, actor, signer).delete_entry(memory_id)
@@ -319,7 +334,7 @@ def delete_memory(memory_id: str, actor: WriterActor, engine: EngineDep, signer:
 def link_memory(
     memory_id: str,
     body: MemoryLinkIn,
-    actor: WriterActor,
+    actor: HumanWriterActor,
     engine: EngineDep,
     signer: SignerDep,
 ) -> MemoryLinkOut:

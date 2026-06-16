@@ -24,7 +24,11 @@ from typing import Any, cast
 from sqlmodel import Session
 
 from kantaq_core import audit, context, memory_policy, proposals
-from kantaq_core.memory.service import MemoryNotFoundError, MemoryService
+from kantaq_core.memory.service import (
+    MemoryNotFoundError,
+    MemoryService,
+    MemoryValidationError,
+)
 from kantaq_core.memory_policy import MemoryPolicy
 from kantaq_core.tracker.events import DomainEvent
 from kantaq_core.tracker.service import (
@@ -535,6 +539,70 @@ def memory_get(
         raise ToolError("not_found", str(exc)) from exc
     _gate_memory_read(entry, scope, now())
     return {"entry": _memory_out(entry)}
+
+
+def memory_promote(
+    session: Session,
+    *,
+    actor_id: str,
+    args: dict[str, Any],
+    now: Callable[[], datetime],
+    scope: ToolScope = UNSCOPED,
+) -> dict[str, Any]:
+    """Propose a memory entry into the shared collection (the PROPOSE step).
+
+    The agent-reachable half of promotion (``memory.write``, ``propose`` verb);
+    approve/reject is human-only and deliberately has **no** MCP surface, so an
+    agent can propose but never approve (the propose-first guard). This is the
+    one memory **write** an agent performs, and it runs **only** through the
+    gateway — the HTTP memory API is human/web-only — so every promotion is
+    audited and passes the 8 checks.
+
+    Promoting a ``local`` entry copies its content into a NEW ``team``
+    ``proposed`` row and leaves the original ``local`` row immutable + unsynced
+    (NFR-E13-1: no byte/id of the local entry leaves the machine); a ``team``
+    ``{draft,stale}`` row transitions in place. The new/flipped row emits a
+    **signed** event past the cutover (``scope.signer``), so it lands in every
+    member's Inbox and is shared only once a human approves it.
+
+    **Authorization (8-check #6 parity with the reads).** An agent may promote
+    only what its role policy admits — the same gate ``memory_get`` enforces — so
+    it cannot read-and-Inbox-inject an entry it is scoped out of (``promote``
+    flips a ``team`` ``{draft,stale}`` row in place and this tool returns its
+    ``body``; a ``role_context_preview`` discloses excluded *team* ids, so the id
+    is reachable). The one gate deliberately **not** applied is the privacy
+    (``local``) floor: the device owner's agent proposes the owner's own
+    ``local`` note (the headline use case the floor would forbid), and a
+    ``local`` id is never discoverable cross-scope (the read tools filter it
+    out). A role-less agent is denied either way — declare a context role to
+    touch memory.
+    """
+    memory_id = args.get("memory_id")
+    if not isinstance(memory_id, str) or not memory_id.strip():
+        raise ToolError("validation", "memory_id (string) is required")
+    sink = EventLogSink(session, actor_id, signer=scope.signer)
+    service = MemoryService(session, actor_id=actor_id, source="mcp", sink=sink, now=now)
+    try:
+        entry = service.get_entry(memory_id)
+    except MemoryNotFoundError as exc:
+        raise ToolError("not_found", str(exc)) from exc
+    if entry.visibility == "team":
+        # Full read gate: denies a role-less agent and a policy-excluded team
+        # entry (scope/status/expiry); team rows always clear the privacy floor.
+        _gate_memory_read(entry, scope, now())
+    elif scope.memory_policy is None and scope.is_agent:
+        # A local row skips the privacy floor (it would wrongly deny), but a
+        # role-less agent still cannot touch memory.
+        raise PolicyDenied(
+            "an agent session must declare a context role (mcp-agent-role) to promote memory",
+            entry_id=entry.id,
+            reason="no_agent_role",
+        )
+    try:
+        promoted = service.promote(memory_id)
+    except MemoryValidationError as exc:
+        raise ToolError("validation", str(exc)) from exc
+    return {"entry": _memory_out(promoted)}
 
 
 def role_context_get(

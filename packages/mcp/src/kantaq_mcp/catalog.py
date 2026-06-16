@@ -465,6 +465,32 @@ CATALOG: tuple[ToolSpec, ...] = (
         read_ref=lambda args: f"memory_entries/{args.get('memory_id', '?')}",
     ),
     ToolSpec(
+        name="memory_promote",
+        title="Propose a memory entry into the shared collection",
+        description=(
+            "Propose a memory entry for the team (the PROPOSE step; requires `memory.write`). "
+            "A `local` entry is copied into a NEW `team` `proposed` row and the original stays "
+            "private and never syncs; a `team` draft/stale row transitions in place. The shared "
+            "copy lands in the Inbox and becomes team-visible only after a human approves it — "
+            "an agent may propose but never approve (there is no approve tool)."
+        ),
+        verb="propose",
+        collections=("memory_entries",),
+        required_action="memory.write",
+        input_schema={
+            "type": "object",
+            "properties": {"memory_id": {"type": "string", "minLength": 1, "maxLength": 26}},
+            "required": ["memory_id"],
+            "additionalProperties": False,
+        },
+        output_schema={
+            "type": "object",
+            "properties": {"entry": _MEMORY_FULL_SCHEMA},
+            "required": ["entry"],
+        },
+        handler=tools.memory_promote,
+    ),
+    ToolSpec(
         name="role_context_get",
         title="Get role context",
         description=(
