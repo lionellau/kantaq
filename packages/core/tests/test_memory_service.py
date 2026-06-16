@@ -370,6 +370,14 @@ def test_team_link_audits_on_the_ticket(
         ("team", "approved", "ticket", "shared_project"),
         ("team", "approved", "codebase", "shared_project"),
         ("team", "approved", "release", "shared_project"),
+        # agent_run can't carry a team-approved row in practice (agent runs are
+        # local), but the mapping is total — it reads as project scope.
+        ("team", "approved", "agent_run", "shared_project"),
+        # A human-declined proposal (proposed→rejected) is a reachable team state;
+        # it reads as personal_synced (the MOD-19 catch-all: everything team that
+        # is not proposed/approved), NOT a sixth label.
+        ("team", "rejected", "workspace", "personal_synced"),
+        ("team", "rejected", "project", "personal_synced"),
     ],
 )
 def test_domain_visibility_single_source_of_truth(

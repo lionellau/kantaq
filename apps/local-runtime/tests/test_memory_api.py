@@ -130,6 +130,33 @@ def test_viewer_reads_but_cannot_write(
     assert deleted.status_code == 403
 
 
+def test_agent_token_cannot_read_memory_over_http(
+    client: TestClient, owner_token: str, agent_token: str
+) -> None:
+    """E13-T5 hardening: agents read memory only through the policy-enforced MCP
+    gateway (which applies the per-role memory policy and never returns another
+    actor's ``local`` notes). The HTTP read API has no agent context role to
+    filter by, so it fails closed on an Agent token rather than hand it an
+    unfiltered ``local`` row. Writes (promote) stay open — only reads are fenced.
+    """
+    owner_local = _create_memory(client, owner_token, title="owner secret", visibility="local")
+    ticket_id = _create_ticket(client, owner_token)
+    for path in (
+        "/v1/memory",
+        f"/v1/memory/{owner_local['id']}",
+        f"/v1/memory/{owner_local['id']}/links",
+        f"/v1/tickets/{ticket_id}/memory",
+    ):
+        resp = client.get(path, headers=_bearer(agent_token))
+        assert resp.status_code == 403, f"{path}: {resp.status_code} {resp.text}"
+        assert "MCP gateway" in resp.json()["detail"]
+    # The fence is agent-only: a human (owner) still reads over HTTP.
+    assert client.get("/v1/memory", headers=_bearer(owner_token)).status_code == 200
+    # And the agent can still PROPOSE (memory.write is unaffected — only reads fenced).
+    promoted = client.post(f"/v1/memory/{owner_local['id']}/promote", headers=_bearer(agent_token))
+    assert promoted.status_code == 200
+
+
 # -------------------------------------------------------------------- entries
 
 
