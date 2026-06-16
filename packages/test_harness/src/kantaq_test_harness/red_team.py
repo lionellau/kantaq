@@ -101,6 +101,22 @@ ATTACK_CATALOG: tuple[Attack, ...] = (
         "the model binds a session to a capability grant that belongs to someone else",
         "identity",
     ),
+    Attack(
+        "escalate-tampered-role-lifts-ceiling",
+        AttackCategory.ESCALATION,
+        "a derived session rides a > 24 h grant whose subject role is then tampered to an "
+        "unknown value; the gateway's role-aware live re-check (E06-T7) fails closed to the "
+        "24 h ceiling so the overlong grant no longer verifies — next call is denied",
+        "identity",
+    ),
+    Attack(
+        "escalate-craft-owner-tier-grant",
+        AttackCategory.ESCALATION,
+        "an agent-subject grant is crafted with a human/owner-tier (> 24 h) lifetime to "
+        "out-live the agent blast-radius cap; issuance refuses it (role-aware ceiling, E06-T7) "
+        "— denied before any session exists, so there is no gateway deny reason",
+        None,
+    ),
     # ---- exfiltration: read data the policy/scope withholds -------------------
     Attack(
         "exfil-private-local-memory",

@@ -27,14 +27,16 @@ from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
 from kantaq_core.identity import (
+    GrantDeniedError,
     GrantService,
+    IdentityService,
     MintedToken,
     Role,
     VerifiedActor,
     ensure_device,
 )
 from kantaq_core.memory.service import MemoryService
-from kantaq_db.models import AgentProposal, AuditEvent, Comment, MemoryEntry, Ticket
+from kantaq_db.models import AgentProposal, AuditEvent, Comment, Member, MemoryEntry, Ticket
 from kantaq_mcp.catalog import CATALOG
 from kantaq_mcp.gateway import (
     DENY_COLLECTION_SCOPE,
@@ -298,6 +300,86 @@ def test_escalate_foreign_grant_session(
     assert denied.value.reason == DENY_IDENTITY
     assert arena.deny_count() == before + 1, "the foreign-grant denial must be audited"
     assert CATALOG_BY_ID["escalate-foreign-grant-session"].category == AttackCategory.ESCALATION
+
+
+def test_escalate_tampered_role_lifts_ceiling(
+    arena: Arena, engine: Engine, clock: FakeClock, owner: MintedToken
+) -> None:
+    """E06-T7 role-aware backstop at the gateway surface. A > 24 h grant is valid
+    only while its subject is a real human role; tamper the stored role to an
+    unknown value and the gateway's live per-call re-check fails closed to the
+    24 h ceiling, so the overlong grant stops verifying and the next call on the
+    derived session is denied + audited (NFR-E06-2 / D-21)."""
+    keychain = FakeKeychain()
+    with Session(engine) as session:
+        ensure_device(session, keychain, member_id=owner.member_id, now=_naive(clock)())
+        session.commit()
+        row = GrantService(session, keychain, now=_naive(clock)).issue(
+            subject_member_id=owner.member_id,
+            resource="workspace/main",
+            verbs=["tickets.read"],
+            ttl_seconds=7 * 86_400,  # human-tier lifetime — valid at issue
+            actor_id=owner.member_id,
+        )
+        session.commit()
+        grant_id = row.id
+
+    owner_actor = arena.gateway.authenticate(owner.plaintext)
+    assert owner_actor is not None
+    bound = arena.gateway.session_for(
+        owner_actor,
+        session_id="s-redteam-tamper",
+        grant_request=GrantSessionRequest(grant_id=grant_id),
+    )
+
+    # Tamper: corrupt the subject's stored role to something Role() cannot parse.
+    with Session(engine) as session:
+        subject = session.get(Member, owner.member_id)
+        assert subject is not None
+        subject.role = "Superuser"
+        session.add(subject)
+        session.commit()
+
+    before = arena.deny_count()
+    outcome = attempt(
+        arena.gateway,
+        actor=owner_actor,
+        session=bound,
+        tool="ticket_get",
+        args={"ticket_id": arena.ticket_id},
+        count_denials=arena.deny_count,
+    )
+    assert outcome.denied, "escalate-tampered-role-lifts-ceiling: the overlong grant still verified"
+    assert outcome.reason == DENY_IDENTITY
+    assert outcome.bounded, "the role-aware re-check denial must be audited"
+    assert arena.deny_count() == before + 1
+    assert (
+        CATALOG_BY_ID["escalate-tampered-role-lifts-ceiling"].category == AttackCategory.ESCALATION
+    )
+
+
+def test_escalate_craft_owner_tier_grant(engine: Engine, clock: FakeClock) -> None:
+    """E06-T7 issuance guard. An agent's blast radius must expire fast, so a grant
+    naming an agent subject cannot be crafted with a human/owner-tier (> 24 h)
+    lifetime — issuance refuses it at the role-aware ceiling, before any session
+    is ever derived (hence no gateway deny reason)."""
+    keychain = FakeKeychain()
+    with Session(engine) as session:
+        agent = IdentityService(session).invite(
+            email="rogue-bot@example.com", role=Role.agent, scopes=["tickets.read"]
+        )
+        ensure_device(session, keychain, member_id=agent.member_id, now=_naive(clock)())
+        session.commit()
+        grants = GrantService(session, keychain, now=_naive(clock))
+        with pytest.raises(GrantDeniedError, match="ceiling"):
+            grants.issue(
+                subject_member_id=agent.member_id,
+                resource="workspace/main",
+                verbs=["tickets.read"],
+                ttl_seconds=7 * 86_400,  # owner-tier lifetime — refused for an agent
+                actor_id=agent.member_id,
+            )
+    assert CATALOG_BY_ID["escalate-craft-owner-tier-grant"].category == AttackCategory.ESCALATION
 
 
 @pytest.mark.parametrize(
