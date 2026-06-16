@@ -270,9 +270,7 @@ def test_sync_policies_file_reapplies_cleanly(sync_pg: Engine) -> None:
 
 # --- the ack watermark (E07-T4): a member moves only its own ack rows ---------
 
-_ACK_INSERT = (
-    "insert into sync_acks (workspace_id, member_id, replica_id, acked_rev) values "
-)
+_ACK_INSERT = "insert into sync_acks (workspace_id, member_id, replica_id, acked_rev) values "
 
 
 def test_a_member_records_its_own_ack(sync_pg: Engine) -> None:
