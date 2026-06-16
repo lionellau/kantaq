@@ -135,6 +135,8 @@ _LAZY: dict[str, str] = {
     # lazy path like replica so the plugin import stays lean — coverage rule).
     "seed_cost_profile": "kantaq_test_harness.cost_profile:seed_cost_profile",
     "PROFILE": "kantaq_test_harness.cost_profile:PROFILE",
+    # The synthetic JobWinAI-shaped Linear export (E23-T3 / E27 round-trip gate).
+    "build_linear_export": "kantaq_test_harness.linear_fixture:build_linear_export",
 }
 
 
@@ -190,6 +192,7 @@ __all__ = [
     "Workspace",
     "attempt",
     "build_agent_proposal",
+    "build_linear_export",
     "build_audit_event",
     "build_comment",
     "build_event",

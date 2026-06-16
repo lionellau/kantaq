@@ -728,6 +728,70 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0 if result.ok and cutover.ok else 1
 
 
+def cmd_import(args: argparse.Namespace) -> int:
+    """Import an external project export into a kantaq project (E23-T3).
+
+    ``kantaq import linear <export.json> [--project NAME]`` maps a Linear export
+    to protocol collections (status → lifecycle stage, Parent → parent_id,
+    comments → the feed) and is idempotent — a re-run never duplicates.
+    """
+    import json
+
+    from sqlmodel import Session, col, select
+
+    from kantaq_core.tracker import TrackerService
+    from kantaq_db.models import Member, Workspace
+    from kantaq_db.session import get_engine, sqlite_url
+    from kantaq_runtime.config import get_settings
+    from kantaq_runtime.linear_import import LinearImportError, import_linear
+    from kantaq_sync_engine import EventLogSink
+
+    if args.import_command != "linear":  # only Linear in v0.2
+        print(f"unknown import source: {args.import_command}", file=sys.stderr)
+        return 1
+    path = Path(args.path)
+    if not path.is_file():
+        print(f"no such file: {path}", file=sys.stderr)
+        return 1
+
+    settings = get_settings()
+    db = get_engine(sqlite_url(settings.local_db_path))
+    with Session(db) as session:
+        workspace = session.exec(select(Workspace)).first()
+        owner = session.exec(
+            select(Member).where(Member.status == "active").order_by(col(Member.id))
+        ).first()
+        if workspace is None or owner is None:
+            print("no workspace/owner yet — boot the runtime first", file=sys.stderr)
+            return 1
+        tracker = TrackerService(
+            session, actor_id=owner.id, source="cli", sink=EventLogSink(session, owner.id)
+        )
+        project = tracker.create_project(
+            workspace_id=workspace.id, name=args.project or "Imported from Linear"
+        )
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            result = import_linear(
+                payload,
+                session=session,
+                workspace_id=workspace.id,
+                project_id=project.id,
+                actor_id=owner.id,
+                source="cli",
+            )
+        except (LinearImportError, json.JSONDecodeError) as exc:
+            print(f"import failed: {exc}", file=sys.stderr)
+            return 1
+    print(
+        f"imported {result.tickets} tickets ({result.epics} epics, "
+        f"{result.parent_links} parent links), {result.comments} comments "
+        f"into '{project.name}'; skipped {result.skipped_tickets} tickets / "
+        f"{result.skipped_comments} comments (already imported)"
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="kantaq", description="kantaq dev CLI")
     parser.add_argument("--version", action="version", version=f"kantaq {__version__}")
@@ -789,6 +853,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="override bind port (default: LOCAL_MCP_PORT, auto = random)",
     )
     mcp.set_defaults(func=cmd_mcp)
+
+    imp = sub.add_parser("import", help="import an external project export (E23)")
+    imp.add_argument("import_command", choices=["linear"])
+    imp.add_argument("path", help="path to the export JSON")
+    imp.add_argument(
+        "--project",
+        default=None,
+        help="target project name (created; default: 'Imported from Linear')",
+    )
+    imp.set_defaults(func=cmd_import)
 
     sync = sub.add_parser("sync", help="online sync with the team backend (E24)")
     sync.set_defaults(func=cmd_sync)
