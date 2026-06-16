@@ -28,12 +28,14 @@ from kantaq_core.identity import (
     ensure_device,
     ensure_member_grant,
     local_grant_index,
+    max_grant_ttl_seconds,
     revoke_device,
     revoke_grants_for_device,
     verification_roots,
+    verify_grant_row,
 )
 from kantaq_db.models import AuditEvent, CapabilityGrantRow, Device, EventLog, Member
-from kantaq_protocol import GRANT_OK
+from kantaq_protocol import GRANT_INVALID_VALIDITY, GRANT_OK
 from kantaq_test_harness.clock import FakeClock
 from kantaq_test_harness.keychain import FakeKeychain
 
@@ -354,6 +356,53 @@ def test_ttl_ceiling_is_role_aware(
                 ttl_seconds=0,
                 actor_id=owner_id,
             )
+
+
+def test_unknown_role_ceiling_fails_closed() -> None:
+    """E06-T7 SEC backstop (FR-E06-6): the role→ceiling map fails closed. A role
+    that is not a known ``Role`` — e.g. a corrupted ``members.role`` the store
+    reads directly — gets the *most restrictive* 24 h agent cap, never the lifted
+    human ceiling. Pins the SEC-review finding so the class cannot regress."""
+    assert max_grant_ttl_seconds(Role.agent.value) == MAX_AGENT_GRANT_TTL_SECONDS
+    assert max_grant_ttl_seconds(Role.owner.value) == MAX_HUMAN_GRANT_TTL_SECONDS
+    # Anything that is not a known Role resolves to the 24 h cap, not 30 days.
+    assert max_grant_ttl_seconds("Superuser") == MAX_AGENT_GRANT_TTL_SECONDS
+    assert max_grant_ttl_seconds("") == MAX_AGENT_GRANT_TTL_SECONDS
+    assert max_grant_ttl_seconds("agent") == MAX_AGENT_GRANT_TTL_SECONDS  # case-exact, not "Agent"
+
+
+def test_corrupting_a_subject_role_cannot_lift_a_grant_past_24h(
+    engine: Engine, keychain: FakeKeychain, clock: FakeClock, owner_id: str
+) -> None:
+    """E06-T7 SEC backstop: ``verify_grant_row`` is role-aware, so a validly
+    signed multi-day human grant is rejected the moment its subject's stored role
+    is corrupted to an unknown value — the unknown role fails closed to 24 h and
+    the 7-day lifetime now exceeds that ceiling (GRANT_INVALID_VALIDITY)."""
+    with Session(engine) as session:
+        ensure_device(session, keychain, member_id=owner_id, now=_now(clock)())
+        service = _grant_service(session, keychain, clock)
+        long_human = service.issue(
+            subject_member_id=owner_id,
+            resource="workspace/main",
+            verbs=["tickets.read"],
+            ttl_seconds=MAX_AGENT_GRANT_TTL_SECONDS * 7,  # 7 days — valid for a human
+            actor_id=owner_id,
+        )
+        row = session.get(CapabilityGrantRow, long_human.id)
+        assert row is not None
+        # Valid while the subject is a real human role.
+        assert verify_grant_row(session, row, now=_now(clock)()).ok
+
+        # Corrupt the stored role to something Role() cannot parse.
+        subject = session.get(Member, owner_id)
+        assert subject is not None
+        subject.role = "Superuser"
+        session.add(subject)
+        session.flush()
+
+        verdict = verify_grant_row(session, row, now=_now(clock)())
+        assert not verdict.ok
+        assert verdict.reason == GRANT_INVALID_VALIDITY
 
 
 def test_rotating_the_token_invalidates_derived_grants(

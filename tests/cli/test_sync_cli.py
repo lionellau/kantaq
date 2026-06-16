@@ -168,3 +168,88 @@ def test_status_reports_locally_without_network(
     assert "hub_mode = supabase" in out
     assert "(not signed in)" in out
     assert "pending  = 0 event(s)" in out
+
+
+# ----------------------------------------------------------------- retention
+
+
+def test_run_due_retention_runs_then_throttles(tmp_path: Path) -> None:
+    """The sync-cycle retention seam (MOD-27 §Retention 3): the first pass runs and
+    stamps the once/day marker; an immediate second pass is throttled."""
+    from sqlmodel import Session, select
+
+    from kantaq.cli import _run_due_retention
+    from kantaq_core import retention
+    from kantaq_db import LocalSetting
+
+    db = create_engine(f"sqlite:///{tmp_path / 'r.sqlite'}")
+    SQLModel.metadata.create_all(db)
+    with Session(db) as s:
+        assert retention.due(s) is True  # never run → due
+
+    _run_due_retention(db, actor_id="mbr_1", safe_watermark_rev=None)
+
+    with Session(db) as s:
+        assert retention.due(s) is False, "the once/day marker was not stamped"
+        marker = s.exec(
+            select(LocalSetting).where(LocalSetting.key == retention.LAST_RUN_KEY)
+        ).first()
+        assert marker is not None
+
+    # A second pass within the day is a no-op (does not raise, marker unchanged).
+    _run_due_retention(db, actor_id="mbr_1", safe_watermark_rev=None)
+    with Session(db) as s:
+        assert retention.due(s) is False
+
+
+def test_sync_once_invokes_the_retention_seam(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """E07-T4 wiring: a successful ``kantaq sync once`` invokes the retention pass
+    (it rides the sync cycle). The sync mechanics are faked — this pins only that
+    the cycle reaches ``_run_due_retention`` with the resolved actor + watermark."""
+    import types
+
+    import kantaq.cli as cli
+    import kantaq_backend_supabase as backend_mod
+    import kantaq_core.identity as identity_mod
+    import kantaq_sync_engine as engine_mod
+
+    db_path = tmp_path / "data" / "local.sqlite"
+    db_path.parent.mkdir(parents=True)
+    SQLModel.metadata.create_all(create_engine(f"sqlite:///{db_path}"))
+    monkeypatch.setattr(cli, "_db_url", lambda: f"sqlite:///{db_path}")
+
+    monkeypatch.setattr(
+        backend_mod, "lookup_active_members", lambda *a, **k: [_member("mbr_1", "ws_1")]
+    )
+
+    class _FakeBackend:
+        def __init__(self, *a: object, **k: object) -> None: ...
+
+    class _FakeEngine:
+        def __init__(self, *a: object, **k: object) -> None: ...
+
+        def flush_outbox(self, **k: object) -> types.SimpleNamespace:
+            return types.SimpleNamespace(
+                committed=0, reconciled=0, rejected=0, stale=0, rebased=0, submitted=0
+            )
+
+        def apply_inbox(self) -> types.SimpleNamespace:
+            return types.SimpleNamespace(applied=0, own_reconciled=0, cursor=0)
+
+    monkeypatch.setattr(backend_mod, "SupabaseSyncBackend", _FakeBackend)
+    monkeypatch.setattr(cli, "_verifying_backend", lambda *a, **k: object())
+    monkeypatch.setattr(identity_mod, "local_device", lambda *a, **k: None)
+    monkeypatch.setattr(engine_mod, "SyncEngine", _FakeEngine)
+
+    calls: list[tuple[str, int | None]] = []
+    monkeypatch.setattr(
+        cli,
+        "_run_due_retention",
+        lambda db, *, actor_id, safe_watermark_rev: calls.append((actor_id, safe_watermark_rev)),
+    )
+
+    rc = _sync_once(URL, "anon", StubAuth(), _keychain_with_session())  # type: ignore[arg-type]
+    assert rc == 0
+    assert calls == [("mbr_1", None)], "the sync cycle must invoke the retention seam once"

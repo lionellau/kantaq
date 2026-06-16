@@ -521,11 +521,28 @@ def _sync_login(auth: SupabaseAuth, keychain: Keychain, email: str) -> int:
     return 0
 
 
+def _run_due_retention(db: Engine, *, actor_id: str, safe_watermark_rev: int | None) -> None:
+    """The once/day retention pass that rides the sync cycle (MOD-27 §Retention 3).
+
+    Extracted from ``_sync_once`` so the wiring is unit-testable on its own:
+    ``due`` gates the once/day throttle (an idle runtime still prunes on its next
+    tick) and ``run`` anchors-then-summarizes the expired audit range + reports
+    the sync watermark. The commit happens here; a no-op when not yet due.
+    """
+    from sqlmodel import Session
+
+    from kantaq_core import retention
+
+    with Session(db) as rsession:
+        if retention.due(rsession):
+            retention.run(rsession, actor_id=actor_id, safe_watermark_rev=safe_watermark_rev)
+            rsession.commit()
+
+
 def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) -> int:
     from sqlmodel import Session
 
     from kantaq_backend_supabase import SupabaseSyncBackend, lookup_active_members
-    from kantaq_core import retention
     from kantaq_core.identity import local_device
     from kantaq_db.session import get_engine
     from kantaq_runtime.config import get_settings
@@ -623,10 +640,7 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
     # genuinely runs, so retention rides it, throttled to once/day. The audit half
     # anchors-then-summarizes the expired pre-retention range (E07-T5/T4b); the
     # sync_events half reports the watermark above (the DELETE is backend pg_cron).
-    with Session(db) as rsession:
-        if retention.due(rsession):
-            retention.run(rsession, actor_id=me.id, safe_watermark_rev=watermark)
-            rsession.commit()
+    _run_due_retention(db, actor_id=me.id, safe_watermark_rev=watermark)
     stale = f", {flushed.stale} stale" if flushed.stale else ""
     rejected = f", {flushed.rejected} rejected" if flushed.rejected else ""
     rebased = f", {flushed.rebased} rebased" if flushed.rebased else ""

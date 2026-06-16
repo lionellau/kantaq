@@ -92,6 +92,23 @@ describe("Settings → Sync: the metrics dashboard (E20-T5 / MOD-27)", () => {
     expect(await screen.findByTestId("headroom-warning")).toBeDefined();
   });
 
+  it("warns when an idle free-tier project risks being paused", async () => {
+    const base = buildWorkspaceMetrics();
+    const backend = base.backend;
+    if (backend === null) {
+      throw new Error("builder should provide a backend");
+    }
+    server.on("GET /v1/metrics/summary", {
+      ...base,
+      backend: {
+        ...backend,
+        capacity: { ...backend.capacity, idle_pause_risk: true },
+      },
+    });
+    renderApp("/settings/sync");
+    expect(await screen.findByTestId("idle-pause-warning")).toBeDefined();
+  });
+
   it("shows the per-actor agent activity table", async () => {
     server.on("GET /v1/metrics/summary", buildWorkspaceMetrics());
     renderApp("/settings/sync");
