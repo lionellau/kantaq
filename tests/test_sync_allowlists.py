@@ -40,6 +40,10 @@ NEVER_SYNC: dict[str, str] = {
     # so the CRUD service writes locally + audited and never emits.
     "skill_containers": "MOD-22: db-backed registry, off the sync allowlist in v0.2",
     "skill_mappings": "MOD-22: db-backed registry, off the sync allowlist in v0.2",
+    # E07-T5: the Merkle anchor over a range of this replica's own audit trail —
+    # like audit_events it is per-replica and never pushed (the backend holds
+    # each replica's anchors via the verified/export path, not the sync log).
+    "audit_anchors": "MOD-07: per-replica audit anchor, off the sync allowlist",
 }
 
 

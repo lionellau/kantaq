@@ -185,6 +185,7 @@ alter table capability_grants enable row level security;
 alter table skill_containers enable row level security;
 alter table skill_mappings  enable row level security;
 alter table conflict_records enable row level security;
+alter table audit_anchors    enable row level security;
 
 grant select, insert, update         on workspaces      to authenticated;
 grant select, insert, update, delete on projects        to authenticated;
@@ -215,6 +216,9 @@ grant select on skill_mappings   to authenticated;
 -- conflict_records (E05-T2) is READ-ONLY for clients: authoritative_tx, minted
 -- and resolved only through the verified RPC path, never a direct client write.
 grant select on conflict_records to authenticated;
+-- audit_anchors (E07-T5) are append-only AT THE DATABASE, like audit_events:
+-- INSERT-as-self + SELECT, and no UPDATE/DELETE grant for any client role.
+grant select, insert                 on audit_anchors   to authenticated;
 
 grant all on all tables in schema public to service_role;
 
@@ -611,3 +615,23 @@ drop policy if exists conflict_records_select on conflict_records;
 create policy conflict_records_select on conflict_records
   for select to authenticated
   using (kantaq.is_member(workspace_id));
+
+-- ---------------------------------------------------------------------------
+-- audit_anchors (E07-T5, MOD-07 / FR-E07-5) — append-only AT THE DATABASE,
+-- exactly like audit_events: INSERT only as yourself, SELECT inside the actor's
+-- workspace, and no UPDATE/DELETE policy for any client role (not even Owners).
+-- An anchor is a content-free integrity commitment (range ids + a Merkle root)
+-- over a range of the actor's own audit trail; the runtime writes it before
+-- retention prunes, and the immutability here is the server half of "the anchor
+-- still proves the pre-retention range".
+-- ---------------------------------------------------------------------------
+
+drop policy if exists audit_anchors_select on audit_anchors;
+create policy audit_anchors_select on audit_anchors
+  for select to authenticated
+  using (kantaq.actor_in_my_workspaces(actor_id));
+
+drop policy if exists audit_anchors_insert on audit_anchors;
+create policy audit_anchors_insert on audit_anchors
+  for insert to authenticated
+  with check (actor_id in (select kantaq.member_ids()));

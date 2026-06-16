@@ -94,9 +94,14 @@ COLLECTION_META: dict[str, CollectionMeta] = {
     "conflict_records": CollectionMeta(
         "conflict_records", "backend", "authoritative_tx", _DEFAULT_PRIVACY
     ),
+    # E07-T5 (MOD-07): the RFC 6962 Merkle anchor over an audit range. Like
+    # audit_events it is append_only/backend and OFF the sync allowlist (each
+    # replica anchors its own trail); architecture §2 has the backend hold
+    # anchors, so it carries the full collection treatment (mirrored both stores).
+    "audit_anchors": CollectionMeta("audit_anchors", "backend", "append_only", _DEFAULT_PRIVACY),
 }
 
 
 def collection_names() -> tuple[str, ...]:
-    """The declared collection names, in declaration order (16 in v0.2)."""
+    """The declared collection names, in declaration order (17 in v0.2)."""
     return tuple(COLLECTION_META)

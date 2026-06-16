@@ -5,6 +5,30 @@
 -- Apply RLS afterwards: supabase/policies/0001_rls.sql (RLS is not optional).
 
 
+CREATE TABLE audit_anchors (
+	id VARCHAR(26) NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	actor_seq INTEGER NOT NULL,
+	visibility VARCHAR(16) NOT NULL,
+	hosting_mode VARCHAR(16) NOT NULL,
+	retention_policy VARCHAR(16) NOT NULL,
+	actor_id VARCHAR NOT NULL,
+	range_start VARCHAR(26) NOT NULL,
+	range_end VARCHAR(26) NOT NULL,
+	merkle_root VARCHAR(64) NOT NULL,
+	tree_size INTEGER NOT NULL,
+	chain_tip VARCHAR(64) NOT NULL,
+	external_pin VARCHAR,
+	PRIMARY KEY (id)
+);
+
+CREATE INDEX ix_audit_anchors_actor_id ON audit_anchors (actor_id);
+
+CREATE INDEX ix_audit_anchors_range_end ON audit_anchors (range_end);
+
+CREATE INDEX ix_audit_anchors_range_start ON audit_anchors (range_start);
+
 CREATE TABLE audit_events (
 	id VARCHAR(26) NOT NULL,
 	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,

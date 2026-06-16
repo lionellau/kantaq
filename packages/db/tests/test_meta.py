@@ -22,14 +22,15 @@ _EXPECTED = {
     "skill_containers",
     "skill_mappings",
     "conflict_records",
+    "audit_anchors",
 }
 _VALID_MERGE = {"lww", "append_only", "authoritative_tx", "crdt"}
 _VALID_AUTHORITY = {"local", "backend"}
 
 
-def test_sixteen_collections_declared() -> None:
+def test_seventeen_collections_declared() -> None:
     assert set(collection_names()) == _EXPECTED
-    assert len(collection_names()) == 16
+    assert len(collection_names()) == 17
 
 
 def test_meta_matches_table_models() -> None:
@@ -55,6 +56,8 @@ def test_mvp_privacy_class_subset() -> None:
 def test_logs_are_append_only() -> None:
     assert COLLECTION_META["comments"].merge_policy == "append_only"
     assert COLLECTION_META["audit_events"].merge_policy == "append_only"
+    # E07-T5: the Merkle anchor is append-only like the trail it commits to.
+    assert COLLECTION_META["audit_anchors"].merge_policy == "append_only"
 
 
 def test_tokens_never_optimistic() -> None:
