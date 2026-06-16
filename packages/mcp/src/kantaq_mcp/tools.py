@@ -491,25 +491,29 @@ def memory_search(
     now: Callable[[], datetime],
     scope: ToolScope = UNSCOPED,
 ) -> dict[str, Any]:
-    """Search memory entries; an agent session sees only its policy admits."""
+    """Search memory entries; an agent session sees only what its policy admits.
+
+    The policy filtering is the service's ``search`` (the one enforced read
+    path, MOD-19/MOD-21): the gateway only selects the session's policy and
+    fences a role-less agent — it does not re-implement the filter, so the
+    "never returns an excluded entry" guarantee lives in one place.
+    """
 
     def _opt(key: str) -> str | None:
         value = args.get(key)
         return value if isinstance(value, str) and value else None
 
-    service = MemoryService(session, actor_id=actor_id, source="mcp", now=now)
-    entries = service.list_entries(space=_opt("space"), type=_opt("type"), q=_opt("q"))
-    if scope.memory_policy is not None:
-        result = memory_policy.filter(entries, scope.memory_policy, now=now())
-        kept = {entry.id for entry in result.included}
-        entries = [entry for entry in entries if entry.id in kept]
-    elif scope.is_agent:
+    if scope.memory_policy is None and scope.is_agent:
         raise PolicyDenied(
             "an agent session must declare a context role (mcp-agent-role) to read memory",
             entry_id="memory_search",
             reason="no_agent_role",
         )
-    return {"entries": [_memory_summary(entry) for entry in entries]}
+    service = MemoryService(session, actor_id=actor_id, source="mcp", now=now)
+    result = service.search(
+        policy=scope.memory_policy, space=_opt("space"), type=_opt("type"), q=_opt("q")
+    )
+    return {"entries": [_memory_summary(entry) for entry in result.included]}
 
 
 def memory_get(
