@@ -58,10 +58,19 @@ def test_snapshot_blobref_and_anchor_shapes() -> None:
     blob = BlobRef(
         blob_id="b1", filename="a.png", media_type="image/png", size_bytes=1, sha256="00"
     )
-    anchor = AuditAnchor(anchor_id="an1", range_start="e1", range_end="e9", chain_hash="ff")
+    anchor = AuditAnchor(
+        anchor_id="an1",
+        range_start="e1",
+        range_end="e9",
+        root="ff",
+        tree_size=9,
+        chain_tip="aa",
+    )
     assert snapshot.as_of_rev == 42
     assert blob.size_bytes == 1
-    assert anchor.chain_hash == "ff"
+    assert anchor.root == "ff"
+    assert anchor.tree_size == 9
+    assert anchor.external_pin is None
 
 
 def test_crdt_merge_is_an_honest_stub() -> None:

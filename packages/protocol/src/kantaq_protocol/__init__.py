@@ -64,6 +64,13 @@ from kantaq_protocol.hashing import (
     HASH_HEX,
     chain_hash,
 )
+from kantaq_protocol.merkle import (
+    AUDIT_MERKLE_DOMAIN,
+    merkle_inclusion_proof,
+    merkle_leaf_hash,
+    merkle_root,
+    verify_inclusion_proof,
+)
 from kantaq_protocol.signing import (
     KeyPair,
     generate_keypair,
@@ -78,6 +85,7 @@ __version__: str = "0.1.0"
 
 __all__ = [
     "AUDIT_CHAIN_DOMAIN",
+    "AUDIT_MERKLE_DOMAIN",
     "EVENT_SIGNING_DOMAIN",
     "GRANT_EXPIRED",
     "GRANT_FORGED",
@@ -122,6 +130,9 @@ __all__ = [
     "encode_canonical_grant",
     "generate_keypair",
     "grant_signing_bytes",
+    "merkle_inclusion_proof",
+    "merkle_leaf_hash",
+    "merkle_root",
     "public_key_of",
     "sign",
     "sign_bytes",
@@ -130,4 +141,5 @@ __all__ = [
     "verify",
     "verify_bytes",
     "verify_grant",
+    "verify_inclusion_proof",
 ]
