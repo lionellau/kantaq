@@ -21,7 +21,7 @@ from sqlmodel import select
 
 from kantaq_core.tracker.events import DomainEvent
 from kantaq_db import EventLog
-from kantaq_sync_engine import AuthoritativeWriteError, EventLogSink
+from kantaq_sync_engine import AppendOnlyWriteError, AuthoritativeWriteError, EventLogSink
 from kantaq_test_harness.backend import FakeBackend
 from kantaq_test_harness.replica import WORKSPACE_ID, memory_replica
 
@@ -43,6 +43,29 @@ def test_authoritative_tx_collections_cannot_enter_the_optimistic_outbox() -> No
                 )
         # Nothing was queued — the outbox is untouched.
         assert session.exec(select(EventLog)).all() == []
+
+
+def test_append_only_collections_reject_patch_and_tombstone() -> None:
+    """append_only (comments) is created once, never patched (MOD-26 §B3) — the
+    sink allows only an 'append' op, enforced not assumed."""
+    backend = FakeBackend()
+    alice = memory_replica("alice", backend)
+    with alice.session() as session:
+        sink = EventLogSink(session, alice.actor_id)
+        for op in ("patch", "tombstone"):
+            with pytest.raises(AppendOnlyWriteError):
+                sink.emit(
+                    DomainEvent(
+                        collection="comments", entity_id="cmt_x", op=op, payload={"body": "x"}
+                    )
+                )
+        # An append is allowed (the legitimate create path).
+        sink.emit(
+            DomainEvent(
+                collection="comments", entity_id="cmt_x", op="append", payload={"body": "hi"}
+            )
+        )
+        assert [r.op for r in session.exec(select(EventLog)).all()] == ["append"]
 
 
 def test_unsigned_first_write_carries_a_genesis_base_rev() -> None:
