@@ -184,11 +184,21 @@ preview. A `local`-visibility entry is never returned (NFR-E16-1).
 |---|---|---|---|---|
 | `ticket_comment_create` | `comment` | `proposals.write` | `{ticket_id, body}` | `{comment: {id, ticket_id, author_actor_id, body*, created_at}}` |
 | `agent_action_propose` | `propose` | `proposals.write` | `{ticket_id, changes, note?}` | `{proposal: {…, status:"pending", diff}, applied:false}` |
+| `memory_promote` | `propose` | `memory.write` | `{memory_id}` | `{entry: {…, title*, body*}}` — the proposed/flipped memory row |
 | `agent_action_approve` | `approve` | `tickets.write` | `{proposal_id}` | `{proposal:{id, ticket_id, status:"approved"}, ticket:{…}, applied:true}` |
 
 - **`ticket_comment_create`** is the agent's communication channel: it mutates
   no tracked field (propose-first is unaffected), and is attributed, audited,
   and synced.
+- **`memory_promote`** is the agent's one memory **write**: the PROPOSE step of
+  promotion (MOD-19 / E13). A `local` entry is copied to a NEW `team` `proposed`
+  row and the original stays private and never syncs (NFR-E13-1); a `team`
+  draft/stale row flips to `proposed` in place. The shared copy lands in the
+  Inbox and becomes team-visible only after a human approves it — there is
+  **no** memory-approve tool, so an agent proposes but never approves
+  (propose-first, like `agent_action_propose`). This is the **only** way an
+  agent writes memory: the runtime HTTP `/v1/memory` API is human/web-only and
+  refuses agent tokens.
 - **`agent_action_propose`** stores a pending `agent_proposal` and **never
   touches the ticket**; the row syncs to every member's Inbox, where a human
   decides. Propose-time validation = field allowlist + `status`/`priority` enums

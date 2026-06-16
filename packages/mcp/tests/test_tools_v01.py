@@ -184,6 +184,100 @@ def test_memory_search_agent_returns_only_in_scope(
     assert "codebase" in spaces and "release" not in spaces
 
 
+# ------------------------------------------------ memory_promote (the agent write)
+
+
+def test_memory_promote_proposes_a_local_entry_via_the_gateway(
+    session: Session, seed: dict[str, object], clock: FakeClock
+) -> None:
+    """The agent-facing PROPOSE: a `local` entry is copied to a NEW `team`
+    `proposed` row through the gateway tool, and the `local` source stays private
+    and never reaches the event log (NFR-E13-1 across promote, via the gateway)."""
+    mem = MemoryService(session, actor_id=ACTOR, source="mcp", now=_now(clock))
+    local = mem.create_entry(
+        title="private rationale", body="why B", space="codebase", visibility="local"
+    )
+
+    out = tools.memory_promote(
+        session, actor_id=ACTOR, args={"memory_id": local.id}, now=_now(clock), scope=CODE_SCOPE
+    )
+    entry = out["entry"]
+    assert entry["id"] != local.id
+    assert entry["review_status"] == "proposed"
+    # Output is fenced untrusted like every memory read.
+    assert entry["title"].startswith('<untrusted source="memory.title">')
+
+    # The original local row is untouched and emitted nothing; the new team row did.
+    refreshed = mem.get_entry(local.id)
+    assert refreshed.visibility == "local" and refreshed.review_status == "draft"
+    mem_events = session.exec(
+        select(EventLogRow).where(EventLogRow.collection == "memory_entries")
+    ).all()
+    assert all(event.entity_id != local.id for event in mem_events)
+    assert any(event.entity_id == entry["id"] for event in mem_events)
+
+
+def test_memory_promote_requires_a_memory_id(session: Session) -> None:
+    with pytest.raises(ToolError) as err:
+        tools.memory_promote(session, actor_id=ACTOR, args={}, now=FakeClock().now)
+    assert err.value.code == "validation"
+
+
+def test_memory_promote_rejects_an_already_decided_entry(
+    session: Session, seed: dict[str, object], clock: FakeClock
+) -> None:
+    """A team entry already past draft/stale (here: proposed) cannot be promoted
+    again — the service's 422 surfaces as a ToolError validation."""
+    mem = MemoryService(session, actor_id=ACTOR, source="mcp", now=_now(clock))
+    team = mem.create_entry(title="shared", space="codebase")
+    tools.memory_promote(
+        session, actor_id=ACTOR, args={"memory_id": team.id}, now=_now(clock), scope=CODE_SCOPE
+    )  # → proposed
+    with pytest.raises(ToolError) as err:
+        tools.memory_promote(
+            session, actor_id=ACTOR, args={"memory_id": team.id}, now=_now(clock), scope=CODE_SCOPE
+        )
+    assert err.value.code == "validation"
+
+
+def test_memory_promote_signs_the_emitted_event(
+    session: Session, seed: dict[str, object], clock: FakeClock
+) -> None:
+    """memory_promote is a write: given a signer-carrying scope, the proposed
+    row's event is signed (E04-T4), like any write past the cutover."""
+    keychain = FakeKeychain()
+    member = Member(id=ACTOR, email="owner@local", role="Owner", workspace_id="ws", status="active")
+    session.add(member)
+    session.commit()
+    ensure_device(session, keychain, member_id=ACTOR, now=clock.now().replace(tzinfo=None))
+    session.commit()
+    grant = ensure_member_grant(
+        session, keychain, ACTOR, now=lambda: clock.now().replace(tzinfo=None)
+    )
+    session.commit()
+    seed_hex = device_private_key(keychain)
+    assert seed_hex is not None
+    signer = EventSigner(private_key=seed_hex, policy_ref=grant.id)
+
+    mem = MemoryService(session, actor_id=ACTOR, source="mcp", now=_now(clock))
+    team = mem.create_entry(title="shared", space="codebase")  # team draft → promote in place
+
+    tools.memory_promote(
+        session,
+        actor_id=ACTOR,
+        args={"memory_id": team.id},
+        now=_now(clock),
+        scope=ToolScope(signer=signer),
+    )
+    event = session.exec(
+        select(EventLogRow).where(
+            EventLogRow.collection == "memory_entries", EventLogRow.entity_id == team.id
+        )
+    ).one()
+    assert event.sig is not None  # signed at append
+    assert event.policy_ref == grant.id
+
+
 # ----------------------------------------------------------- role_context
 
 

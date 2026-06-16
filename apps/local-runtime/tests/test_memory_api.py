@@ -130,31 +130,39 @@ def test_viewer_reads_but_cannot_write(
     assert deleted.status_code == 403
 
 
-def test_agent_token_cannot_read_memory_over_http(
+def test_agent_token_is_fully_fenced_off_the_http_memory_api(
     client: TestClient, owner_token: str, agent_token: str
 ) -> None:
-    """E13-T5 hardening: agents read memory only through the policy-enforced MCP
-    gateway (which applies the per-role memory policy and never returns another
-    actor's ``local`` notes). The HTTP read API has no agent context role to
-    filter by, so it fails closed on an Agent token rather than hand it an
-    unfiltered ``local`` row. Writes (promote) stay open — only reads are fenced.
+    """Agents use the policy-enforced MCP gateway for memory, never the HTTP API
+    (docs/mcp.md). The whole HTTP memory surface — reads AND writes — fails closed
+    on an Agent token (403): reads, because the HTTP layer has no agent context
+    role to filter an unfiltered ``local`` note by; writes, because promotion runs
+    through the gateway's ``memory_promote`` tool. Humans are unaffected.
     """
     owner_local = _create_memory(client, owner_token, title="owner secret", visibility="local")
     ticket_id = _create_ticket(client, owner_token)
-    for path in (
-        "/v1/memory",
-        f"/v1/memory/{owner_local['id']}",
-        f"/v1/memory/{owner_local['id']}/links",
-        f"/v1/tickets/{ticket_id}/memory",
-    ):
-        resp = client.get(path, headers=_bearer(agent_token))
-        assert resp.status_code == 403, f"{path}: {resp.status_code} {resp.text}"
+    reads = (
+        ("GET", "/v1/memory"),
+        ("GET", f"/v1/memory/{owner_local['id']}"),
+        ("GET", f"/v1/memory/{owner_local['id']}/links"),
+        ("GET", f"/v1/tickets/{ticket_id}/memory"),
+    )
+    writes = (
+        ("POST", "/v1/memory", {"title": "x"}),
+        ("PATCH", f"/v1/memory/{owner_local['id']}", {"body": "x"}),
+        ("POST", f"/v1/memory/{owner_local['id']}/promote", None),
+        ("POST", f"/v1/memory/{owner_local['id']}/link", {"ticket_id": ticket_id, "reason": "x"}),
+        ("DELETE", f"/v1/memory/{owner_local['id']}", None),
+    )
+    for method, path in reads:
+        resp = client.request(method, path, headers=_bearer(agent_token))
+        assert resp.status_code == 403, f"{method} {path}: {resp.status_code} {resp.text}"
         assert "MCP gateway" in resp.json()["detail"]
-    # The fence is agent-only: a human (owner) still reads over HTTP.
+    for method, path, body in writes:
+        resp = client.request(method, path, json=body, headers=_bearer(agent_token))
+        assert resp.status_code == 403, f"{method} {path}: {resp.status_code} {resp.text}"
+    # The fence is agent-only: a human (owner) still uses the HTTP API.
     assert client.get("/v1/memory", headers=_bearer(owner_token)).status_code == 200
-    # And the agent can still PROPOSE (memory.write is unaffected — only reads fenced).
-    promoted = client.post(f"/v1/memory/{owner_local['id']}/promote", headers=_bearer(agent_token))
-    assert promoted.status_code == 200
 
 
 # -------------------------------------------------------------------- entries
@@ -316,20 +324,18 @@ def test_delete_cascades_links(client: TestClient, owner_token: str, engine: Eng
 # ----------------------------------------------------------------- promotion
 
 
-def test_agent_can_propose_but_cannot_approve(
+def test_agent_is_fenced_off_the_http_promotion_routes(
     client: TestClient, owner_token: str, agent_token: str
 ) -> None:
-    """E13-T4 propose-first: memory.write proposes; memory.approve is human-only."""
+    """Agents promote via the gateway's ``memory_promote`` tool, never HTTP: the
+    HTTP promotion routes are human-only, so an agent token is 403 on all three
+    (promote/approve/reject). The propose-first split (an agent may propose but
+    never approve) lives at the gateway — ``memory_promote`` exists, no approve
+    tool does."""
     team = _create_memory(client, owner_token, title="shared")
-
-    # The agent CAN promote (it holds memory.write).
-    promoted = client.post(f"/v1/memory/{team['id']}/promote", headers=_bearer(agent_token))
-    assert promoted.status_code == 200, promoted.text
-    assert promoted.json()["review_status"] == "proposed"
-
-    # The agent CANNOT approve — its token never carries memory.approve (403).
-    denied = client.post(f"/v1/memory/{team['id']}/approve", headers=_bearer(agent_token))
-    assert denied.status_code == 403
+    for verb in ("promote", "approve", "reject"):
+        resp = client.post(f"/v1/memory/{team['id']}/{verb}", headers=_bearer(agent_token))
+        assert resp.status_code == 403, f"{verb}: {resp.status_code} {resp.text}"
 
 
 def test_viewer_cannot_approve_or_reject(
@@ -358,15 +364,16 @@ def test_promotion_routes_require_a_token(client: TestClient) -> None:
         assert client.post(f"/v1/memory/mem_x/{verb}").status_code == 401
 
 
-def test_local_to_proposed_to_approved_happy_path(
-    client: TestClient, owner_token: str, agent_token: str
-) -> None:
-    """Create local → promote (new team proposed row) → owner approves → shared."""
+def test_local_to_proposed_to_approved_happy_path(client: TestClient, owner_token: str) -> None:
+    """Create local → promote (new team proposed row) → owner approves → shared.
+
+    Over HTTP the promoter is a human (agents promote via the gateway's
+    `memory_promote` tool — the HTTP promotion routes are human-only)."""
     local = _create_memory(client, owner_token, title="rationale", visibility="local")
     assert local["domain_visibility"] == "private_local"
 
-    # The agent proposes; a NEW team row comes back at proposed.
-    promoted = client.post(f"/v1/memory/{local['id']}/promote", headers=_bearer(agent_token))
+    # A human proposes; a NEW team row comes back at proposed.
+    promoted = client.post(f"/v1/memory/{local['id']}/promote", headers=_bearer(owner_token))
     assert promoted.status_code == 200, promoted.text
     proposed = promoted.json()
     assert proposed["id"] != local["id"]
@@ -387,12 +394,12 @@ def test_local_to_proposed_to_approved_happy_path(
 
 
 def test_approved_project_scoped_entry_is_shared_project(
-    client: TestClient, owner_token: str, agent_token: str
+    client: TestClient, owner_token: str
 ) -> None:
     """E13-T5 sixth state: an approved entry whose space is not ``workspace``
     shares at project scope — ``shared_project`` (vs ``shared_workspace`` above)."""
     local = _create_memory(client, owner_token, title="why B", space="project", visibility="local")
-    proposed = client.post(f"/v1/memory/{local['id']}/promote", headers=_bearer(agent_token)).json()
+    proposed = client.post(f"/v1/memory/{local['id']}/promote", headers=_bearer(owner_token)).json()
     assert proposed["space"] == "project"
     approved = client.post(f"/v1/memory/{proposed['id']}/approve", headers=_bearer(owner_token))
     assert approved.status_code == 200, approved.text

@@ -24,7 +24,11 @@ from typing import Any, cast
 from sqlmodel import Session
 
 from kantaq_core import audit, context, memory_policy, proposals
-from kantaq_core.memory.service import MemoryNotFoundError, MemoryService
+from kantaq_core.memory.service import (
+    MemoryNotFoundError,
+    MemoryService,
+    MemoryValidationError,
+)
 from kantaq_core.memory_policy import MemoryPolicy
 from kantaq_core.tracker.events import DomainEvent
 from kantaq_core.tracker.service import (
@@ -535,6 +539,50 @@ def memory_get(
         raise ToolError("not_found", str(exc)) from exc
     _gate_memory_read(entry, scope, now())
     return {"entry": _memory_out(entry)}
+
+
+def memory_promote(
+    session: Session,
+    *,
+    actor_id: str,
+    args: dict[str, Any],
+    now: Callable[[], datetime],
+    scope: ToolScope = UNSCOPED,
+) -> dict[str, Any]:
+    """Propose a memory entry into the shared collection (the PROPOSE step).
+
+    The agent-reachable half of promotion (``memory.write``, ``propose`` verb);
+    approve/reject is human-only and deliberately has **no** MCP surface, so an
+    agent can propose but never approve (the propose-first guard). This is the
+    one memory **write** an agent performs, and it runs **only** through the
+    gateway — the HTTP memory API is human/web-only — so every promotion is
+    audited and passes the 8 checks.
+
+    Promoting a ``local`` entry copies its content into a NEW ``team``
+    ``proposed`` row and leaves the original ``local`` row immutable + unsynced
+    (NFR-E13-1: no byte/id of the local entry leaves the machine); a ``team``
+    ``{draft,stale}`` row transitions in place. The new/flipped row emits a
+    **signed** event past the cutover (``scope.signer``), so it lands in every
+    member's Inbox and is shared only once a human approves it.
+
+    No read-policy gate is applied: promotion is a propose-write the device
+    owner's agent performs on the owner's own notes (the privacy gate would
+    wrongly forbid promoting a ``local`` entry — exactly the headline use case),
+    and the agent must already hold the entry's id (it can never *discover* a
+    ``local`` id, since the read tools filter it out).
+    """
+    memory_id = args.get("memory_id")
+    if not isinstance(memory_id, str) or not memory_id.strip():
+        raise ToolError("validation", "memory_id (string) is required")
+    sink = EventLogSink(session, actor_id, signer=scope.signer)
+    service = MemoryService(session, actor_id=actor_id, source="mcp", sink=sink, now=now)
+    try:
+        promoted = service.promote(memory_id)
+    except MemoryNotFoundError as exc:
+        raise ToolError("not_found", str(exc)) from exc
+    except MemoryValidationError as exc:
+        raise ToolError("validation", str(exc)) from exc
+    return {"entry": _memory_out(promoted)}
 
 
 def role_context_get(
