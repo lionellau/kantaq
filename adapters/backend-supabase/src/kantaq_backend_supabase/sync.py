@@ -52,6 +52,7 @@ from kantaq_sync_engine.events import (
     CommittedEvent,
     Event,
     Op,
+    RebaseRequired,
     SessionInit,
     fold_events,
 )
@@ -243,7 +244,7 @@ class SupabaseSyncBackend:
     # --------------------------------------------------------- v0.2 atomic RPC
 
     def commit_events(
-        self, events: Iterable[Event], *, require_signature: bool = True
+        self, events: Iterable[Event], *, require_signature: bool = True, cas: bool = False
     ) -> list[CommitResult]:
         """Commit events through the v0.2 atomic plpgsql RPC (E24-T6, D-09).
 
@@ -261,13 +262,32 @@ class SupabaseSyncBackend:
         landed first.
 
         Set ``require_signature=False`` to commit pre-cutover unsigned history.
+
+        ``cas`` (MOD-26 §B3/B4) makes the RPC a compare-and-swap: if any write
+        would contend with the moved head it commits nothing and the RPC raises
+        ``rebase_required`` (mapped here to ``RebaseRequired``) — for conflict
+        resolutions and approved agent proposals that must not silently land.
         """
-        rows = [self._event_to_row(event) for event in events]
-        response = self._request(
-            "POST",
-            f"/{EVENTS_RPC}",
-            json={"p_events": rows, "p_require_signature": require_signature},
-        )
+        batch = list(events)
+        rows = [self._event_to_row(event) for event in batch]
+        try:
+            response = self._request(
+                "POST",
+                f"/{EVENTS_RPC}",
+                json={
+                    "p_events": rows,
+                    "p_require_signature": require_signature,
+                    "p_cas": cas,
+                },
+            )
+        except SyncBackendError as exc:
+            if cas and "rebase_required" in str(exc).lower():
+                # The CAS branch raised: nothing committed. Surface the structured
+                # signal the engine bounces a resolution/proposal on. The offending
+                # write is the (first) optimistic_db patch in this dedicated call.
+                offending = next((e for e in batch if e.op == "patch"), batch[0])
+                raise RebaseRequired(offending) from exc
+            raise
         return [self._row_to_commit_result(row) for row in response.json()]
 
     # --------------------------------------------------------------- plumbing

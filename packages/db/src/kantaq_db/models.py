@@ -406,6 +406,14 @@ class EventLog(SQLModel, table=True):
     # rebase-required event flips off 'pending' so it leaves the outbox instead
     # of being re-pushed forever (the zombie-event hole).
     sync_state: str = Field(default="pending", max_length=16)
+    # The agent_proposals row this event was applied for, when it is the ticket
+    # write of an approved proposal (MOD-26 §B3 / E05-T3). Local infrastructure
+    # like sync_state: it lets flush_outbox route a stale-and-contending proposal
+    # write to rebase_required (bounce to the human) instead of minting an
+    # ordinary conflict_record, so an agent never silently lands a write whose
+    # base the team has moved past. NULL for every non-proposal event; never
+    # mirrored to Supabase, never in a privacy envelope.
+    origin_proposal_id: str | None = Field(default=None, max_length=26)
     created_at: datetime = Field(default_factory=_utcnow)
 
 

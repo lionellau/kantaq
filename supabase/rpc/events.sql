@@ -106,6 +106,65 @@ as $$
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Helper: the per-field conflicts a patch contends, over the gapless committed
+-- prefix in its window (p_base_eff, p_head]. The ONE scan, mirroring
+-- detect_merge() (merge.py) — called by pass 2 (to report conflicts[]) AND by
+-- the p_cas branch (to refuse a contending resolution/proposal write). One
+-- function, two callers, so the CAS decision can never drift from the reported
+-- conflicts. Caller gates on op='patch' + lww policy + head > base. sync_events
+-- .payload is `json`; the ? and -> operators are jsonb-only, so cast per row.
+-- ---------------------------------------------------------------------------
+
+create or replace function kantaq.event_conflicts(
+  p_ws varchar, p_collection varchar, p_entity varchar,
+  p_base_eff bigint, p_head bigint, p_payload jsonb
+) returns jsonb
+language plpgsql stable
+set search_path = ''
+as $$
+declare
+  v_conflicts  jsonb := '[]'::jsonb;
+  v_tomb_rev   bigint;
+  v_field      text;
+  v_in_value   jsonb;
+  v_head_value jsonb;
+  v_c_rev      bigint;
+begin
+  -- Edit-vs-delete (MOD-26 §B5) takes precedence: a patch whose base predates a
+  -- committed tombstone it never saw stays deleted — one whole-entity conflict.
+  select max(revision) into v_tomb_rev from public.sync_events
+    where workspace_id = p_ws and collection = p_collection and entity_id = p_entity
+      and op = 'tombstone' and revision > p_base_eff and revision <= p_head;
+  if v_tomb_rev is not null then
+    return jsonb_build_array(jsonb_build_object(
+      'field', '__entity__', 'contending_revision', v_tomb_rev,
+      'head_value', null, 'incoming_value', p_payload));
+  end if;
+  for v_field, v_in_value in select key, value from jsonb_each(p_payload)
+  loop
+    if v_field = '__revive__' then
+      continue;  -- the revive sentinel is never a contended column
+    end if;
+    select se.revision, (se.payload::jsonb) -> v_field
+      into v_c_rev, v_head_value
+      from public.sync_events se
+      where se.workspace_id = p_ws and se.collection = p_collection
+        and se.entity_id = p_entity and se.op <> 'tombstone'
+        and se.revision > p_base_eff and se.revision <= p_head
+        and (se.payload::jsonb) ? v_field
+      order by se.revision desc
+      limit 1;
+    if found and v_head_value is distinct from v_in_value then
+      v_conflicts := v_conflicts || jsonb_build_object(
+        'field', v_field, 'contending_revision', v_c_rev,
+        'head_value', v_head_value, 'incoming_value', v_in_value);
+    end if;
+  end loop;
+  return v_conflicts;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- public.events — the atomic commit RPC, callable via PostgREST as
 -- POST /rest/v1/rpc/events with body {"p_events": [<event>...],
 -- "p_require_signature": <bool>}. SECURITY DEFINER (it writes the append-only
@@ -114,7 +173,17 @@ $$;
 -- schema. Returns a JSONB array, one result object per submitted event.
 -- ---------------------------------------------------------------------------
 
-create or replace function public.events(p_events jsonb, p_require_signature boolean default true)
+-- E05-T3 added the p_cas parameter, changing the arity. A default-arg overload
+-- would leave the old events(jsonb, boolean) alongside the new 3-arg form and
+-- make a 2-arg call ambiguous ("function is not unique"). Drop the prior arity
+-- first so a re-apply on a live backend that already has it stays single-valued.
+drop function if exists public.events(jsonb, boolean);
+
+create or replace function public.events(
+  p_events jsonb,
+  p_require_signature boolean default true,
+  p_cas boolean default false
+)
 returns jsonb
 language plpgsql
 security definer
@@ -140,14 +209,10 @@ declare
   v_status     text;
   v_stale      bigint;
   -- Per-field merge (E05-T2 / MOD-26 §B4): the raw conflict tuples this commit
-  -- contends, mirroring detect_merge() in merge.py. Hashed CLIENT-SIDE only.
+  -- contends, computed by the shared kantaq.event_conflicts() scan. Hashed
+  -- CLIENT-SIDE only (no plpgsql hash → no cross-language id drift).
   v_base_eff   bigint;
   v_conflicts  jsonb;
-  v_field      text;
-  v_in_value   jsonb;
-  v_head_value jsonb;
-  v_c_rev      bigint;
-  v_tomb_rev   bigint;
   results      jsonb := '[]'::jsonb;
 begin
   -- ----------------------------------------------------------------- pass 1
@@ -274,6 +339,36 @@ begin
       v_stale := null;
     end if;
 
+    -- ----------------------------------------------------- per-field merge
+    -- E05-T2 / MOD-26 §B4: the PER-FIELD conflicts this patch contends over its
+    -- window (base, head], computed BEFORE the insert (so the p_cas branch can
+    -- refuse a contending write before it lands) via the one shared scan
+    -- kantaq.event_conflicts() — mirroring detect_merge(), pinned by the golden
+    -- conflict_vectors.json on the EphemeralPostgres cross-check. base =
+    -- coalesce(base_rev, 0): a NULL base is the genesis floor, so a never-based
+    -- write still contends against everything committed since.
+    v_base_eff := coalesce(v_base, 0);
+    if v_op = 'patch' and kantaq.collection_merge_policy(v_collection) = 'lww'
+       and v_head > v_base_eff then
+      v_conflicts := kantaq.event_conflicts(v_ws, v_collection, v_entity, v_base_eff, v_head,
+                                            (e -> 'payload')::jsonb);
+    else
+      v_conflicts := '[]'::jsonb;
+    end if;
+
+    -- p_cas (MOD-26 §B3/B4 / E05-T3): a compare-and-swap commit (a conflict
+    -- resolution or an approved agent proposal). If this write WOULD contend
+    -- with the committed head, refuse the WHOLE call — RAISE rolls the function
+    -- back so NOTHING commits, atomically, under the per-workspace lock already
+    -- held. The committing client maps this to RebaseRequired and re-surfaces
+    -- the conflict_record / flips the proposal to rebase_required, so the stale
+    -- value never lands and the intervening commit is never clobbered. Ordinary
+    -- (non-CAS) writes ride-flagged: they commit LWW and report conflicts[].
+    if p_cas and v_conflicts <> '[]'::jsonb then
+      raise exception 'rebase_required: event % contends with the committed head', v_event_id
+        using errcode = '40001';
+    end if;
+
     insert into public.sync_events
       (event_id, collection, entity_id, actor_id, actor_seq, op,
        base_rev, policy_ref, payload, sig, workspace_id)
@@ -286,76 +381,15 @@ begin
     if v_rev is null then
       -- Dedup floor hit (idempotent re-push): return the already-committed
       -- revision. This event did NOT commit now, so the merge metadata
-      -- (head/base/stale) is not meaningful for it — report it as null.
+      -- (head/base/stale/conflicts) is not meaningful for it — report it null.
       select revision into v_rev from public.sync_events
         where actor_id = v_actor and actor_seq = v_seq;
       v_status := 'duplicate';
       v_stale := null;
       v_head := null;
+      v_conflicts := '[]'::jsonb;
     else
       v_status := 'committed';
-    end if;
-
-    -- ----------------------------------------------------- per-field merge
-    -- E05-T2 / MOD-26 §B4: when a committed patch on an lww collection lands
-    -- with prior commits in its contention window (base, head], report the
-    -- PER-FIELD conflicts so the committing client mints one signed
-    -- conflict_record per entry. This MIRRORS detect_merge() (merge.py) — the
-    -- single source of the rule — and is pinned to it by the golden
-    -- conflict_vectors.json on the EphemeralPostgres cross-check (CI). The RPC
-    -- returns ONLY the raw contender tuple (field, contending_revision, both
-    -- candidate values); the deterministic conflict id is hashed client-side
-    -- (no plpgsql hash → no cross-language id drift, D-09 / design-review e#3).
-    -- base = coalesce(base_rev, 0): a NULL base is the genesis floor (0), so a
-    -- never-based write still contends against everything committed since.
-    v_conflicts := '[]'::jsonb;
-    v_base_eff := coalesce(v_base, 0);
-    if v_status = 'committed' and v_op = 'patch'
-       and kantaq.collection_merge_policy(v_collection) = 'lww'
-       and v_head > v_base_eff then
-      -- Edit-vs-delete (MOD-26 §B5) takes precedence: a patch whose base
-      -- predates a committed tombstone it never saw stays deleted — one whole
-      -- entity conflict (__entity__), the human revives from the record.
-      select max(revision) into v_tomb_rev from public.sync_events
-        where workspace_id = v_ws and collection = v_collection and entity_id = v_entity
-          and op = 'tombstone' and revision > v_base_eff and revision <= v_head;
-      if v_tomb_rev is not null then
-        v_conflicts := jsonb_build_array(jsonb_build_object(
-          'field', '__entity__',
-          'contending_revision', v_tomb_rev,
-          'head_value', null,
-          'incoming_value', e -> 'payload'
-        ));
-      else
-        for v_field, v_in_value in select key, value from jsonb_each(e -> 'payload')
-        loop
-          if v_field = '__revive__' then
-            continue;  -- the revive sentinel is never a contended column
-          end if;
-          -- the field-head in the window: the latest NON-tombstone setter of
-          -- this field with base < revision <= head (multi-writes collapse to
-          -- E-vs-field-head, so the contender is gapless-prefix deterministic).
-          -- sync_events.payload is stored as `json`; the key-existence (?) and
-          -- field (->) operators are jsonb-only, so cast the column per row.
-          select se.revision, (se.payload::jsonb) -> v_field
-            into v_c_rev, v_head_value
-            from public.sync_events se
-            where se.workspace_id = v_ws and se.collection = v_collection
-              and se.entity_id = v_entity and se.op <> 'tombstone'
-              and se.revision > v_base_eff and se.revision <= v_head
-              and (se.payload::jsonb) ? v_field
-            order by se.revision desc
-            limit 1;
-          if found and v_head_value is distinct from v_in_value then
-            v_conflicts := v_conflicts || jsonb_build_object(
-              'field', v_field,
-              'contending_revision', v_c_rev,
-              'head_value', v_head_value,
-              'incoming_value', v_in_value
-            );
-          end if;
-        end loop;
-      end if;
     end if;
 
     results := results || jsonb_build_object(
@@ -380,5 +414,5 @@ $$;
 -- the backend has no need to commit on a member's behalf in v0.2 (a future
 -- service-side ingest would branch the authz explicitly and be documented then).
 -- PUBLIC is stripped so a future role cannot inherit EXECUTE.
-revoke all on function public.events(jsonb, boolean) from public;
-grant execute on function public.events(jsonb, boolean) to authenticated;
+revoke all on function public.events(jsonb, boolean, boolean) from public;
+grant execute on function public.events(jsonb, boolean, boolean) to authenticated;

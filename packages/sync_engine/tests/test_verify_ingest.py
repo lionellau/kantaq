@@ -285,9 +285,9 @@ class _RecordingCommit(FakeBackend):
 
     seen: bool | None = None
 
-    def commit_events(self, events, *, require_signature: bool = True):  # type: ignore[no-untyped-def]
+    def commit_events(self, events, *, require_signature: bool = True, cas: bool = False):  # type: ignore[no-untyped-def]
         self.seen = require_signature
-        return super().commit_events(events, require_signature=require_signature)
+        return super().commit_events(events, require_signature=require_signature, cas=cas)
 
 
 def test_commit_events_sends_the_negotiated_require_signature_not_the_default() -> None:

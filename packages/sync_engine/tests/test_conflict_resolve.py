@@ -81,6 +81,19 @@ def test_resolve_supersedes_the_field_and_marks_the_record_resolved() -> None:
         assert rec.resolved_choice == "keep-A"
         assert rec.resolved_by == alice.actor_id
 
+    # The resolution is audited as a distinct actor (DoD; arch fact).
+    from sqlmodel import select
+
+    from kantaq_db import AuditEvent
+
+    with alice.session() as session:
+        rows = [
+            a for a in session.exec(select(AuditEvent)).all() if a.action == "conflict.resolved"
+        ]
+        assert len(rows) == 1
+        assert rows[0].actor_id == alice.actor_id
+        assert rows[0].object_ref == f"conflict_records/{cr_id}"
+
     # Idempotent + sticky: resolving again is a no-op (never reopens).
     again = alice.sync.resolve_conflict(cr_id, "keep-B")
     assert again.resolved

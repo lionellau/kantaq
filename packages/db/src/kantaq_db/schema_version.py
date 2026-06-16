@@ -19,12 +19,14 @@ from typing import Literal
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
-# Bump this whenever a migration changes the version row. Version 12 adds the
-# conflict_records collection (E05-T2 / MOD-26 §B4).
-EXPECTED_SCHEMA_VERSION = 12
+# Bump this whenever a migration changes the version row. Version 13 adds the
+# local-only event_log.origin_proposal_id column (E05-T3 / MOD-26 §B3) — the
+# proposal-rebase marker; not a collection, so the 16-collection / 12-allowlist
+# gates are unchanged.
+EXPECTED_SCHEMA_VERSION = 13
 # The Alembic head revision that defines the expected schema. Kept in sync with
 # the migration filename in ``migrations/versions``.
-HEAD_REVISION = "0012"
+HEAD_REVISION = "0013"
 
 Status = Literal["ok", "uninitialized", "mismatch"]
 

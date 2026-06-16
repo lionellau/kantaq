@@ -592,13 +592,18 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
     # commit_events), never the raw push path. flush_outbox first reconciles any
     # dropped ack, then drains the durable outbox with offline-aware backoff;
     # apply_inbox is the crash-safe inbox (trust roots route to identity ingest).
-    flushed = engine.flush_outbox()
+    # The workspace's agent-proposal staleness policy (MOD-26 §B3) decides how a
+    # stale approved proposal is bounced to rebase_required.
+    flushed = engine.flush_outbox(
+        proposal_stale_policy=get_settings().agent_proposal_stale_policy.value
+    )
     pulled = engine.apply_inbox()
     stale = f", {flushed.stale} stale" if flushed.stale else ""
     rejected = f", {flushed.rejected} rejected" if flushed.rejected else ""
+    rebased = f", {flushed.rebased} rebased" if flushed.rebased else ""
     print(
         f"flush: {flushed.committed} committed, {flushed.reconciled} reconciled"
-        f"{rejected}{stale} (of {flushed.submitted} pending) · "
+        f"{rejected}{stale}{rebased} (of {flushed.submitted} pending) · "
         f"pull: {pulled.applied} applied, {pulled.own_reconciled} own reconciled · "
         f"cursor {pulled.cursor}"
     )

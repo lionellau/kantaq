@@ -29,7 +29,7 @@ from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
 from kantaq_core import audit
-from kantaq_db import ConflictRecord, SyncCursor, new_ulid
+from kantaq_db import AgentProposal, ConflictRecord, EventLog, SyncCursor, new_ulid
 from kantaq_db.schema_version import EXPECTED_SCHEMA_VERSION
 from kantaq_protocol import sign
 from kantaq_sync_engine import log as event_log
@@ -40,6 +40,7 @@ from kantaq_sync_engine.events import (
     BackendUnavailable,
     CommitResult,
     Event,
+    RebaseRequired,
     SessionInit,
     SyncVersionUnsupported,
 )
@@ -48,6 +49,22 @@ from kantaq_sync_engine.merge import conflict_record_id
 from kantaq_sync_engine.verify import EventRejected
 
 ALL_COLLECTIONS = "*"
+
+# Agent-proposal staleness policy (MOD-26 §B3 / E05-T3). When a human approves an
+# agent proposal whose ticket write turns out to be based on a revision the team
+# moved past, this decides whether to bounce the proposal back for re-decision:
+# - 'auto_rebase' (default, smooth UX): bounce only when the proposal's OWN fields
+#   genuinely contend (the agent's value would clobber a committed change). A
+#   stale-but-non-conflicting proposal (it touched a different field) just
+#   auto-merges, so the human is never nagged for a needless re-approval.
+# - 'strict_rebase' (conservative): bounce on ANY stale base — re-confirm every
+#   proposal that raced any change since it was made.
+# Either way a contended field is restored to the team's committed head and the
+# agent's stale value never silently wins; the proposal's diff is preserved for
+# the human to re-apply.
+PROPOSAL_POLICY_AUTO_REBASE = "auto_rebase"
+PROPOSAL_POLICY_STRICT_REBASE = "strict_rebase"
+PROPOSAL_STALE_POLICIES = (PROPOSAL_POLICY_AUTO_REBASE, PROPOSAL_POLICY_STRICT_REBASE)
 
 
 @dataclass(frozen=True)
@@ -92,6 +109,7 @@ class FlushResult:
     rejected: int  # events moved to a terminal state (verify-failed / never-acceptable)
     stale: int  # committed but base_rev was stale (a concurrent write landed first)
     minted: int  # conflict_records minted from per-field conflicts (E05-T2)
+    rebased: int  # stale agent proposals bounced to rebase_required (E05-T3)
     attempts: int  # connectivity attempts made
     drained: bool  # the outbox is empty afterwards (no pending rows remain)
 
@@ -264,6 +282,7 @@ class SyncEngine:
         *,
         backoff: Backoff | None = None,
         sleeper: Callable[[float], None] | None = None,
+        proposal_stale_policy: str = PROPOSAL_POLICY_AUTO_REBASE,
     ) -> FlushResult:
         """Drain the durable outbox with offline-aware bounded backoff (B1).
 
@@ -280,7 +299,14 @@ class SyncEngine:
         or otherwise never-acceptable event) is moved to a terminal ``sync_state``
         and its optimistic effect reverted, so it leaves the outbox instead of
         being re-pushed forever (no zombie retry, no stuck ``pending_count``).
+
+        ``proposal_stale_policy`` (MOD-26 §B3 / E05-T3) decides whether a stale
+        agent-proposal ticket write is bounced to ``rebase_required`` — the
+        runtime passes the workspace setting; ``auto_rebase`` (default) bounces
+        only on a genuine field clash.
         """
+        if proposal_stale_policy not in PROPOSAL_STALE_POLICIES:
+            raise ValueError(f"unknown proposal_stale_policy {proposal_stale_policy!r}")
         backoff = backoff or Backoff()
         sleep = sleeper if sleeper is not None else time.sleep
         self.negotiate_session()  # §B7: refuse an out-of-range peer before draining
@@ -290,17 +316,27 @@ class SyncEngine:
             try:
                 with Session(self._db) as session:
                     reconciled = self._reconcile_dropped_acks(session)
-                    submitted, committed, rejected, stale, minted = self._drain(session)
+                    submitted, committed, rejected, stale, minted, rebased = self._drain(
+                        session, proposal_stale_policy
+                    )
                     drained = not event_log.pending_rows(session)
                     session.commit()
                 return FlushResult(
-                    submitted, committed, reconciled, rejected, stale, minted, attempts, drained
+                    submitted,
+                    committed,
+                    reconciled,
+                    rejected,
+                    stale,
+                    minted,
+                    rebased,
+                    attempts,
+                    drained,
                 )
             except BackendUnavailable:
                 if attempts >= backoff.max_attempts:
                     with Session(self._db) as session:
                         drained = not event_log.pending_rows(session)
-                    return FlushResult(0, 0, 0, 0, 0, 0, attempts, drained)
+                    return FlushResult(0, 0, 0, 0, 0, 0, 0, attempts, drained)
                 sleep(backoff.delay(attempts))
 
     def _reconcile_dropped_acks(self, session: Session) -> int:
@@ -327,7 +363,9 @@ class SyncEngine:
             refold_entity(session, collection, entity_id)
         return backfilled
 
-    def _drain(self, session: Session) -> tuple[int, int, int, int, int]:
+    def _drain(
+        self, session: Session, proposal_stale_policy: str = PROPOSAL_POLICY_AUTO_REBASE
+    ) -> tuple[int, int, int, int, int, int]:
         """Commit pending events through the atomic RPC (the DEBT-25 cutover) and
         map each ``CommitResult`` to its local row.
 
@@ -338,32 +376,132 @@ class SyncEngine:
         backoff loop, rolling the whole attempt back (the dropped-ack reconcile
         then re-derives any commit the server did record). A ``stale_base_rev``
         result means the event committed LWW-by-order but a concurrent write
-        landed first — E05-T2 mints a ``conflict_record`` at this seam; E05-T1
-        only counts it.
+        landed first.
+
+        Writes split by origin (MOD-26 §B3/B4):
+        - **ordinary** writes commit together (commit-and-flag, ride-flagged);
+          one that contends mints a ``conflict_record`` (the field rides its LWW
+          value, the record is the human's audit-and-correct surface);
+        - an **agent-proposal** ticket write (``origin_proposal_id`` set) commits
+          as a per-proposal **CAS** (``cas=True``): if it would contend the RPC
+          commits nothing and raises ``RebaseRequired`` — the agent's stale value
+          never lands, the proposal flips to ``rebase_required`` and the write
+          leaves the outbox (the §8.5 propose-first rule). No committed write to
+          undo means no partition window: an interrupted bounce just re-submits
+          and re-rejects until the base is fresh.
         """
-        submitted = committed = rejected = stale = minted = 0
+        submitted = committed = rejected = stale = minted = rebased = 0
         while True:
             pending = event_log.pending_rows(session)
             if not pending:
                 break
-            events = [event_log.row_to_event(row) for row in pending]
-            try:
-                results = self._backend.commit_events(events)
-            except EventRejected as exc:
-                self._reject(session, exc.event, exc.code, exc.reason)
-                rejected += 1
-                continue  # poison event removed from the outbox; re-drain the rest
-            submitted = len(events)
-            for result in results:
-                self._mark_committed_by_id(session, result.event_id, result.revision)
-                if result.status == "committed":
-                    committed += 1
-                if result.stale_base_rev is not None:
-                    stale += 1
-                if result.conflicts:
-                    minted += self._mint_conflict_records(session, result)
+            ordinary = [r for r in pending if r.origin_proposal_id is None]
+            proposal_rows = [r for r in pending if r.origin_proposal_id is not None]
+            # Commit the ordinary batch FIRST — it carries the proposal's own
+            # status=approved flip. A bounce (below) then emits status=rebase_required
+            # AFTER it, so the flip supersedes 'approved' in commit order (else the
+            # later-committed 'approved' would LWW-overwrite the bounce).
+            if ordinary:
+                events = [event_log.row_to_event(row) for row in ordinary]
+                try:
+                    results = self._backend.commit_events(events)
+                except EventRejected as exc:
+                    self._reject(session, exc.event, exc.code, exc.reason)
+                    rejected += 1
+                    continue  # poison event removed from the outbox; re-drain the rest
+                submitted += len(events)
+                for result in results:
+                    self._mark_committed_by_id(session, result.event_id, result.revision)
+                    if result.status == "committed":
+                        committed += 1
+                    if result.stale_base_rev is not None:
+                        stale += 1
+                    if result.conflicts:
+                        minted += self._mint_conflict_records(session, result)
+            # Then each proposal's ticket write as its own CAS, so a rebase-reject
+            # aborts only that write (not the whole flush) and the rebase flip
+            # lands after the approved flip.
+            for row in proposal_rows:
+                submitted += 1
+                rebased += self._commit_proposal_write(session, row, proposal_stale_policy)
             break
-        return submitted, committed, rejected, stale, minted
+        return submitted, committed, rejected, stale, minted, rebased
+
+    def _commit_proposal_write(self, session: Session, row: EventLog, policy: str) -> int:
+        """Commit one approved-proposal ticket write as a CAS (MOD-26 §B3).
+
+        ``auto_rebase`` (default): the write is a compare-and-swap — a genuine
+        field clash raises ``RebaseRequired`` (nothing committed) and the proposal
+        is bounced; a stale-but-non-conflicting write (different field) auto-merges
+        and commits. ``strict_rebase``: additionally re-confirm a non-conflicting
+        but stale write (it commits, then the proposal is flagged for re-decision).
+
+        Returns 1 if the proposal was bounced to ``rebase_required``, else 0."""
+        event = event_log.row_to_event(row)
+        proposal_id = row.origin_proposal_id
+        assert proposal_id is not None
+        try:
+            results = self._backend.commit_events([event], cas=True)
+        except RebaseRequired:
+            # The agent's value would clobber a committed change → it commits
+            # NOTHING. Bounce the proposal and take the write out of the outbox;
+            # the re-fold drops its optimistic effect (the intervening commit
+            # stands), and the local row reverts to the pre-proposal state until
+            # the next pull brings the team's value in.
+            self._bounce_proposal(session, event, proposal_id)
+            return 1
+        for result in results:
+            self._mark_committed_by_id(session, result.event_id, result.revision)
+            if policy == PROPOSAL_POLICY_STRICT_REBASE and result.is_stale:
+                # strict: the write auto-merged (different field) but raced a
+                # change — flag the proposal for re-confirmation. The value stays
+                # applied; it never conflicted.
+                self._bounce_proposal(session, event, proposal_id, reverted=False)
+                return 1
+        return 0
+
+    def _bounce_proposal(
+        self, session: Session, event: Event, proposal_id: str, *, reverted: bool = True
+    ) -> None:
+        """Flip a proposal to ``rebase_required`` and (when ``reverted``) take its
+        rejected ticket write out of the outbox + fold (MOD-26 §B3).
+
+        The flip is a new synced ``agent_proposals`` event superseding the
+        approved flip; the proposal's ``diff`` is preserved so the human re-applies
+        it against current reality. Audited as a distinct decision."""
+        if reverted:
+            local = event_log.event_row(session, event.actor_id, event.actor_seq)
+            if local is not None:
+                local.sync_state = event_log.SYNC_STATE_REBASE_REQUIRED
+                session.add(local)
+                session.flush()
+                refold_entity(session, event.collection, event.entity_id)
+        flip = self._signed_event(
+            "agent_proposals",
+            proposal_id,
+            {"status": "rebase_required"},
+            event_log.entity_base_rev(session, "agent_proposals", proposal_id),
+            event_log.next_actor_seq(session, self._actor_id),
+        )
+        for committed_flip in self._backend.commit_events([flip]):
+            if event_log.event_by_id(session, flip.event_id) is None:
+                event_log.insert_event(session, flip, committed_rev=committed_flip.revision)
+        refold_entity(session, "agent_proposals", proposal_id)
+        proposal = session.get(AgentProposal, proposal_id)
+        audit.write(
+            session,
+            actor_id=self._actor_id,
+            action="proposal.rebase_required",
+            source="sync",
+            object_ref=f"agent_proposals/{proposal_id}",
+            after={
+                "ticket_id": proposal.ticket_id if proposal is not None else None,
+                "collection": event.collection,
+                "entity_id": event.entity_id,
+                "fields": sorted(event.payload),
+                "applied": not reverted,
+            },
+        )
 
     def _mint_conflict_records(self, session: Session, result: CommitResult) -> int:
         """Mint a signed ``conflict_record`` per field-conflict the RPC reported
@@ -430,13 +568,14 @@ class SyncEngine:
         """Resolve a ``conflict_record`` (MOD-26 §B4).
 
         Emits a superseding field write (``base_rev = the record's head_rev``)
-        AND flips the record to ``resolved``, committed **together** through the
-        atomic RPC. CAS-validated: if the field head moved past ``head_rev`` the
-        RPC rejects the resolution (``rebase_required``) and the record stays open
-        and re-surfaces — never resolved against a live newer contender (the
-        resolver-vs-writer hole). ``status`` is sticky-resolved in the fold.
-        ``choice ∈ {keep-A, keep-B, new-value}``. Resolution is a ``tickets.write``;
-        for agents it is propose-first, enforced at the API edge.
+        AND flips the record to ``resolved``, committed **together** as a single
+        compare-and-swap (``cas=True``) call to the atomic RPC. If the field head
+        moved past ``head_rev`` the RPC commits **nothing** and raises
+        ``RebaseRequired`` — so the resolution value never lands against a live
+        newer contender (the resolver-vs-writer hole) and the record stays open
+        and re-surfaces for the human to re-decide. ``status`` is sticky-resolved
+        in the fold. ``choice ∈ {keep-A, keep-B, new-value}``. Resolution is a
+        ``tickets.write``; for agents it is propose-first, enforced at the API edge.
         """
         if choice not in ("keep-A", "keep-B", "new-value"):
             raise ValueError(f"unknown resolve choice {choice!r}")
@@ -469,13 +608,15 @@ class SyncEngine:
                 None,
                 seq + 1,
             )
-            by_id = {r.event_id: r for r in self._backend.commit_events([field_event, flip_event])}
-            field_result = by_id.get(field_event.event_id)
-            if field_result is not None and field_result.is_stale:
-                # The field head moved past head_rev — the resolution raced a newer
-                # write. The atomic RPC rejects it (T2.6); the record stays open and
-                # re-surfaces. (Here we simply do not record it as resolved.)
+            try:
+                committed = self._backend.commit_events([field_event, flip_event], cas=True)
+            except RebaseRequired:
+                # The contended field moved since the record was minted — the CAS
+                # committed nothing. The record stays open and re-surfaces; the
+                # human re-decides against the live contender. No value landed, so
+                # there is no half-applied state and no partition window.
                 return ResolveResult(conflict_id, resolved=False, rebase_required=True)
+            by_id = {r.event_id: r for r in committed}
             for event in (field_event, flip_event):
                 result = by_id.get(event.event_id)
                 if result is None:
@@ -483,6 +624,25 @@ class SyncEngine:
                 if event_log.event_by_id(session, event.event_id) is None:
                     event_log.insert_event(session, event, committed_rev=result.revision)
                 refold_entity(session, event.collection, event.entity_id)
+            # A conflict resolution is one of the §11 audited surfaces (DoD;
+            # architecture fact: "resolved by a human, audited as a distinct
+            # actor"). The superseding write is itself a new event, but this row
+            # names the resolution decision explicitly, attributed to the
+            # resolver, so the trail shows who chose and what.
+            audit.write(
+                session,
+                actor_id=resolved_by,
+                action="conflict.resolved",
+                source="app",
+                object_ref=f"conflict_records/{conflict_id}",
+                after={
+                    "collection": record.collection,
+                    "entity_id": record.entity_id,
+                    "field": record.field,
+                    "choice": choice,
+                    "resolved_value": value,
+                },
+            )
             session.commit()
         return ResolveResult(conflict_id, resolved=True, rebase_required=False)
 

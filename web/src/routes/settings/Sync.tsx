@@ -22,6 +22,12 @@ const MODE_LABEL: Record<string, string> = {
   postgres: "Self-hosted Postgres",
 };
 
+// MOD-26 §B3 / E05-T3 — how a stale agent proposal is handled on sync.
+const PROPOSAL_POLICY_LABEL: Record<string, string> = {
+  auto_rebase: "Auto-rebase — only re-decide a proposal that genuinely conflicts",
+  strict_rebase: "Strict — re-confirm any proposal that raced a change",
+};
+
 export default function Sync() {
   const { connected } = useSession();
   const [status, setStatus] = useState<SyncStatus | null>(null);
@@ -109,6 +115,22 @@ export default function Sync() {
               </tr>
             </tbody>
           </table>
+
+          <h2 style={ui.sectionHeading}>Conflict handling</h2>
+          <div style={ui.card}>
+            <p style={{ margin: 0 }}>
+              <strong>Stale agent proposals:</strong>{" "}
+              <span data-testid="proposal-stale-policy">
+                {PROPOSAL_POLICY_LABEL[status.agent_proposal_stale_policy] ??
+                  status.agent_proposal_stale_policy}
+              </span>
+            </p>
+            <p style={{ ...ui.muted, marginBottom: 0 }}>
+              When you approve an agent's proposal but the ticket moved on since it was made, the
+              agent's stale value never silently wins — the proposal comes back for a quick
+              re-decision. Set with <code>AGENT_PROPOSAL_STALE_POLICY</code> in your runtime config.
+            </p>
+          </div>
         </>
       )}
     </section>

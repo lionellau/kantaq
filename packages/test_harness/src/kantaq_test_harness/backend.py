@@ -23,6 +23,7 @@ from kantaq_sync_engine.events import (
     CommitResult,
     CommittedEvent,
     FieldConflict,
+    RebaseRequired,
     SessionInit,
     fold_events,
 )
@@ -75,7 +76,7 @@ class FakeBackend:
         return committed
 
     def commit_events(
-        self, events: Iterable[Event], *, require_signature: bool = True
+        self, events: Iterable[Event], *, require_signature: bool = True, cas: bool = False
     ) -> list[CommitResult]:
         """The v0.2 atomic-RPC commit path (E24-T6): mirrors the real RPC's
         contract — dedup by (actor_id, actor_seq), LWW by commit order, and a
@@ -83,11 +84,27 @@ class FakeBackend:
         committed head for the entity. Shares the log with ``push`` so
         pull/snapshot/len see both paths. The fake does not enforce
         ``require_signature`` (byte-verification is the VerifyingBackend's job,
-        mirroring D-09)."""
+        mirroring D-09).
+
+        ``cas`` (MOD-26 §B3/B4): a compare-and-swap commit — if any write in the
+        call WOULD contend with the entity's committed field head, NOTHING is
+        committed and ``RebaseRequired`` is raised (atomic), mirroring the
+        ``p_cas`` branch of ``events.sql``. Used for resolutions + approved agent
+        proposals (a stale write that must not silently land)."""
         if self.offline:
             raise BackendUnavailable("fake backend is partitioned (offline)")
+        batch = list(events)
+        if cas:
+            # Pass 1: refuse the whole call if any committed write would contend,
+            # against the head BEFORE this call (no event in the batch committed
+            # yet) — the atomic CAS the RPC's p_cas branch enforces.
+            for event in batch:
+                next_rev = self._revision + 1
+                conflicts = self._detect_conflicts(event, next_rev)
+                if conflicts:
+                    raise RebaseRequired(event, conflicts)
         results: list[CommitResult] = []
-        for event in events:
+        for event in batch:
             head = max(
                 (
                     entry.revision
@@ -207,10 +224,10 @@ class PartitionLink:
         return self._backend.push(events)
 
     def commit_events(
-        self, events: Iterable[Event], *, require_signature: bool = True
+        self, events: Iterable[Event], *, require_signature: bool = True, cas: bool = False
     ) -> list[CommitResult]:
         self._require_link()
-        return self._backend.commit_events(events, require_signature=require_signature)
+        return self._backend.commit_events(events, require_signature=require_signature, cas=cas)
 
     def pull(self, collection: str | None = None, since: int = 0) -> list[CommittedEvent]:
         self._require_link()

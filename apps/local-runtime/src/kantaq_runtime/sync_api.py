@@ -40,6 +40,9 @@ class SyncStatusOut(BaseModel):
     committed_events: int
     total_events: int
     last_committed_at: datetime | None
+    # The active agent-proposal staleness policy (MOD-26 §B3 / E05-T3), surfaced
+    # read-only so the team sees how a stale approved proposal is handled.
+    agent_proposal_stale_policy: str
 
 
 def _backend_configured(settings: Settings) -> bool:
@@ -79,4 +82,5 @@ def sync_status(actor: AnyActor, engine: EngineDep, request: Request) -> SyncSta
         committed_events=total - pending,
         total_events=total,
         last_committed_at=last_committed,
+        agent_proposal_stale_policy=settings.agent_proposal_stale_policy.value,
     )

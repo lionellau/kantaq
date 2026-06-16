@@ -41,9 +41,19 @@ from kantaq_core.tracker.service import (
     TrackerValidationError,
 )
 from kantaq_db.models import AgentProposal, Ticket
-from kantaq_sync_engine.log import EventLogSink, EventSigner
+from kantaq_sync_engine.log import (
+    EventLogSink,
+    EventSigner,
+    mark_proposal_origin,
+    next_actor_seq,
+)
 
-PROPOSAL_STATUSES = ("pending", "approved", "rejected")
+# ``rebase_required`` (MOD-26 §B3 / E05-T3): an approved proposal whose ticket
+# write was found stale-and-contending at the sync commit point — the team moved
+# the field past the base the agent proposed against. The proposal is bounced
+# back to the human to re-decide against current reality; it is NOT applied and
+# the intervening commit is never clobbered (the §8.5 propose-first rule).
+PROPOSAL_STATUSES = ("pending", "approved", "rejected", "rebase_required")
 
 # Diff fields whose JSON value is an ISO string the tracker expects as a
 # datetime; the rest of the patchable fields are already JSON-native and the
@@ -197,6 +207,10 @@ def approve_proposal(
     )
     sink = EventLogSink(session, actor_id, signer=signer)
     service = TrackerService(session, actor_id=actor_id, source=source, sink=sink, now=lambda: ts)
+    # The actor_seq the ticket patch will take — captured before the emit so we
+    # can tag exactly that event as proposal-originated (MOD-26 §B3 / E05-T3),
+    # without threading a proposal id through the tracker domain.
+    patch_seq = next_actor_seq(session, actor_id)
     try:
         ticket = service.update_ticket(proposal.ticket_id, changes)
     except TrackerNotFoundError as exc:
@@ -205,6 +219,9 @@ def approve_proposal(
     except TrackerValidationError as exc:
         session.rollback()
         raise ProposalChangesError(str(exc)) from exc
+    # Tag the just-emitted ticket write so a stale-and-contending sync commit can
+    # bounce this proposal to rebase_required instead of minting a conflict_record.
+    mark_proposal_origin(session, actor_id, patch_seq, proposal.id)
     session.refresh(proposal)
     return proposal, ticket
 
