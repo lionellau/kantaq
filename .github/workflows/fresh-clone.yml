@@ -3,11 +3,17 @@ name: fresh-clone
 # Times a cold clone-to-green (setup -> migrate -> test) and fails if it exceeds
 # 10 minutes (NFR-E01-1). Caches are intentionally disabled here so the measure
 # reflects a genuinely fresh machine. The fast gating lives in py.yml / web.yml.
+#
+# Cadence (E27-T6 / DEBT-31): this is a *budget* check, not a per-PR correctness
+# gate — py.yml + web.yml already run the full suites on every push/PR (with
+# caches, so fast). Running this cold suite on every push too was a 2x fan-out of
+# the same work. It now runs nightly + on demand, which preserves the NFR-E01-1
+# cold-start signal without doubling every PR's CI.
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  schedule:
+    - cron: "0 8 * * *"   # 08:00 UTC nightly — the cold clone-to-green budget check
+  workflow_dispatch: {}   # and on demand (e.g. before a release, or after touching setup/migrate)
 
 permissions:
   contents: read

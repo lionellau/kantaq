@@ -18,3 +18,42 @@ production cost instead.
 import os
 
 os.environ.setdefault("KANTAQ_ARGON2_TEST_FAST", "1")
+
+# E27-T6 (DEBT-31): an OPT-IN fast Hypothesis profile for a focused local
+# property-test loop. Default (env unset) changes nothing — CI and the normal
+# loop keep Hypothesis's full example count, so protocol/sync fuzzing rigor is
+# untouched where it gates merges. `KANTAQ_HYPOTHESIS_PROFILE=dev` trims the
+# default-count property tests (merkle, canonical) for quick iteration; the
+# explicit-count sync/domain tests (convergence=25, tracker_fold=40) keep their
+# breadth on purpose — we do not tier down sync correctness, even locally.
+_hp = os.environ.get("KANTAQ_HYPOTHESIS_PROFILE")
+if _hp:
+    from hypothesis import HealthCheck, settings
+
+    settings.register_profile(
+        "dev",
+        max_examples=12,
+        deadline=None,
+        suppress_health_check=[HealthCheck.too_slow],
+    )
+    settings.register_profile("ci", deadline=None)  # full breadth; no deadline flake under load
+    settings.load_profile(_hp)
+
+
+def pytest_sessionstart(session: object) -> None:
+    """Echo the pytest-randomly seed so an order-dependent failure is always
+    reproducible — even under `-q` (which skips the normal header) and in CI
+    logs. Reproduce a flake with `uv run pytest --randomly-seed=<n>`.
+
+    sessionstart runs regardless of verbosity, after pytest-randomly has resolved
+    the seed. Gate to the xdist controller (workers carry `workerinput` and share
+    the same seed) so it prints once, not once per worker.
+    """
+    config = getattr(session, "config", None)
+    if config is None or hasattr(config, "workerinput"):
+        return
+    seed = getattr(getattr(config, "option", None), "randomly_seed", None)
+    if seed is not None:
+        import sys
+
+        print(f"[kantaq] pytest-randomly seed={seed}", file=sys.stderr)
