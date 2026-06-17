@@ -13,6 +13,13 @@ const PORT = Number(process.env.KANTAQ_E2E_PORT ?? "39391");
 
 export default defineConfig({
   testDir: "e2e",
+  // The UAT specs (uat-walkthrough, uat-roles) each mutate the seeded state and
+  // are designed to run in ISOLATION (their own fresh server boot), so the
+  // default shared-server `make e2e` run excludes them. Run them explicitly with
+  // KANTAQ_UAT=1 + the file path, e.g.
+  //   KANTAQ_UAT=1 pnpm -C web exec playwright test e2e/uat-roles.spec.ts
+  // (see docs/test/sprint-1-7-uat-plan.md).
+  testIgnore: process.env.KANTAQ_UAT === "1" ? [] : /uat-.*\.spec\.ts/,
   timeout: 30_000,
   // One worker: both specs share the seeded runtime state.
   workers: 1,
