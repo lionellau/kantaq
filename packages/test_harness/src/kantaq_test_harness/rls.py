@@ -38,14 +38,20 @@ SUPABASE_ROLES = ("anon", "authenticated", "service_role")
 # Mirrors Supabase's environment: roles (service_role carries BYPASSRLS, as in
 # Supabase) and the auth.* claim helpers, defined the way Supabase defines them
 # (https://supabase.com/docs/guides/database/postgres/row-level-security).
-# Roles are cluster-global, so creation tolerates an existing role; the grant
+# Roles are cluster-global, so creation tolerates an existing role. We catch BOTH
+# duplicate_object (the role already existed at check time) AND unique_violation
+# (two transactions race the CREATE on the shared pg_authid catalog and both pass
+# the existence check before either inserts) — the latter is what surfaces under
+# pytest-xdist when many backend tests build the stub at once (E27-T6). The grant
 # to session_user lets a non-superuser test connection SET ROLE into them.
 _AUTH_STUB = """
-do $$ begin create role anon nologin; exception when duplicate_object then null; end $$;
-do $$ begin create role authenticated nologin; exception when duplicate_object then null; end $$;
+do $$ begin create role anon nologin;
+exception when duplicate_object or unique_violation then null; end $$;
+do $$ begin create role authenticated nologin;
+exception when duplicate_object or unique_violation then null; end $$;
 do $$ begin
   create role service_role nologin bypassrls;
-exception when duplicate_object then null; end $$;
+exception when duplicate_object or unique_violation then null; end $$;
 
 do $$ begin
   execute format('grant anon, authenticated, service_role to %I', session_user);
