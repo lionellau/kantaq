@@ -13,6 +13,7 @@ The file lives under e2e/.runtime (gitignored) and dies with the run.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -157,6 +158,36 @@ def main() -> int:
             now=lambda: datetime.now(UTC).replace(tzinfo=None),
         )
 
+    # Seed one *denied* agent call so the Inbox "Denied calls" tab shows the
+    # 試錯 → human-visibility loop end to end: a propose-only agent that reaches
+    # for the approve tool is denied at the gateway (tool_allowlist) and the
+    # denial is an audited tool.deny row a human can see (UAT-A6.1 / FR-E07-2).
+    from kantaq_mcp.gateway import Gateway, GatewayDenied
+
+    deny_gateway = Gateway(engine)
+    agent_actor = deny_gateway.authenticate(agent.plaintext)
+    if agent_actor is not None:
+        agent_session = deny_gateway.session_for(agent_actor, session_id="uat-denied-seed")
+        # The denial is the point: handle_call raises GatewayDenied and writes an
+        # audited tool.deny row the Inbox "Denied calls" tab then surfaces.
+        with contextlib.suppress(GatewayDenied):
+            deny_gateway.handle_call(
+                actor=agent_actor,
+                session=agent_session,
+                tool_name="agent_action_approve",
+                args={"proposal_id": "01JZZZZZZZZZZZZZZZZZZZZZZZ"},
+            )
+
+    # Mint one token per base role so the role-UAT spec can connect to the SAME
+    # web UI as each user type (Owner already has `token`; Agent above). These
+    # are throwaway sandbox credentials — never real members (UAT plan Track B).
+    role_tokens = {"Owner": token, "Agent": agent.plaintext}
+    with Session(engine) as session:
+        identity = IdentityService(session)
+        for role in (Role.maintainer, Role.member, Role.viewer):
+            minted = identity.invite(email=f"{role.value.lower()}@e2e.local", role=role, scopes=[])
+            role_tokens[role.value] = minted.plaintext
+
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     (STATE_DIR / "state.json").write_text(
         json.dumps(
@@ -167,6 +198,7 @@ def main() -> int:
                 "project_id": project_id,
                 "conflict_id": conflict_id,
                 "conflict_ticket_id": conflict_ticket_id,
+                "role_tokens": role_tokens,
             },
             indent=2,
         ),

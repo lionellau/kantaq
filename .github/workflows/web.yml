@@ -102,3 +102,11 @@ jobs:
 
       - name: Hero-flow end-to-end (Playwright)
         run: pnpm test:e2e
+
+      - name: UAT browser specs (walkthrough, roles, two-user collab)
+        env:
+          KANTAQ_UAT: "1"
+        run: |
+          pnpm exec playwright test e2e/uat-walkthrough.spec.ts
+          pnpm exec playwright test e2e/uat-roles.spec.ts
+          pnpm exec playwright test e2e/uat-collab.spec.ts

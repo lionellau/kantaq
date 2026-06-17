@@ -1,4 +1,4 @@
-.PHONY: help setup dev migrate test test-pg coverage lint typecheck eval mcp-dev e2e compat verify-agent linkcheck clean
+.PHONY: help setup dev migrate test test-pg coverage lint typecheck eval mcp-dev e2e e2e-uat compat verify-agent linkcheck clean
 
 help: ## show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -45,6 +45,13 @@ e2e: ## run the Playwright hero-flow end-to-end (builds the UI first)
 	pnpm -C web build
 	pnpm -C web exec playwright install chromium
 	pnpm -C web test:e2e
+
+e2e-uat: ## run the sprint 1-7 UAT browser specs (walkthrough, roles, two-user collab) — each isolated
+	pnpm -C web build
+	pnpm -C web exec playwright install chromium
+	KANTAQ_UAT=1 pnpm -C web exec playwright test e2e/uat-walkthrough.spec.ts
+	KANTAQ_UAT=1 pnpm -C web exec playwright test e2e/uat-roles.spec.ts
+	KANTAQ_UAT=1 pnpm -C web exec playwright test e2e/uat-collab.spec.ts
 
 compat: ## run the scripted Tier-1 compatibility suite (T1-T8, MCP SDK client) + matrix line (E11-T2)
 	uv run python scripts/compat_check.py
