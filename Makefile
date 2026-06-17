@@ -1,4 +1,4 @@
-.PHONY: help setup dev migrate test coverage lint typecheck eval mcp-dev e2e compat verify-agent linkcheck clean
+.PHONY: help setup dev migrate test test-pg coverage lint typecheck eval mcp-dev e2e compat verify-agent linkcheck clean
 
 help: ## show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -15,10 +15,18 @@ dev: ## run the FastAPI runtime on 127.0.0.1:3939
 migrate: ## run database migrations
 	uv run kantaq db migrate
 
-test: ## run pytest + Vitest
+test: ## run pytest + Vitest (parallel: pytest -n auto; the fast inner loop)
 	uv run kantaq test
 
-coverage: ## run the coverage gate on protocol/mcp/core (>= 90%)
+test-pg: ## run the FULL suite incl. the Postgres-gated tests (needs a local Postgres; see CONTRIBUTING)
+	@test -n "$$KANTAQ_TEST_POSTGRES_URL" || { \
+	  echo "KANTAQ_TEST_POSTGRES_URL is unset — the Postgres tests would skip."; \
+	  echo "Start a local Postgres and export it (see CONTRIBUTING 'Postgres-gated tests locally'):"; \
+	  echo "  scripts/local_postgres.sh start   # prints the URL to export"; \
+	  exit 1; }
+	uv run pytest
+
+coverage: ## run the coverage gate on protocol/mcp/core (>= 90%; parallel via addopts)
 	uv run pytest --cov --cov-fail-under=90
 
 lint: ## run ruff + Biome

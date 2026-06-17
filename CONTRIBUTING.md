@@ -49,6 +49,39 @@ make typecheck    # mypy + tsc
 uv run pre-commit install   # enable git hooks
 ```
 
+### Fast test loop (E27-T6)
+
+`make test` runs pytest in **parallel** (`-n auto`, pytest-xdist) — ~2.5× faster
+than serial on the full suite. Order is **randomized every run** (pytest-randomly,
+our determinism guard); every run prints `[kantaq] pytest-randomly seed=<n>`, so
+reproduce a failing order with `uv run pytest --randomly-seed=<n>`. Debugging one
+file? Add `-n0` to run serially (skips the ~2-3s worker spawn) and `-p no:randomly`
+to pin the order:
+
+```bash
+uv run pytest packages/core/tests/test_x.py -n0 -p no:randomly
+```
+
+Coverage is intentionally **off** the inner loop — `make test` is cov-free and fast.
+The coverage gate (`make coverage`, protocol/mcp/core ≥ 90%) runs in CI and on demand.
+
+### Postgres-gated tests locally
+
+The backend / RLS / retention suites (`adapters/backend-supabase`, the SQLite↔Postgres
+parity + metrics-calibration tests) need a **real Postgres** and otherwise skip
+(`~108 tests`). To run them on your machine instead of waiting on a CI round-trip:
+
+```bash
+eval "$(scripts/local_postgres.sh start)"   # disposable postgresql@15 → exports KANTAQ_TEST_POSTGRES_URL
+make test-pg                                  # the FULL suite, Postgres tests included
+scripts/local_postgres.sh stop --purge        # tear it down
+```
+
+Needs `postgresql@15` (`brew install postgresql@15`). The cluster is created with
+locale `C` so text ordering matches the parity assertions. Or point
+`KANTAQ_TEST_POSTGRES_URL` at any reachable server yourself — that env var is the
+only contract (CI provides it via a service container).
+
 ## Definition of Done (every change)
 
 - Code and tests merged behind a reviewed PR; CI green.
