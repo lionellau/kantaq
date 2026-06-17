@@ -25,6 +25,11 @@ PORT="${KANTAQ_PG_PORT:-54329}"
 # Locale C: the suite asserts byte-ordering parity with the SQLite path (my notes /
 # MOD-30 parity test); a non-C collation would skew text ordering. initdb bakes it in.
 LOCALE="C"
+# Export it for the whole script, not just initdb: on macOS, Homebrew's postmaster
+# FATALs at startup ("became multithreaded during startup / Set the LC_ALL
+# environment variable") unless LC_ALL is a valid locale in the *server* process's
+# environment. pg_ctl start inherits this, so the server comes up cleanly.
+export LC_ALL="$LOCALE"
 
 log() { echo "[local_postgres] $*" >&2; }
 
@@ -49,7 +54,7 @@ cmd_start() {
   local bin; bin="$(find_pg_bin)"
   if [ ! -d "$DATADIR/base" ]; then
     log "initdb -> $DATADIR (locale $LOCALE)"
-    LC_ALL="$LOCALE" "$bin/initdb" -D "$DATADIR" --locale="$LOCALE" --encoding=UTF8 -U postgres >/dev/null
+    "$bin/initdb" -D "$DATADIR" --locale="$LOCALE" --encoding=UTF8 -U postgres >/dev/null
   fi
   if "$bin/pg_isready" -h localhost -p "$PORT" -U postgres >/dev/null 2>&1; then
     log "already up on :$PORT"
