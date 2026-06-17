@@ -13,7 +13,9 @@
 import openapi from "../api/openapi.json";
 
 type JsonBody = unknown;
-type Handler = JsonBody | ((request: Request) => JsonBody | Response);
+type Handler =
+  | JsonBody
+  | ((request: Request) => JsonBody | Response | Promise<JsonBody | Response>);
 
 export interface RecordedCall {
   method: string;
@@ -77,7 +79,7 @@ export class MockApiServer {
     for (const [key, handler] of this.handlers) {
       const [method, template] = key.split(" ", 2);
       if (request.method === method && template && templateMatches(template, pathname)) {
-        const body = typeof handler === "function" ? handler(request) : handler;
+        const body = typeof handler === "function" ? await handler(request) : handler;
         if (body instanceof Response) {
           return body;
         }

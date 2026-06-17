@@ -91,6 +91,37 @@ describe("Settings → Members", () => {
     expect(token.textContent).toBe("kq_rotated.secret");
   });
 
+  it("keeps the invite permission guard when the member list finishes loading (no race)", async () => {
+    // Regression for the UAT finding: refresh() used to share one error state
+    // with the invite action, so a member-list fetch that resolved AFTER an
+    // invite was denied wiped the guard. Defer the list load past the 403 and
+    // assert the guard survives (DEBT-32).
+    let resolveMembers: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      resolveMembers = resolve;
+    });
+    server.on("GET /v1/members", async () => {
+      await gate;
+      return [buildMember()];
+    });
+    server.on("POST /v1/members/invite", () =>
+      Response.json({ detail: "forbidden" }, { status: 403 }),
+    );
+
+    renderApp("/settings/members");
+    // The invite form renders before the (still-pending) member list.
+    fireEvent.change(await screen.findByLabelText("Invite by email"), {
+      target: { value: "denied@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Invite" }));
+    expect(await screen.findByText("your role may not invite members")).toBeDefined();
+
+    // The list load now resolves — it must NOT clear the action error.
+    resolveMembers?.();
+    expect(await screen.findByText("owner@example.com")).toBeDefined();
+    expect(screen.getByText("your role may not invite members")).toBeDefined();
+  });
+
   it("revoke calls the API", async () => {
     server.on("POST /v1/members/{member_id}/revoke", () =>
       buildMember({ id: "member-2", email: "dev@example.com", status: "revoked" }),

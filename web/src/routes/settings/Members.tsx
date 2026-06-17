@@ -30,7 +30,12 @@ export default function Members() {
   const { connected } = useSession();
   const [members, setMembers] = useState<Member[] | null>(null);
   const [minted, setMinted] = useState<MintedToken | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Two independent error channels: loadError is owned by refresh() (the member
+  // list fetch); actionError is owned by invite/revoke/rotate. Keeping them
+  // apart stops a background list refresh — which clears loadError on success —
+  // from wiping a still-relevant action error (e.g. the invite permission guard).
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!connected) {
@@ -38,10 +43,10 @@ export default function Members() {
     }
     const { data, error: apiError } = await api.GET("/v1/members");
     if (apiError !== undefined) {
-      setError("could not load members");
+      setLoadError("could not load members");
       return;
     }
-    setError(null);
+    setLoadError(null);
     setMembers(data);
   }, [connected]);
 
@@ -54,14 +59,14 @@ export default function Members() {
       params: { path: { member_id: member.id } },
     });
     if (apiError !== undefined) {
-      setError(
+      setActionError(
         response?.status === 409
           ? "cannot revoke the last owner"
           : `could not revoke ${member.email}`,
       );
       return;
     }
-    setError(null);
+    setActionError(null);
     void refresh();
   }
 
@@ -70,10 +75,10 @@ export default function Members() {
       params: { path: { member_id: member.id } },
     });
     if (apiError !== undefined || data === undefined) {
-      setError(`could not rotate the token for ${member.email}`);
+      setActionError(`could not rotate the token for ${member.email}`);
       return;
     }
-    setError(null);
+    setActionError(null);
     setMinted({ memberEmail: member.email, token: data.token });
     void refresh();
   }
@@ -115,14 +120,16 @@ export default function Members() {
         </div>
       )}
 
-      {error !== null && <p style={ui.errorText}>{error}</p>}
+      {loadError !== null && <p style={ui.errorText}>{loadError}</p>}
+      {actionError !== null && <p style={ui.errorText}>{actionError}</p>}
 
       <InviteForm
         onInvited={(email, token) => {
+          setActionError(null);
           setMinted({ memberEmail: email, token });
           void refresh();
         }}
-        onError={setError}
+        onError={setActionError}
       />
 
       {members !== null && (
