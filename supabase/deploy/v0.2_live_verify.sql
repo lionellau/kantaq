@@ -84,6 +84,33 @@ select ord as "#", lane, chk as check, expect, got,
        case when got = expect then 'PASS' else '>>> FAIL <<<' end as status
 from checks order by ord;
 
+-- ── Block 1b: full table + function parity (run this block) ──────────────────
+-- Spot-checks above can miss a table that simply never got applied. This asserts
+-- the WHOLE expected surface (19 tables + the RLS-helper / commit functions) so
+-- live drift can't hide. Expect no '>>> MISSING <<<' and no '>>> RLS OFF <<<'.
+with expected(kind, t) as (values
+  ('collection','workspaces'),('collection','projects'),('collection','tickets'),
+  ('collection','comments'),('collection','ticket_relationships'),('collection','members'),
+  ('collection','tokens'),('collection','devices'),('collection','capability_grants'),
+  ('collection','agent_proposals'),('collection','memory_entries'),('collection','memory_links'),
+  ('collection','skill_containers'),('collection','skill_mappings'),('collection','conflict_records'),
+  ('collection','audit_anchors'),('collection','audit_events'),
+  ('infra','sync_events'),('infra','sync_acks')
+)
+select e.kind, e.t as expected_table,
+  case when c.oid is null then '>>> MISSING <<<' else 'present' end as exists,
+  case when c.oid is null then '-' when c.relrowsecurity then 'on' else '>>> RLS OFF <<<' end as rls
+from expected e
+left join pg_class c on c.relname = e.t and c.relnamespace = 'public'::regnamespace and c.relkind = 'r'
+order by e.kind, e.t;
+
+select obj as expected_function,
+  case when exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                    where n.nspname||'.'||p.proname = obj) then 'present' else '>>> MISSING <<<' end as exists
+from (values ('kantaq.is_member'),('kantaq.member_ids'),('kantaq.actor_in_my_workspaces'),
+             ('kantaq.compact_sync_events'),('public.events')) f(obj)
+order by obj;
+
 -- ── Block 2: the pg_cron schedule (run SEPARATELY) ───────────────────────────
 -- cron.job lives in the `cron` schema and only exists once pg_cron is enabled.
 -- On Supabase Free, compact_sync_events can be INSTALLED yet never SCHEDULED —
