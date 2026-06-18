@@ -87,15 +87,15 @@ make dev                               # serve the UI at 127.0.0.1:3939
 `kantaq dev` refuses to serve if the backend connection fails, so a typo in
 `.env` surfaces immediately with a clear message instead of a half-working app.
 
-**How syncing works in v0.0.5.** Sync is **online and explicit**: `kantaq sync
-once` does one push (your committed events to the backend) and one pull (the
-team's events to you), resolving ties by the backend's commit order (last writer
-wins). The web UI polls your *local* replica every couple of seconds, so the
-screens refresh the moment a `sync once` lands new events — run `sync once`
-(or, in a second terminal, a simple `while` loop around it) whenever you want to
-exchange with the team. A background sync daemon, an offline outbox, and signed
-events are later releases (v0.2 / v0.1); v0.0.5 is online-only, one workspace per
-member, and unsigned. Check what is waiting to go out with:
+**How syncing works.** Sync is **explicit**: `kantaq sync once` does one push
+(your committed events to the backend) and one pull (the team's events to you).
+Every synced event is Ed25519-signed and grant-verified, and edits that collide
+while you were offline are detected and surfaced for review rather than silently
+lost ([docs/sync.md](docs/sync.md)). The web UI polls your *local* replica every
+couple of seconds, so the screens refresh the moment a `sync once` lands new
+events — run `sync once` (or, in a second terminal, a simple `while` loop around
+it) whenever you want to exchange with the team. Check what is waiting to go out
+with:
 
 ```bash
 kantaq sync status    # local pending events + cursor position
@@ -138,8 +138,9 @@ Claude Code / Cursor HTTP-MCP snippet pointed at **B's own** loopback URL, with
 B's token already filled in. Best practice is a dedicated **Agent** member —
 **Settings → Members → Invite**, role *Agent* — which mints a token scoped to
 exactly `tickets.read` and `proposals.write`. Point your agent's HTTP MCP config
-at the snippet. Two tools ship in v0.0.5 — `ticket_get` and
-`agent_action_propose`. Full contract: [docs/mcp.md](docs/mcp.md).
+at the snippet. The agent's core tools are `ticket_get` (read a ticket) and
+`agent_action_propose` (propose a change); the full catalog is in
+[docs/mcp.md](docs/mcp.md).
 
 You can sanity-check the gateway is up and token-gated from the shell:
 
@@ -214,9 +215,9 @@ manifest — see [docs/setup-supabase.md](docs/setup-supabase.md).
 | `connection verify failed` in team mode | check `SUPABASE_URL` / `SUPABASE_ANON_KEY` in `.env`; see [docs/setup-supabase.md](docs/setup-supabase.md) |
 | `no Supabase session` on `kantaq sync once` | run `kantaq sync login --email you@team.dev` first |
 | `no active member row for <email>` | ask the maintainer to add you to the Supabase manifest (members table + Auth user) — see [docs/setup-supabase.md](docs/setup-supabase.md) |
-| Proposal not showing up in the other member's Inbox | run `kantaq sync once` on both sides — v0.0.5 sync is explicit |
+| Proposal not showing up in the other member's Inbox | run `kantaq sync once` on both sides — sync is explicit |
 | Agent snippet says the gateway is down | start it: `make mcp-dev` (or `kantaq mcp dev`) |
 | Supabase free project paused after idle | open the Supabase dashboard and restore it (free tier pauses after ~7 days idle) |
 
-The clone-to-green path (`setup → migrate → test`) is enforced by CI on every
-PR — a fresh clone stays inside the 10-minute budget.
+That's the whole setup — you're running kantaq locally, and nothing leaves your
+machine unless you sync it.

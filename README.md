@@ -1,111 +1,90 @@
 # kantaq
 
-**A local-first, agent-native issue tracker for small teams (2–10) who already run a local AI agent** (Claude Code, Cursor, Codex).
+**A local-first, agent-native issue tracker for small teams (2–10) who already run a local AI agent** — Claude Code, Cursor, or Codex.
 
-Your tracker runs on your own machine. A solo user runs it with zero backend. A team points every member's local copy at one shared sync backend (Supabase, later self-hosted Postgres) that just validates and stores committed team state. Your AI agent connects to your loopback gateway, reads tickets with the right context, and *proposes* changes — a human approves them from an Inbox diff. Every change is Ed25519-signed and grant-verified before it syncs.
+Your tracker runs on your own machine. Solo, it needs **zero backend**. As a team, every member runs their own local copy and points it at one shared sync backend (Supabase today, self-hosted Postgres next) that only validates and stores committed team state. Your AI agent connects to your own private loopback gateway, reads tickets with the right context, and **proposes** changes — you approve them from an Inbox diff. Every change is signed and verified before it syncs.
 
-> There is no shared application instance and no server the project operates. The only shared thing is the sync backend — it validates and stores committed events. You can export the whole workspace to a single file and re-import it anywhere, byte-for-byte. Your data is yours.
+> No shared app instance, no server to operate, no per-seat bill. The only shared thing is the sync backend. Export your whole workspace to a single file and re-import it anywhere, byte-for-byte. **Your data is yours.**
 
-This repository holds the **code** (Apache-2.0). Product and planning docs are maintained by the core team separately.
+The full loop — a teammate joins, an agent reads a ticket and proposes a change, a human approves it from the Inbox, and the signed change syncs to everyone — works end to end today.
 
 **Why we built it:** [we stopped paying for Linear](docs/blog/we-stopped-paying-for-linear.md).
 
-## Status
-
-**`v0.1`** — the first release. The full hero loop works end to end: a fresh member joins, an agent reads a ticket and proposes over MCP, a human approves from the Inbox diff, and the signed change syncs to the whole team. The kantaq side of that loop runs under a **15-minute CI budget** (with the agent's decisions scripted and an in-process backend, so the gate is deterministic); the honest wall-clock run with a real agent and real Supabase is a remaining release step (below). What ships:
-
-- **Local-first sync** — append-only event log, idempotent push/pull, every synced event Ed25519-signed and grant-verified ([docs/protocol.md](docs/protocol.md)).
-- **Agent-native, propose-first** — a loopback MCP gateway with eight authorization checks; agents propose, humans approve; nothing an agent does mutates a tracked field directly ([docs/mcp.md](docs/mcp.md)).
-- **An honest trust surface** — the Inbox shows proposal diffs with cited memory and a denied-calls tab; the Agents page lists every live session and every denied call straight from the audit log, with revoke + token rotation.
-- **Proven boundaries** — a scripted fully-malicious agent session is contained with zero scope escapes; the eight Tier-1 compatibility tests pass 8/8 against the official MCP SDK client in CI; the v0.1 CI gate set is each proven by a deliberately-failing fixture ([docs/security.md](docs/security.md)).
-- **Portability** — the workspace exports to one deterministic tarball and re-imports losslessly ([docs/portability.md](docs/portability.md)).
-
-Three human release steps remain: the **certified** Tier-1 badge (a real GUI client passing all 8 at a pinned version), the live wall-clock hero demo (real agent + real Supabase, timed under 15 minutes), and the warm-channel launch posts — see the badge rule below.
-
 ## Quickstart
 
-**→ [QUICKSTART.md](QUICKSTART.md)** — solo mode (zero backend) and team mode (shared Supabase, see [docs/setup-supabase.md](docs/setup-supabase.md)). It walks the [full loop end to end](QUICKSTART.md#the-full-loop-end-to-end): create → sync → an agent proposes → a human approves → sync.
+Run it on your machine in about 10 minutes:
 
 ```bash
 git clone https://github.com/lionellau/kantaq.git
 cd kantaq
-make setup      # uv sync + pnpm install + build the web UI
-make migrate    # database migrations
-make test       # pytest + Vitest
-make dev        # FastAPI on http://127.0.0.1:3939 serving the built UI
+make setup      # install toolchains + build the web UI
+make migrate    # set up the local database
+make dev        # serve everything on http://127.0.0.1:3939
 ```
 
-A fresh clone reaches green (`setup → migrate → test`) in **under 10 minutes** (NFR-E01-1) — enforced by the fresh-clone CI gate.
+Open <http://127.0.0.1:3939> and you're in. First run mints your Owner token; run `kantaq db seed` to drop in a demo workspace to click around.
+
+**→ [QUICKSTART.md](QUICKSTART.md)** walks it end to end — solo (zero backend) and team (shared Supabase), then the full loop: create a ticket → sync → an agent proposes → you approve → sync.
 
 ## Connect your agent
 
-From Settings → **My Agent**, kantaq generates a connection snippet for your own loopback gateway — `.mcp.json` (Claude Code), `.cursor/mcp.json` (Cursor), or `~/.codex/config.toml` (Codex). The bearer token is filled client-side and never round-trips through the server. See [docs/mcp.md](docs/mcp.md#connecting).
+In the web app, open **Settings → My Agent**. kantaq generates a ready-to-paste connection snippet for your own loopback gateway — `.mcp.json` (Claude Code), `.cursor/mcp.json` (Cursor), or `~/.codex/config.toml` (Codex). Your token is filled in locally and never round-trips through any server.
 
-## Compatibility
+Best practice: give the agent its own **Agent** member (Settings → Members → Invite, role *Agent*), so its token is scoped to exactly "read tickets" and "propose changes" — nothing more.
+
+→ [docs/mcp.md](docs/mcp.md#connecting)
+
+## What you get
+
+- **Local-first.** Your tracker is one process on `127.0.0.1` serving both the web UI and the API. It works fully offline; sync is an explicit push/pull whenever you want it.
+- **Agents propose, humans approve.** Agents reach your tracker only through a loopback gateway that authorizes every call. An agent can open a *proposal* — it can never silently change a ticket. You review the diff in the Inbox and approve, or don't.
+- **Safe by default.** Ticket text handed to an agent is fenced as untrusted data, so instructions hidden in a ticket are never executed. Every agent session and every denied call shows up on the Agents page, with one-click revoke that takes effect in under 5 seconds.
+- **Made for real teamwork.** Offline edits that collide are detected and surfaced for review instead of silently lost. Your agent draws on shared workspace memory, and memory promotions are human-approved. Coming from Linear? Import your existing export.
+- **Yours to keep.** Every synced change is Ed25519-signed and verified. Export the entire workspace to one deterministic file and re-import it losslessly, anywhere.
+
+## Works with
 
 [![Tier-1 compatibility: scripted 8/8](https://img.shields.io/badge/Tier--1%20compatibility-scripted%208%2F8-blue)](docs/clients/compatibility.md)
 
-kantaq supports three HTTP MCP clients — **Claude Code**, **Cursor**, and **Codex**. The eight Tier-1 acceptance tests (first connection, role-aware read, propose + approve, permission denial, token rotation, untrusted-content tagging, session expiry, audit completeness) pass **8 / 8 against the official MCP SDK client in CI** (`make compat`), and a **real agent (Codex) connects, reads, and proposes end to end** through the opt-in harness (`make verify-agent`).
+kantaq speaks HTTP MCP, so it works with **Claude Code**, **Cursor**, and **Codex**. Each is checked against eight Tier-1 acceptance tests — first connection, role-aware read, propose + approve, permission denial, token rotation, untrusted-content tagging, session expiry, and audit completeness.
 
-Per the badge rule (FR-E11-4), the **Tier-1 (Reference)** badge is advertised as *certified* only once a real client passes all eight at a pinned version — those runs are the release step, recorded with client version and date in the matrix:
-
-**→ [docs/clients/compatibility.md](docs/clients/compatibility.md)** — tiers, the 8 tests, client version, last-verified date, pass rate.
+→ [docs/clients/compatibility.md](docs/clients/compatibility.md) for the current matrix.
 
 ## Documentation
 
 | Doc | What it covers |
 |---|---|
-| [QUICKSTART.md](QUICKSTART.md) | clone-to-running in 10 minutes; solo + team; the full loop |
-| [docs/setup-supabase.md](docs/setup-supabase.md) | maintainer-only backend setup (anon key only, never service-role) |
-| [docs/protocol.md](docs/protocol.md) | entities, canonical codec, Ed25519 signing, capability grants — the wire contract |
-| [docs/security.md](docs/security.md) | threat model, the eight gateway checks, prompt-injection defenses, audit, the review gate |
-| [docs/mcp.md](docs/mcp.md) | the MCP gateway, the eight checks, the tool catalog, connection snippets |
-| [docs/clients/compatibility.md](docs/clients/compatibility.md) | the Tier-1 matrix and the badge rule |
-| [docs/portability.md](docs/portability.md) | export, import, and the lossless round-trip procedure |
-| [docs/sync.md](docs/sync.md) | offline reconcile, conflict review, and retention (v0.2) |
-| [docs/blog/what-a-4-person-team-actually-pays.md](docs/blog/what-a-4-person-team-actually-pays.md) | the real monthly cost — Free $0 → Pro $25 → VPS $5–10 (v0.2) |
-| [docs/stack.md](docs/stack.md) | the stack decision record (ADR-0001) and tool licenses |
+| [QUICKSTART.md](QUICKSTART.md) | clone to running in ~10 min; solo + team; the full loop |
+| [docs/setup-supabase.md](docs/setup-supabase.md) | team backend setup — one maintainer, once |
+| [docs/mcp.md](docs/mcp.md) | the agent gateway, its checks, the tool catalog, connection snippets |
+| [docs/security.md](docs/security.md) | the trust model and how the boundary holds |
+| [docs/sync.md](docs/sync.md) | offline reconcile, conflict review, retention |
+| [docs/portability.md](docs/portability.md) | export / import and the lossless round-trip |
+| [docs/protocol.md](docs/protocol.md) | the wire contract — entities, signing, capability grants |
+| [docs/blog/what-a-4-person-team-actually-pays.md](docs/blog/what-a-4-person-team-actually-pays.md) | the real monthly cost: $0 → $25 → a $5–10 VPS |
 
-## Repository layout
+## Development
 
-```
-kantaq/
-  pyproject.toml          uv workspace + shared tool config + `kantaq` CLI
-  src/kantaq/             umbrella package: version + the `kantaq` CLI
-  apps/local-runtime/     FastAPI runtime: REST API + serves the UI (MOD-14)
-  packages/
-    protocol/             entities, canonical codec, Ed25519, grant verify (MOD-17)
-    sync_engine/          event log, snapshots, cursors, push/pull (MOD-04, MOD-26)
-    core/                 tracker domain, resolver, recommendations, permissions
-    mcp/                  MCP server, gateway checks, sessions, tools (MOD-08, MOD-09)
-    db/                   SQLModel models + Alembic migrations (MOD-02)
-  web/                    React + Vite SPA (MOD-10..13)
-  adapters/               sync backend adapters (Supabase MOD-05, self-hosted MOD-28)
-  evals/fixtures/         context-quality eval set (MOD-21)
-  docs/                   protocol, security, mcp, portability, compatibility, stack ADR
-  .github/workflows/      CI gates
+kantaq is a `uv` (Python 3.12) + `pnpm` (Node ≥ 20) workspace — a FastAPI runtime, a React UI, and the MCP gateway. The day-to-day:
+
+```bash
+make setup      # install + build the UI
+make dev        # run the runtime + UI on 127.0.0.1:3939
+make migrate    # run database migrations
+make test       # run the test suite
 ```
 
-## Dev commands
+```
+src/kantaq/          the `kantaq` CLI + version
+apps/local-runtime/  FastAPI runtime: REST API + serves the UI
+packages/            protocol, sync engine, tracker core, MCP gateway, db models
+web/                 React + Vite single-page app
+adapters/            sync backends (Supabase; self-hosted Postgres next)
+docs/                protocol, security, MCP, portability, compatibility
+```
 
-| Command | What it does |
-|---|---|
-| `make setup` | install both toolchains and build the web UI |
-| `make dev` | run the FastAPI runtime on `127.0.0.1:3939` |
-| `make migrate` | run DB migrations |
-| `make test` | `kantaq test` → pytest + Vitest |
-| `make lint` | ruff + Biome |
-| `make typecheck` | mypy + tsc |
-| `make compat` | the scripted Tier-1 compatibility runner (8/8) |
-| `make verify-agent` | drive a real agent against the gateway (opt-in) |
-| `make linkcheck` | spot-check external doc URLs (opt-in; needs `lychee`) |
-
-See [`docs/stack.md`](docs/stack.md) for the stack decision record (ADR-0001) and tool licenses.
-
-## Contributing
-
-Read [`CONTRIBUTING.md`](CONTRIBUTING.md). In short: conventional commits, the *Golden rule* (reuse before build), and every change ships with tests and an updated module spec.
+The remaining commands (`lint`, `typecheck`, …), the contribution rules, and the stack decision record live in [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/stack.md](docs/stack.md). This repository is the **code** (Apache-2.0); product and planning docs are maintained separately by the core team.
 
 ## License
 
-[Apache-2.0](LICENSE). See [`NOTICE`](NOTICE).
+[Apache-2.0](LICENSE). See [NOTICE](NOTICE).

@@ -1,4 +1,4 @@
-# supabase/ — the team backend's SQL artifacts (MOD-05 / Epic E24)
+# supabase/ — the team backend's SQL artifacts
 
 What the maintainer applies to the team's Supabase project, in order:
 
@@ -60,14 +60,9 @@ Then apply the v0.2 backend additions (idempotent — `create or replace`):
 (New projects just apply files 1–6 above in order, which already include all of
 this.)
 
-## How this is tested
+## Keeping it honest
 
-CI applies these exact files to a disposable Postgres 16 with a faithful stub
-of Supabase's auth environment (`kantaq_test_harness.rls`), then attacks them
-with a tampered client — direct SQL under the `authenticated` role with forged
-JWT claims. Cross-workspace reads and writes must come back empty or denied
-(`adapters/backend-supabase/tests/test_rls.py`, `test_sync_rls.py`). The sync
-adapter itself is driven through `FakePostgREST` — the same REST dialect
-Supabase serves, answered by real SQL with the claims and role applied — so
-push/pull/LWW are proven against real RLS (`test_sync_live.py`). A drift gate
-keeps `0001_collections.sql` byte-identical to what the models generate.
+These policies are exercised by the adapter's Row Level Security tests in
+`adapters/backend-supabase/tests/`. `0001_collections.sql` is **generated** from
+the models — never edit it by hand; regenerate with
+`uv run python -m kantaq_backend_supabase.schema`.
