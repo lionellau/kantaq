@@ -1,4 +1,4 @@
-.PHONY: help setup dev migrate test test-pg coverage lint typecheck eval mcp-dev e2e e2e-uat compat verify-agent linkcheck clean
+.PHONY: help setup dev migrate test test-pg coverage lint typecheck eval mcp-dev e2e e2e-uat compat verify-agent verify-live linkcheck clean
 
 help: ## show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -58,6 +58,9 @@ compat: ## run the scripted Tier-1 compatibility suite (T1-T8, MCP SDK client) +
 
 verify-agent: ## drive a REAL coding agent (Claude Code/Codex) against the gateway — opt-in, needs the agent signed in (E11-T2)
 	uv run python scripts/verify_agent.py
+
+verify-live: ## DEBT-30 live timed-smokes (gateway <50ms, revoke <5s, retention) — opt-in; live checks need `kantaq sync login`
+	uv run python scripts/uat_live_smoke.py
 
 linkcheck: ## spot-check external doc URLs at release time (opt-in; needs lychee)
 	@command -v lychee >/dev/null 2>&1 || { echo "lychee not installed — see https://github.com/lycheeverse/lychee (brew install lychee / cargo install lychee). Internal links are already covered hermetically by 'make test'."; exit 1; }
