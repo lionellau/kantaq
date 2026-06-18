@@ -1,6 +1,6 @@
 [project]
 name = "kantaq-sync-engine"
-version = "0.1.0"
+version = "0.2.0"
 description = "kantaq sync engine: event log, snapshots, cursors, push/pull (MOD-04, MOD-26)"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
