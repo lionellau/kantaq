@@ -129,13 +129,18 @@ describe("the Inbox queue", () => {
     expect(screen.getByText(/denied: tool_allowlist/)).toBeDefined();
   });
 
-  it("the memory-promotions tab shows its v0.2 empty state", async () => {
+  it("the memory-promotions tab points to the working CLI/MCP loop (GUI lands v0.3)", async () => {
     renderApp("/inbox");
     await screen.findByRole("link", { name: "Fix the flux capacitor" });
 
     fireEvent.click(screen.getByRole("tab", { name: /Memory promotions/ }));
 
-    expect(await screen.findByText(/No memory promotions yet/)).toBeDefined();
+    // The copy is split by a <code> element, so match the <p>'s full text.
+    const copy = await screen.findByText(
+      (_content, el) =>
+        el?.tagName === "P" && /available today via the CLI and MCP/.test(el.textContent ?? ""),
+    );
+    expect(copy.textContent).toContain("lands in v0.3");
   });
 
   it("badges the proposals tab with the pending count", async () => {

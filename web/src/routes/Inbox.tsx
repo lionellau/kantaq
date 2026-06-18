@@ -3,8 +3,9 @@
  *
  * Three tabs (FR-E20-2): **proposals** (pending agent writes, shown as a
  * field-level diff against the live ticket plus the memory cited for that
- * ticket), **memory promotions** (an empty state — the approve/reject UI is a
- * deferred follow-up, MOD-19 / DEBT-28; the backend loop is API-complete), and
+ * ticket), **memory promotions** (a pointer to the working CLI/MCP approval
+ * loop — the in-Inbox approve/reject UI is a deferred follow-up, MOD-19 /
+ * DEBT-28, landing in v0.3; the backend loop is API-complete today), and
  * **denied calls** (recent gateway denials, read live from audit). A count
  * badge rides each tab; when no proposal is pending the proposals tab shows the
  * Inbox-zero state.
@@ -213,8 +214,9 @@ export default function Inbox() {
 
         {tab === "memory" && (
           <p style={ui.muted}>
-            No memory promotions yet. Agents will propose memory entries to share here in a later
-            release (v0.2).
+            Memory promotions are available today via the CLI and MCP — an agent proposes an entry
+            and a human approves it with <code>POST /v1/memory/{"{id}"}/approve</code>. Approving
+            them here in the Inbox lands in v0.3.
           </p>
         )}
 
