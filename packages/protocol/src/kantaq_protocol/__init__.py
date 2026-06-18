@@ -101,7 +101,7 @@ from kantaq_protocol.signing import (
     verify_bytes,
 )
 
-__version__: str = "0.1.0"
+__version__: str = "0.2.0"
 
 __all__ = [
     "AUDIT_CHAIN_DOMAIN",

@@ -5,4 +5,4 @@ This is the workspace umbrella package. It carries the version and the
 in the workspace members under ``packages/`` and ``apps/``.
 """
 
-__version__: str = "0.1.0"
+__version__: str = "0.2.0"

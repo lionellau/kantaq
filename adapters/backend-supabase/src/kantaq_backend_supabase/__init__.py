@@ -39,7 +39,7 @@ from kantaq_backend_supabase.sync import (
 # working for the adapter's callers.
 from kantaq_sync_engine.events import CommitResult
 
-__version__: str = "0.1.0"
+__version__: str = "0.2.0"
 
 __all__ = [
     "APPEND_ONLY_POLICIES",

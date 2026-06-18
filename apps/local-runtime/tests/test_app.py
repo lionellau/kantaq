@@ -12,7 +12,7 @@ def test_healthz_ok() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
-    assert body["version"] == "0.1.0"
+    assert body["version"] == "0.2.0"
 
 
 def test_root_serves_a_ui_surface() -> None:

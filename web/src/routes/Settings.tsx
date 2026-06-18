@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
-import { clearToken, setToken, useSession } from "../lib/session";
+import TokenShowHint from "../components/TokenShowHint";
+import { clearToken, runtimeTokenProblem, setToken, useSession } from "../lib/session";
 import * as ui from "../lib/ui";
 
 /**
@@ -49,9 +50,16 @@ const TREE: TreeNode[] = [
 export default function Settings() {
   const { connected } = useSession();
   const [draft, setDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   function connect(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const problem = runtimeTokenProblem(draft);
+    if (problem !== null) {
+      setError(problem); // reject a wrong paste (e.g. a Supabase key) before it 401s
+      return;
+    }
+    setError(null);
     setToken(draft);
     setDraft("");
   }
@@ -77,9 +85,12 @@ export default function Settings() {
           <>
             <p>
               <output>
-                Not connected. Paste your runtime token (<code>kantaq token show</code>).
+                Not connected. Get your runtime token from the CLI, then paste it below.
               </output>
             </p>
+            <div style={{ margin: "0 0 0.75rem" }}>
+              <TokenShowHint />
+            </div>
             <form onSubmit={connect} style={{ display: "flex", gap: 8, alignItems: "end" }}>
               <label style={ui.label}>
                 Runtime token
@@ -87,14 +98,25 @@ export default function Settings() {
                   type="password"
                   style={ui.input}
                   value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
+                  onChange={(event) => {
+                    setDraft(event.target.value);
+                    if (error !== null) {
+                      setError(null);
+                    }
+                  }}
                   autoComplete="off"
+                  aria-invalid={error !== null}
                 />
               </label>
               <button type="submit" style={ui.primaryButton}>
                 Connect
               </button>
             </form>
+            {error !== null && (
+              <p role="alert" style={{ ...ui.errorText, marginBottom: 0 }}>
+                {error}
+              </p>
+            )}
           </>
         )}
       </section>

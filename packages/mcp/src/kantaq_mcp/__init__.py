@@ -8,7 +8,7 @@ passes through (E09), and the v0.0.5 tool catalog behind it (E10):
 its callers — it pulls the MCP SDK and Starlette, which nothing else needs.
 """
 
-__version__: str = "0.1.0"
+__version__: str = "0.2.0"
 
 from kantaq_mcp.catalog import CATALOG, CATALOG_BY_NAME, ToolSpec
 from kantaq_mcp.gateway import Gateway, GatewayDenied

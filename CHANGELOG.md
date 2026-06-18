@@ -4,16 +4,32 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); kantaq follows the
 release line (v0.0.5 → v0.3) described in the project docs.
 
-## [Unreleased]
+## [0.2.0] — 2026-06-18
 
 ### Added — Sprint 7: v0.2 release (E05, E06, E07, E17, E20, E23, E26, E27, E29)
 
 The second and final v0.2 sprint: the offline conflict engine is finished, grants
 are backend-issued with sub-5-second revocation, retention holds the cost ceiling,
 the metrics dashboard and conflict review ship, a real Linear export re-imports in
-CI, and the v0.2 docs are live. Schema reaches **v15**. Cutting the `0.2.0` tag
-(this `[Unreleased]` block → `[0.2.0]`, the package version bump, and the
-maintainer's live-schema apply) is the remaining release step.
+CI, and the v0.2 docs are live. Schema reaches **v15**. The package version is
+bumped to `0.2.0` and this block is cut from `[Unreleased]`; the **`0.2.0` git tag
+itself waits on the maintainer's live-schema apply** (DEBT-25 Step-B `REVOKE` + the
+E06/E07 backend deltas + the live timed/retention smokes, DEBT-30) so the tag
+reflects the deployed state.
+
+### v0.2-close (before the tag — UAT + persona-study fixes)
+
+- **Importer CLI hardened** (DEBT-33): `kantaq import linear` no longer crashes on
+  the success path (`DetachedInstanceError` from a post-session print) and reuses a
+  same-named target project instead of orphaning an empty duplicate per run; adds a
+  CLI-path test (the unit tests only exercised `import_linear`).
+- **GUI honesty pass** (DEBT-34): the Settings → Export button is wired to the
+  shipped `/v1/export` (downloads `kantaq-export.tar.gz`); the disconnected Backlog
+  + Settings surface the literal `kantaq token show` command (copy button) and
+  validate token shape so a Supabase key is rejected by name instead of silently
+  401ing; the Inbox memory-promotions copy now says the loop works via CLI/MCP today
+  with the in-Inbox approval GUI landing in v0.3 (was the stale "in a later release
+  (v0.2)").
 
 - **Conflict engine finished + the RISK-04 race matrix** (E05-T3/T4, MOD-26/MOD-30,
   PR #59): a stale agent proposal rebases (`rebase_required`), tombstones never

@@ -103,10 +103,13 @@ describe("the backlog list", () => {
     expect(body.project_id).toBe("proj-1");
   });
 
-  it("asks to connect when there is no session", () => {
+  it("asks to connect when there is no session, and shows how to get the token", () => {
     clearToken();
     renderApp("/");
     expect(screen.getByText(/Not connected/)).toBeDefined();
+    // DEBT-34: the disconnected screen surfaces the literal command + a copy button.
+    expect(screen.getByText("kantaq token show")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Copy" })).toBeDefined();
     expect(ticketCalls()).toHaveLength(0);
   });
 });

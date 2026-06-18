@@ -798,9 +798,14 @@ def cmd_import(args: argparse.Namespace) -> int:
         tracker = TrackerService(
             session, actor_id=owner.id, source="cli", sink=EventLogSink(session, owner.id)
         )
-        project = tracker.create_project(
-            workspace_id=workspace.id, name=args.project or "Imported from Linear"
-        )
+        # F-02 (DEBT-33): reuse a same-named project so a re-run targets it instead
+        # of orphaning a fresh empty duplicate. The import is already idempotent on
+        # `linear_entity_id` (D-19); only the CLI's eager project-create was not.
+        target_name = (args.project or "Imported from Linear").strip()
+        project = next(
+            (p for p in tracker.list_projects(workspace_id=workspace.id) if p.name == target_name),
+            None,
+        ) or tracker.create_project(workspace_id=workspace.id, name=target_name)
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
             result = import_linear(
@@ -814,10 +819,14 @@ def cmd_import(args: argparse.Namespace) -> int:
         except (LinearImportError, json.JSONDecodeError) as exc:
             print(f"import failed: {exc}", file=sys.stderr)
             return 1
+        # F-01 (DEBT-33): capture project.name while the session is open. The
+        # summary print used to run after the `with` block closed, which detached
+        # the ORM instance and raised DetachedInstanceError on a *successful* import.
+        project_name = project.name
     print(
         f"imported {result.tickets} tickets ({result.epics} epics, "
         f"{result.parent_links} parent links), {result.comments} comments "
-        f"into '{project.name}'; skipped {result.skipped_tickets} tickets / "
+        f"into '{project_name}'; skipped {result.skipped_tickets} tickets / "
         f"{result.skipped_comments} comments (already imported)"
     )
     return 0
@@ -891,7 +900,7 @@ def build_parser() -> argparse.ArgumentParser:
     imp.add_argument(
         "--project",
         default=None,
-        help="target project name (created; default: 'Imported from Linear')",
+        help="target project name (reused if it exists; default: 'Imported from Linear')",
     )
     imp.set_defaults(func=cmd_import)
 

@@ -20,6 +20,7 @@ import {
 } from "../api/types";
 import ProposalChip from "../components/ProposalChip";
 import SyncBadge, { type SyncState } from "../components/SyncBadge";
+import TokenShowHint from "../components/TokenShowHint";
 import { fmtDateTime } from "../lib/format";
 import { useSession } from "../lib/session";
 import * as ui from "../lib/ui";
@@ -84,8 +85,10 @@ export default function Backlog() {
       <section>
         <h1>Backlog</h1>
         <p style={ui.muted}>
-          Not connected. Paste your runtime token in <Link to="/settings">Settings</Link> first.
+          Not connected. Get your runtime token from the CLI, then paste it in{" "}
+          <Link to="/settings">Settings</Link>:
         </p>
+        <TokenShowHint />
       </section>
     );
   }
