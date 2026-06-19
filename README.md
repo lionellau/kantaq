@@ -8,7 +8,7 @@ Your tracker runs on your own machine. A solo user runs it with zero backend. A 
 
 This repository holds the **code** (Apache-2.0). Product and planning docs are maintained by the core team separately.
 
-**Why we built it:** [we stopped paying for Linear](docs/blog/we-stopped-paying-for-linear.md).
+**Why we built it:** so AI agents can be real contributors — they *propose*, you approve from a diff, and every change is attributed and signed — on a tracker that lives on your own machine.
 
 ## Status
 

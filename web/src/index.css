@@ -5,7 +5,7 @@
  * objects own the look. Inline styles cannot express :hover / :active /
  * :focus-visible, so this is the one thin layer that adds the interaction and
  * focus states the design audit flagged as missing — deliberately restrained
- * (Notion/Linear editorial minimalism), motion via `filter`/`transform`/
+ * (editorial minimalism), motion via `filter`/`transform`/
  * `outline` only so it never overrides an inline `background`, and at zero
  * specificity (`:where`) so it never fights a component style.
  */

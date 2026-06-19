@@ -176,8 +176,7 @@ rule, and the launch is staged but not auto-posted.
   shipped), plus an Audit section and the wired CI-gate table; `docs/mcp.md`
   catalog re-verified against the live tool set; the whole doc set
   (protocol ↔ security ↔ mcp ↔ compatibility ↔ portability) is now cross-linked.
-- **README rewritten for launch** (E29-T2) and a wedge post,
-  [`docs/blog/we-stopped-paying-for-linear.md`](docs/blog/we-stopped-paying-for-linear.md).
+- **README rewritten for launch** (E29-T2).
 - **Docs-profile gates extended** (E29-T2): the new docs are covered by the
   internal-link and command-drift gates, plus a v0.1 "published docs exist and
   are cross-linked" pin. An opt-in `make linkcheck` (lychee) spot-checks external
