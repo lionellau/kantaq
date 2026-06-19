@@ -8,7 +8,7 @@ Your tracker runs on your own machine. Solo, it needs **zero backend**. As a tea
 
 The full loop — a teammate joins, an agent reads a ticket and proposes a change, a human approves it from the Inbox, and the signed change syncs to everyone — works end to end today.
 
-**Why we built it:** [we stopped paying for Linear](docs/blog/we-stopped-paying-for-linear.md).
+**Why we built it:** so AI agents can be real contributors — they *propose*, you approve from a diff, and every change is attributed and signed — on a tracker that lives on your own machine.
 
 ## Quickstart
 

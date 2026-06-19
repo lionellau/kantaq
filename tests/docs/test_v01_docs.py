@@ -38,14 +38,6 @@ def test_readme_links_every_published_doc() -> None:
         assert rel in readme, f"README does not link {rel}"
 
 
-def test_wedge_post_exists_and_is_linked() -> None:
-    """FR-E29-2: the 'we stopped paying for Linear' wedge post ships and is linked."""
-    post = DOCS / "blog" / "we-stopped-paying-for-linear.md"
-    assert post.is_file(), "the wedge post is missing"
-    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    assert "docs/blog/we-stopped-paying-for-linear.md" in readme, "README must link the wedge post"
-
-
 def test_protocol_doc_names_the_standards_it_implements() -> None:
     """Standards-honesty (MOD-17): protocol.md cites only standards we implement."""
     protocol = (DOCS / "protocol.md").read_text(encoding="utf-8")
