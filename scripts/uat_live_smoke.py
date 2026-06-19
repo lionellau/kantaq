@@ -392,8 +392,13 @@ def run(selected: list[str], *, require_live: bool) -> list[SmokeResult]:
     need_inprocess = any(c in selected for c in ("gateway-latency", "revoke-recheck"))
     need_live = any(c in selected for c in ("revoke-xreplica", "retention-mark"))
 
-    world = _seed_inprocess() if need_inprocess else None
+    # Load the live session BEFORE seeding the in-process world: _seed_inprocess()
+    # mutates os.environ (HUB_MODE=local, LOCAL_DB_PATH=<temp>) and never restores
+    # it, so reading the live session afterwards sees HUB_MODE=local and silently
+    # returns None — every live check then SKIPs even with a valid `kantaq sync
+    # login` session. Ordering the live read first keeps it on the real env. (DEBT-30)
     live = _load_live() if need_live else None
+    world = _seed_inprocess() if need_inprocess else None
 
     if "gateway-latency" in selected:
         results.append(check_gateway_latency(world))
