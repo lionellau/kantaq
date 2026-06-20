@@ -22,7 +22,7 @@ returns 409 with a clear pointer to sync.
 Permission: reading needs ``tickets.read``; resolving is a canonical ticket
 write, so it needs ``tickets.write`` **and is human-only** — an agent proposes
 through the gateway and can never silently resolve a human's conflict, even with
-an over-scoped token (the §8.5 propose-first rule + DEBT-37 / D-27, enforced at
+an over-scoped token (the §8.5 propose-first rule + DEBT-37 / D-33, enforced at
 this edge).
 """
 
@@ -46,7 +46,7 @@ router = APIRouter(prefix="/v1/conflicts", tags=["conflicts"])
 EngineDep = Annotated[Engine, Depends(get_engine_dep)]
 ReaderActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_read))]
 # Resolving a conflict is a canonical ticket write — human-only: an agent
-# proposes through the gateway, never the REST tracker domain (DEBT-37 / D-27).
+# proposes through the gateway, never the REST tracker domain (DEBT-37 / D-33).
 WriterActor = Annotated[VerifiedActor, Depends(require_human_action(Action.tickets_write))]
 
 CONFLICT_STATUSES = ("open", "resolved")

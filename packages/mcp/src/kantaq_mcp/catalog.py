@@ -35,7 +35,7 @@ Verb = Literal["read", "propose", "comment", "approve"]
 # - an APPLY verb mutates the canonical record *directly* and needs
 #   ``direct_write`` — which no v0.1 session holds (DEBT-08), so an apply verb is
 #   unreachable via the gateway for *anyone* (humans approve in the Inbox). This
-#   is what stops an over-scoped agent from self-approving (DEBT-37 / D-27), and
+#   is what stops an over-scoped agent from self-approving (DEBT-37 / D-33), and
 #   because the check is the shared one it holds over HTTP *and* stdio.
 PROPOSE_FIRST_VERBS: frozenset[str] = frozenset({"propose", "comment"})
 APPLY_VERBS: frozenset[str] = frozenset({"approve"})
@@ -650,7 +650,7 @@ CATALOG: tuple[ToolSpec, ...] = (
             "validated apply path. An APPLY verb: it mutates the canonical ticket directly, so "
             "it needs a direct-write session, which the gateway never issues (propose-first) — "
             "no gateway session (agent or human) reaches it. Humans approve in the Inbox; an "
-            "agent only proposes (DEBT-37 / D-27)."
+            "agent only proposes (DEBT-37 / D-33)."
         ),
         verb="approve",
         collections=("agent_proposals", "tickets"),

@@ -193,7 +193,7 @@ def test_red_team_gate_trips_when_an_attack_escapes(temp_sqlite: object) -> None
     denied must be *bounded* (denied + audited). The real battery lives in
     packages/mcp/tests/test_red_team.py; this proves its predicate bites — a
     session widened to ``tickets.write`` **with the apply-verb write-mode
-    hardening (DEBT-37/D-27) regressed away** so it can self-approve actually
+    hardening (DEBT-37/D-33) regressed away** so it can self-approve actually
     applies the change, which the `bounded` predicate reports as a scope escape
     and which fails the build. (Widening alone no longer escapes — the apply-verb
     block denies approve for *any* gateway session — so the seeded regression
@@ -285,7 +285,7 @@ def test_red_team_gate_trips_when_an_attack_escapes(temp_sqlite: object) -> None
         assert db.get(Ticket, ticket_id).status == "todo"  # type: ignore[union-attr]
 
     # Simulated regression: the agent was widened to tickets.write with approve in
-    # its allowlist AND the apply-verb write-mode hardening (DEBT-37/D-27) is
+    # its allowlist AND the apply-verb write-mode hardening (DEBT-37/D-33) is
     # disabled — the call is NOT denied; it actually applies. (With the hardening
     # in place the widened agent is still denied at write_mode, so widening alone
     # no longer escapes; disabling the apply-verb block re-opens the hole, which is

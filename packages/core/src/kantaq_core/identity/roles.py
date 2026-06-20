@@ -147,7 +147,7 @@ def can(role: Role | str, action: Action, *, scopes: list[str] | None = None) ->
 # a tracked record — those are human decisions. Issuance must enforce that
 # invariant at the source: ``AGENT_SCOPE_CEILING`` is the exhaustive allow-list of
 # actions an Agent token may carry, so an over-scoped agent (e.g. ``tickets.write``)
-# is **unmintable**, not merely action-blocked at the endpoints (DEBT-37, D-27).
+# is **unmintable**, not merely action-blocked at the endpoints (DEBT-37, D-33).
 #
 # Explicit (not derived from a ``.read`` suffix) so a future Action is **excluded by
 # default** — fail closed: a new capability enters the agent ceiling only by a

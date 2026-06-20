@@ -153,7 +153,7 @@ a live session happens on the MCP transport with those headers.
 propose-first default (FR-E09-4): agents propose field changes for human
 approval, comment freely, and never mutate a tracked field directly. An **apply**
 verb (`approve`) needs `direct_write`, so it is unreachable via the gateway by
-any session (DEBT-37 / D-27) — approvals are a human Inbox action.
+any session (DEBT-37 / D-33) — approvals are a human Inbox action.
 
 ### The eight checks (FR-E09-3)
 
@@ -169,7 +169,7 @@ a structured `{"error": {"code", "message"}}`, and writes a detailed
 | 3 | **Collection scope** — every collection the tool touches is in the grant's resource scope | `collection_scope` |
 | 4 | **Tool allowlist** — fixed at creation; unknown tools deny the same way | `tool_allowlist` |
 | 5 | **Verb match** — the tool's required capability is one the grant authorized | `verb_match` |
-| 6 | **Write mode** — by verb class: a propose-first verb (`propose`/`comment`) needs `propose_only`; an **apply** verb (`approve`) needs `direct_write`, which no v0.1 session holds, so approve is unreachable via the gateway (DEBT-37 / D-27) | `write_mode` |
+| 6 | **Write mode** — by verb class: a propose-first verb (`propose`/`comment`) needs `propose_only`; an **apply** verb (`approve`) needs `direct_write`, which no v0.1 session holds, so approve is unreachable via the gateway (DEBT-37 / D-33) | `write_mode` |
 | 7 | **Memory policy on reads** — an agent's role policy filters memory; a withheld entry denies (no existence leak), a role-less agent is denied | `memory_policy` |
 | 8 | **Audit policy** — the session carries a known audit policy; a call that cannot be audited is refused | `audit_policy` |
 
@@ -248,7 +248,7 @@ preview. A `local`-visibility entry is never returned (NFR-E16-1).
   check (#8) requires a `direct_write` session — which the gateway never issues
   (it is propose-first). So **no gateway session reaches it**, agent or human:
   humans approve in the Inbox (the runtime `/v1/proposals/{id}/approve` API), an
-  agent only proposes. This is enforced in depth (DEBT-37 / D-27): an agent token
+  agent only proposes. This is enforced in depth (DEBT-37 / D-33): an agent token
   cannot even *hold* `tickets.write` (the issuance ceiling, below), and the
   write-mode check refuses approve regardless.
 

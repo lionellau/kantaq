@@ -4,7 +4,7 @@
       "agent_proposals",
       "tickets"
     ],
-    "description": "Approve a pending agent proposal \u2014 apply its diff to the ticket through the one validated apply path. An APPLY verb: it mutates the canonical ticket directly, so it needs a direct-write session, which the gateway never issues (propose-first) \u2014 no gateway session (agent or human) reaches it. Humans approve in the Inbox; an agent only proposes (DEBT-37 / D-27).",
+    "description": "Approve a pending agent proposal \u2014 apply its diff to the ticket through the one validated apply path. An APPLY verb: it mutates the canonical ticket directly, so it needs a direct-write session, which the gateway never issues (propose-first) \u2014 no gateway session (agent or human) reaches it. Humans approve in the Inbox; an agent only proposes (DEBT-37 / D-33).",
     "input_schema": {
       "additionalProperties": false,
       "properties": {

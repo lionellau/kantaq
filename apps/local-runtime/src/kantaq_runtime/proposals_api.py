@@ -48,7 +48,7 @@ EngineDep = Annotated[Engine, Depends(get_engine_dep)]
 ReaderActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_read))]
 # Approve/reject are a human decision (a ticket write) — and human-only: an agent
 # proposes through the gateway but can never decide its own proposal, even with an
-# over-scoped token (DEBT-37 / D-27, the boundary half of the issuance clamp).
+# over-scoped token (DEBT-37 / D-33, the boundary half of the issuance clamp).
 WriterActor = Annotated[VerifiedActor, Depends(require_human_action(Action.tickets_write))]
 # A decision (approve/reject) is a ticket write, so it carries the device signer
 # (E04-T4): the agent_proposals + tickets events are signed by the approver past

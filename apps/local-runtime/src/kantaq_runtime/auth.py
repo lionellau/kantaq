@@ -198,7 +198,7 @@ class require_human_action:  # noqa: N801 - reads as a dependency, not a class
     gateway — never the runtime HTTP **write** API. So a tracker/proposal write
     (create, update, comment, relate, attach, **approve/reject**) refuses an
     Agent-role token with 403, **fail closed**, mirroring the memory API's
-    ``_deny_agent``. This is the boundary half of the DEBT-37 / D-27
+    ``_deny_agent``. This is the boundary half of the DEBT-37 / D-33
     defense-in-depth: the issuance clamp (``AGENT_SCOPE_CEILING``) keeps an agent
     from *holding* ``tickets.write``, and this guarantees the endpoint refuses an
     agent even if a legacy/over-scoped token somehow presents the scope — so the

@@ -134,7 +134,7 @@ def test_agent_scope_does_not_include_telemetry(client: TestClient, agent: tuple
 def test_even_a_telemetry_scoped_agent_cannot_flip_the_toggle(
     client: TestClient, engine: Engine, owner_token: str
 ) -> None:
-    # SEC second review + DEBT-37/D-27: the opt-in is a *human* privacy decision,
+    # SEC second review + DEBT-37/D-33: the opt-in is a *human* privacy decision,
     # protected in depth. (1) Issuance refuses to mint an agent with
     # telemetry.write at all — it is over the propose-first AGENT_SCOPE_CEILING.
     # (2) The PUT handler still refuses any Agent-role token (here one holding the
