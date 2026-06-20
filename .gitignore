@@ -45,6 +45,7 @@ Thumbs.db
 # ---- Playwright (E19/E20 hero-flow e2e) ----
 web/e2e/.runtime/
 web/e2e/.uat-shots/
+web/e2e/.e2e-shots/
 web/playwright-report/
 web/test-results/
 .gstack/

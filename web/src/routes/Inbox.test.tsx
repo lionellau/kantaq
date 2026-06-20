@@ -5,7 +5,7 @@
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Proposal } from "../api/types";
+import type { MemoryEntry, Proposal } from "../api/types";
 import { clearToken, setToken } from "../lib/session";
 import {
   buildAuditCall,
@@ -20,13 +20,17 @@ import { renderApp } from "../test/render";
 
 let server: MockApiServer;
 let queue: Proposal[];
+let memProposed: MemoryEntry[];
 
 beforeEach(() => {
   setToken("test-token");
   queue = [buildProposal()];
+  memProposed = [];
   server = new MockApiServer()
     .on("GET /v1/proposals", () => queue)
     .on("GET /v1/audit/range", [])
+    // The Inbox's memory-promotions tab fetches `proposed` entries.
+    .on("GET /v1/memory", () => memProposed)
     // The proposal's ticket (for before-values) and its cited memory.
     .on("GET /v1/tickets/{ticket_id}", buildTicket({ status: "todo" }))
     .on("GET /v1/tickets/{ticket_id}/memory", []);
@@ -129,24 +133,100 @@ describe("the Inbox queue", () => {
     expect(screen.getByText(/denied: tool_allowlist/)).toBeDefined();
   });
 
-  it("the memory-promotions tab points to the working CLI/MCP loop (GUI lands v0.3)", async () => {
-    renderApp("/inbox");
-    await screen.findByRole("link", { name: "Fix the flux capacitor" });
-
-    fireEvent.click(screen.getByRole("tab", { name: /Memory promotions/ }));
-
-    // The copy is split by a <code> element, so match the <p>'s full text.
-    const copy = await screen.findByText(
-      (_content, el) =>
-        el?.tagName === "P" && /available today via the CLI and MCP/.test(el.textContent ?? ""),
-    );
-    expect(copy.textContent).toContain("lands in v0.3");
-  });
-
   it("badges the proposals tab with the pending count", async () => {
     renderApp("/inbox");
     const tab = await screen.findByRole("tab", { name: /Proposals/ });
     expect(within(tab).getByText("1")).toBeDefined();
+  });
+});
+
+describe("the Inbox memory-promotions tab (E13-T6 / MOD-19 — closes DEBT-28)", () => {
+  it("lists a proposed entry with its title, body preview, and provenance", async () => {
+    memProposed = [
+      buildMemoryEntry({
+        id: "mem-7",
+        title: "Adopt commit-order fold",
+        body: "Events fold in commit order, never wall-clock.",
+        review_status: "proposed",
+        provenance: { detail: "promoted from a local entry" },
+      }),
+    ];
+    renderApp("/inbox");
+    fireEvent.click(await screen.findByRole("tab", { name: /Memory promotions/ }));
+
+    expect(await screen.findByText("Adopt commit-order fold")).toBeDefined();
+    expect(screen.getByText(/Events fold in commit order/)).toBeDefined();
+    expect(screen.getByText(/promoted from a local entry/)).toBeDefined();
+  });
+
+  it("approve posts to the human-only memory approve route and notices success", async () => {
+    memProposed = [buildMemoryEntry({ id: "mem-7", review_status: "proposed" })];
+    server.on("POST /v1/memory/{memory_id}/approve", () => {
+      memProposed = [];
+      return buildMemoryEntry({ id: "mem-7", review_status: "approved" });
+    });
+    renderApp("/inbox");
+    fireEvent.click(await screen.findByRole("tab", { name: /Memory promotions/ }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+
+    await waitFor(() => expect(screen.getByText(/now shared with the team/)).toBeDefined());
+    const call = server.calls.find(
+      (c) => c.method === "POST" && c.path === "/v1/memory/mem-7/approve",
+    );
+    expect(call).toBeDefined();
+  });
+
+  it("reject posts to the memory reject route", async () => {
+    memProposed = [buildMemoryEntry({ id: "mem-7", review_status: "proposed" })];
+    server.on("POST /v1/memory/{memory_id}/reject", () => {
+      memProposed = [];
+      return buildMemoryEntry({ id: "mem-7", review_status: "rejected" });
+    });
+    renderApp("/inbox");
+    fireEvent.click(await screen.findByRole("tab", { name: /Memory promotions/ }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Reject" }));
+
+    await waitFor(() => expect(screen.getByText("Rejected.")).toBeDefined());
+    const call = server.calls.find(
+      (c) => c.method === "POST" && c.path === "/v1/memory/mem-7/reject",
+    );
+    expect(call).toBeDefined();
+  });
+
+  it("explains a 409 (someone decided the promotion first)", async () => {
+    memProposed = [buildMemoryEntry({ id: "mem-7", review_status: "proposed" })];
+    server.on(
+      "POST /v1/memory/{memory_id}/approve",
+      () => new Response(JSON.stringify({ detail: "already approved" }), { status: 409 }),
+    );
+    renderApp("/inbox");
+    fireEvent.click(await screen.findByRole("tab", { name: /Memory promotions/ }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+
+    await waitFor(() => expect(screen.getByText(/already decided elsewhere/)).toBeDefined());
+  });
+
+  it("badges the tab with the proposed count", async () => {
+    memProposed = [
+      buildMemoryEntry({ id: "mem-7", review_status: "proposed" }),
+      buildMemoryEntry({ id: "mem-8", review_status: "proposed" }),
+    ];
+    renderApp("/inbox");
+    const tab = await screen.findByRole("tab", { name: /Memory promotions/ });
+    await waitFor(() => expect(within(tab).getByText("2")).toBeDefined());
+
+    fireEvent.click(tab);
+    await waitFor(() => expect(screen.getAllByLabelText(/memory promotion mem-/)).toHaveLength(2));
+  });
+
+  it("shows the memory-zero state when nothing is proposed", async () => {
+    memProposed = [];
+    renderApp("/inbox");
+    fireEvent.click(await screen.findByRole("tab", { name: /Memory promotions/ }));
+    expect(await screen.findByText(/No memory promotions waiting/)).toBeDefined();
   });
 });
 

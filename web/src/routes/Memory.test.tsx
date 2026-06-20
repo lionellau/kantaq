@@ -123,3 +123,58 @@ describe("the memory page", () => {
     expect(screen.getByText(/Not connected/)).toBeDefined();
   });
 });
+
+describe("promote to team (E13-T6 / MOD-19 — closes DEBT-28)", () => {
+  it("promotes a local entry into the Inbox approval queue", async () => {
+    server.on("GET /v1/memory", [
+      buildMemoryEntry({
+        id: "mem-5",
+        title: "Private learning",
+        visibility: "local",
+        domain_visibility: "private_local",
+      }),
+    ]);
+    server.on(
+      "POST /v1/memory/{memory_id}/promote",
+      () =>
+        new Response(JSON.stringify(buildMemoryEntry({ id: "mem-6", review_status: "proposed" })), {
+          status: 201,
+        }),
+    );
+    renderApp("/memory");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Promote to team" }));
+
+    await waitFor(() => expect(screen.getByText(/awaiting approval in the Inbox/)).toBeDefined());
+    const call = server.calls.find(
+      (c) => c.method === "POST" && c.path === "/v1/memory/mem-5/promote",
+    );
+    expect(call).toBeDefined();
+  });
+
+  it("offers promote on a team draft but not on an already-proposed entry", async () => {
+    server.on("GET /v1/memory", [
+      buildMemoryEntry({ id: "mem-draft", title: "Draft note", review_status: "draft" }),
+      buildMemoryEntry({ id: "mem-prop", title: "Already proposed", review_status: "proposed" }),
+    ]);
+    renderApp("/memory");
+
+    await screen.findByText("Draft note");
+    // Exactly one Promote button: the draft has it, the proposed entry does not.
+    expect(screen.getAllByRole("button", { name: "Promote to team" })).toHaveLength(1);
+  });
+
+  it("explains a 422 (the entry can't be promoted from its current state)", async () => {
+    server.on("GET /v1/memory", [buildMemoryEntry({ id: "mem-5", review_status: "draft" })]);
+    server.on(
+      "POST /v1/memory/{memory_id}/promote",
+      () => new Response(JSON.stringify({ detail: "bad state" }), { status: 422 }),
+    );
+    renderApp("/memory");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Promote to team" }));
+    await waitFor(() =>
+      expect(screen.getByText(/can't be promoted from its current state/)).toBeDefined(),
+    );
+  });
+});
