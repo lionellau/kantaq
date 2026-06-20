@@ -17,7 +17,11 @@ from datetime import UTC, datetime
 
 from sqlmodel import Session, select
 
-from kantaq_core.identity.roles import Role
+from kantaq_core.identity.roles import (
+    Role,
+    agent_scopes_over_ceiling,
+    clamp_agent_scopes,
+)
 from kantaq_core.identity.tokens import mint_token
 from kantaq_db.models import Member, Token, Workspace, new_id
 
@@ -98,9 +102,23 @@ class IdentityService:
 
         ``scopes`` only applies to ``Agent`` members (token-scoped, PRD §11);
         human tokens carry no scopes — their role decides.
+
+        An Agent token is **clamped at issuance** to the propose-first ceiling
+        (:data:`AGENT_SCOPE_CEILING`, D-27): any requested scope outside it —
+        ``tickets.write``, ``memory.approve``, an admin action, or an unknown
+        string — is **rejected, fail closed**, so an over-scoped agent that could
+        self-approve or direct-write (DEBT-37) is unmintable, not merely
+        action-blocked at the endpoints.
         """
         if role is not Role.agent and scopes:
             raise IdentityError("scopes are only valid for Agent members")
+        if role is Role.agent and scopes:
+            over = agent_scopes_over_ceiling(scopes)
+            if over:
+                raise IdentityError(
+                    "agent scopes may not exceed the propose-first ceiling "
+                    f"(reads + proposals.write/memory.write); refusing: {over}"
+                )
         member = Member(
             workspace_id=self._workspace().id,
             email=email,
@@ -127,11 +145,19 @@ class IdentityService:
         return member
 
     def rotate_token(self, member_id: str) -> MintedToken:
-        """Revoke the member's active tokens and mint a fresh one."""
+        """Revoke the member's active tokens and mint a fresh one.
+
+        Carried agent scopes are **healed to the ceiling** on rotation
+        (:func:`clamp_agent_scopes`, D-27): a legacy over-scoped token drops its
+        excess rather than carrying it forward — privilege only narrows. (Only an
+        Agent carries scopes; a human rotation is a no-op clamp.)
+        """
         member = self.get_member(member_id)
         if member.status == "revoked":
             raise IdentityError(f"member {member_id} is revoked; invite them again instead")
         scopes = self._active_scopes(member_id)
+        if member.role == Role.agent.value:
+            scopes = clamp_agent_scopes(scopes)
         self._revoke_tokens(member_id)
         minted = self._mint_for(member, scopes=scopes)
         self._session.commit()

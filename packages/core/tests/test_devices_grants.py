@@ -689,16 +689,20 @@ def test_ensure_member_grant_for_agent_uses_token_scopes(
     engine: Engine, keychain: FakeKeychain, clock: FakeClock, owner_id: str
 ) -> None:
     """An agent's self-grant derives from its token scopes, not a role row —
-    it never widens what the token allows (D-03)."""
+    it never widens what the token allows (D-03). (Scopes stay inside the
+    propose-first AGENT_SCOPE_CEILING; an over-scoped mint is refused — see
+    test_agent_scope_ceiling.)"""
     with Session(engine) as session:
         ensure_device(session, keychain, member_id=owner_id, now=_now(clock)())
         agent = IdentityService(session).invite(
-            email="agent@example.com", role=Role.agent, scopes=["tickets.write"]
+            email="agent@example.com",
+            role=Role.agent,
+            scopes=["tickets.read", "proposals.write"],
         )
         session.commit()
         grant = ensure_member_grant(session, keychain, agent.member_id, now=_now(clock))
         session.commit()
-        assert grant.verbs == ["tickets.write"]
+        assert set(grant.verbs) == {"tickets.read", "proposals.write"}
         assert grant.subject == agent.member_id
         assert _grant_service(session, keychain, clock).verify(grant).ok
 

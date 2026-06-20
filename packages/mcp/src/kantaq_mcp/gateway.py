@@ -19,8 +19,10 @@ operational liveness/rate cuts):
 6. tool allowlist — fixed at session creation; unknown tools deny the same way.
 7. verb match — the tool's required capability is one the grant authorized
    (re-checked against the grant verbs, independent of the cached allowlist).
-8. write mode — propose verbs need ``propose_only``; nothing grants
-   ``direct_write`` in v0.1 (FR-E09-4).
+8. write mode — by verb class: a propose-first verb (propose/comment) needs
+   ``propose_only``; an *apply* verb (approve) needs ``direct_write``, which no
+   v0.1 session holds (FR-E09-4, DEBT-08) — so approve is unreachable via the
+   gateway for anyone (an over-scoped agent cannot self-approve, DEBT-37/D-27).
 9. audit policy — the session carries a known audit policy; a call that cannot
    be audited per policy is refused (an agent action is never unaudited).
 
@@ -59,10 +61,11 @@ from kantaq_core.identity import Role, TokenVerifier, VerifiedActor, verify_gran
 from kantaq_core.memory_policy import policy_for
 from kantaq_core.telemetry import TelemetryService
 from kantaq_db.models import CapabilityGrantRow
-from kantaq_mcp.catalog import CATALOG_BY_NAME, ToolSpec, dispatch
+from kantaq_mcp.catalog import APPLY_VERBS, CATALOG_BY_NAME, ToolSpec, dispatch
 from kantaq_mcp.session import (
     DEFAULT_SESSION_TTL,
     KNOWN_AUDIT_POLICIES,
+    WRITE_MODE_DIRECT_WRITE,
     WRITE_MODE_PROPOSE_ONLY,
     GatewaySession,
     SessionDerivationError,
@@ -403,8 +406,23 @@ class Gateway:
                 DENY_VERB_MATCH,
                 f"the grant does not authorize {spec.required_action!r} for {tool_name!r}",
             )
-        # 8. write mode.
-        if spec.verb != "read" and session.write_mode != WRITE_MODE_PROPOSE_ONLY:
+        # 8. write mode — propose-first by verb class (FR-E09-4, DEBT-37/D-27).
+        #    An APPLY verb (approve) mutates the canonical record directly, so it
+        #    needs ``direct_write`` — which no v0.1 session holds (DEBT-08). So it
+        #    is unreachable via the gateway for *anyone* (an over-scoped agent
+        #    cannot self-approve; humans approve in the Inbox). A propose-first
+        #    verb (propose/comment) needs ``propose_only``. This is the shared
+        #    check, so the apply-verb block holds over HTTP *and* stdio.
+        if spec.verb in APPLY_VERBS:
+            if session.write_mode != WRITE_MODE_DIRECT_WRITE:
+                self._deny(
+                    session,
+                    tool_name,
+                    DENY_WRITE_MODE,
+                    f"{spec.verb!r} applies a change to the canonical record and needs a "
+                    "direct-write session; the gateway is propose-first — approve in the Inbox",
+                )
+        elif spec.verb != "read" and session.write_mode != WRITE_MODE_PROPOSE_ONLY:
             self._deny(
                 session,
                 tool_name,

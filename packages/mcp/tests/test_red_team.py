@@ -224,6 +224,38 @@ def test_escalate_approve_own_proposal(arena: Arena) -> None:
     )
 
 
+def test_escalate_overscoped_self_approve(arena: Arena) -> None:
+    """DEBT-37 in depth: an over-scoped agent (``tickets.write``) clears the
+    allowlist AND verb-match — yet the apply-verb write-mode block denies approve.
+
+    Issuance now refuses to mint such an agent (``AGENT_SCOPE_CEILING``), so this
+    simulates a legacy/forged session to prove the *gateway* check is the
+    independent guarantee: even if an over-scoped session exists, approve never
+    applies. The agent proposes legitimately, then tries to approve its own
+    proposal; nothing moves.
+    """
+    s = arena.session(suffix="overscope", granted_verbs=(*MALICIOUS_VERBS, "tickets.write"))
+    queued = _run(
+        arena,
+        s,
+        "agent_action_propose",
+        {"ticket_id": arena.ticket_id, "changes": {"status": "done"}},
+    )
+    assert not queued.denied and queued.result is not None
+    proposal_id = queued.result["proposal"]["id"]
+    _assert_bounded(
+        arena,
+        "escalate-overscoped-self-approve",
+        s,
+        "agent_action_approve",
+        {"proposal_id": proposal_id},
+        DENY_WRITE_MODE,
+    )
+    with Session(arena.engine) as db:
+        assert db.get(AgentProposal, proposal_id).status == "pending"  # type: ignore[union-attr]
+        assert db.get(Ticket, arena.ticket_id).status == "todo"  # type: ignore[union-attr]
+
+
 def test_escalate_forged_and_audit_tools(arena: Arena) -> None:
     """Tools the model invents — including one to read the audit log — never exist."""
     s = arena.session(suffix="forged")

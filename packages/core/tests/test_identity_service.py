@@ -90,6 +90,71 @@ def test_rotate_preserves_agent_scopes(engine: Engine) -> None:
         assert token.scopes == ["members.read"]
 
 
+# ------------------------------------------ DEBT-37 / D-27: agent scope ceiling
+
+
+def test_invite_accepts_the_propose_first_agent_default(engine: Engine) -> None:
+    """The shipped My Agent default (reads + proposals.write/memory.write) mints."""
+    with Session(engine) as session:
+        service = IdentityService(session)
+        service.bootstrap_owner()
+        minted = service.invite(
+            email="bot@team.dev",
+            role=Role.agent,
+            scopes=["tickets.read", "proposals.write", "memory.read", "memory.write"],
+        )
+        token = session.get(Token, minted.token_id)
+        assert token is not None
+        assert set(token.scopes) == {
+            "tickets.read",
+            "proposals.write",
+            "memory.read",
+            "memory.write",
+        }
+
+
+@pytest.mark.parametrize(
+    "over_scope",
+    ["tickets.write", "memory.approve", "telemetry.write", "members.invite", "bogus.scope"],
+)
+def test_invite_refuses_an_over_scoped_agent(engine: Engine, over_scope: str) -> None:
+    """An agent scope outside AGENT_SCOPE_CEILING — direct-write, approve, admin,
+    or unknown — is refused at issuance, fail closed (DEBT-37 / D-27): the
+    over-scoped agent that could self-approve or direct-write is unmintable."""
+    with Session(engine) as session:
+        service = IdentityService(session)
+        service.bootstrap_owner()
+        with pytest.raises(IdentityError, match="propose-first ceiling"):
+            service.invite(
+                email="overscoped@team.dev",
+                role=Role.agent,
+                scopes=["tickets.read", over_scope],
+            )
+        # Fail closed: nothing was created for the rejected invite.
+        assert not any(m.email == "overscoped@team.dev" for m in service.list_members())
+
+
+def test_rotate_heals_a_legacy_over_scoped_agent_token(engine: Engine) -> None:
+    """A token minted before the clamp keeps no excess: rotation drops anything
+    outside the ceiling (privilege only narrows)."""
+    with Session(engine) as session:
+        service = IdentityService(session)
+        service.bootstrap_owner()
+        agent = service.invite(email="bot@team.dev", role=Role.agent, scopes=["tickets.read"])
+        # Simulate a legacy over-scoped token (issuance would now refuse this).
+        legacy = session.get(Token, agent.token_id)
+        assert legacy is not None
+        legacy.scopes = ["tickets.read", "tickets.write", "proposals.write"]
+        session.add(legacy)
+        session.commit()
+
+        rotated = service.rotate_token(agent.member_id)
+        healed = session.get(Token, rotated.token_id)
+        assert healed is not None
+        assert "tickets.write" not in healed.scopes  # the excess is dropped
+        assert set(healed.scopes) == {"tickets.read", "proposals.write"}
+
+
 def test_revoke_member_kills_member_and_tokens(engine: Engine) -> None:
     with Session(engine) as session:
         service = IdentityService(session)

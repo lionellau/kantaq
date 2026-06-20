@@ -25,6 +25,7 @@ from kantaq_core.identity import (
     FileKeychain,
     IdentityService,
     Keychain,
+    Role,
     TokenVerifier,
     VerifiedActor,
     can,
@@ -183,6 +184,40 @@ class require_action:  # noqa: N801 - reads as a dependency, not a class
         self._action = action
 
     def __call__(self, actor: Annotated[VerifiedActor, Depends(require_actor)]) -> VerifiedActor:
+        if not can(actor.role, self._action, scopes=list(actor.scopes)):
+            raise HTTPException(
+                status_code=403, detail=f"role {actor.role!r} may not {self._action.value}"
+            )
+        return actor
+
+
+class require_human_action:  # noqa: N801 - reads as a dependency, not a class
+    """``require_action``, but the actor must also be a **human** (not an Agent).
+
+    An agent talks to kantaq only through the policy-enforced, propose-first MCP
+    gateway — never the runtime HTTP **write** API. So a tracker/proposal write
+    (create, update, comment, relate, attach, **approve/reject**) refuses an
+    Agent-role token with 403, **fail closed**, mirroring the memory API's
+    ``_deny_agent``. This is the boundary half of the DEBT-37 / D-27
+    defense-in-depth: the issuance clamp (``AGENT_SCOPE_CEILING``) keeps an agent
+    from *holding* ``tickets.write``, and this guarantees the endpoint refuses an
+    agent even if a legacy/over-scoped token somehow presents the scope — so the
+    self-approve / direct-write hole is closed at issuance *and* at the door.
+
+    Reads stay on ``require_action`` (an agent reading a ticket over HTTP leaks
+    nothing the gateway would withhold — unlike memory, which needs a context
+    role to filter — so only writes are human-gated here).
+    """
+
+    def __init__(self, action: Action) -> None:
+        self._action = action
+
+    def __call__(self, actor: Annotated[VerifiedActor, Depends(require_actor)]) -> VerifiedActor:
+        if actor.role == Role.agent.value:
+            raise HTTPException(
+                status_code=403,
+                detail="agents propose through the MCP gateway, not the HTTP write API",
+            )
         if not can(actor.role, self._action, scopes=list(actor.scopes)):
             raise HTTPException(
                 status_code=403, detail=f"role {actor.role!r} may not {self._action.value}"

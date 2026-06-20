@@ -33,7 +33,15 @@ from kantaq_core.identity.grants import (
     verify_grant_row,
 )
 from kantaq_core.identity.keychain import FileKeychain, Keychain
-from kantaq_core.identity.roles import ROLE_PERMISSIONS, Action, Role, can
+from kantaq_core.identity.roles import (
+    AGENT_SCOPE_CEILING,
+    ROLE_PERMISSIONS,
+    Action,
+    Role,
+    agent_scopes_over_ceiling,
+    can,
+    clamp_agent_scopes,
+)
 from kantaq_core.identity.service import (
     IdentityError,
     IdentityService,
@@ -56,6 +64,7 @@ __all__ = [
     "MAX_AGENT_GRANT_TTL_SECONDS",
     "MAX_GRANT_TTL_SECONDS",
     "MAX_HUMAN_GRANT_TTL_SECONDS",
+    "AGENT_SCOPE_CEILING",
     "ROLE_PERMISSIONS",
     "Action",
     "DeviceNotFoundError",
@@ -83,7 +92,9 @@ __all__ = [
     "verify_grant_row",
     "verification_roots",
     "VerifiedActor",
+    "agent_scopes_over_ceiling",
     "can",
+    "clamp_agent_scopes",
     "hash_secret",
     "mint_token",
     "parse_token",
