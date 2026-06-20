@@ -73,7 +73,7 @@ def test_v1_requires_a_bearer_token(client: TestClient) -> None:
 
 
 def test_invalid_token_is_rejected(client: TestClient) -> None:
-    r = client.get("/v1/events", headers={"authorization": "Bearer kqt_bogus.nope"})
+    r = client.get("/v1/events", headers={"authorization": "Bearer kq_bogus.nope"})
     assert r.status_code == 401
 
 
@@ -111,6 +111,30 @@ def test_actor_must_be_the_authenticated_member(client: TestClient, token: str) 
     assert r.json()["detail"]["code"] == "policy_denied"
     # and nothing committed
     assert client.get("/v1/events", headers=auth).json() == []
+
+
+def test_ack_is_bound_to_the_authenticated_member_not_the_body(
+    pg_engine: Engine, client: TestClient, token: str
+) -> None:
+    """[SEC red-team] A member cannot move a peer's ack watermark.
+
+    The body's member_id is untrusted; the server writes the ack row under the
+    authenticated member. Without this binding any member could overwrite a
+    peer's watermark and (once self-hosted retention compaction lands) trigger
+    premature pruning of sync_events a lagging replica still needs — the
+    cross-member stranding the Supabase RLS path prevents."""
+    from sqlalchemy import select as sa_select
+
+    from kantaq_backend_postgres.schema import sync_acks
+
+    auth = {"authorization": f"Bearer {token}"}
+    forged = {"member_id": "mbr_victim00000000000000", "replica_id": "dev_x", "acked_rev": 999}
+    assert client.post("/v1/acks", json=forged, headers=auth).status_code == 200
+
+    with pg_engine.connect() as conn:
+        rows = conn.execute(sa_select(sync_acks.c.member_id, sync_acks.c.acked_rev)).all()
+    # exactly one row, owned by the AUTHENTICATED member — not the forged victim
+    assert [(r.member_id, r.acked_rev) for r in rows] == [(MEMBER, 999)]
 
 
 def test_client_cannot_relax_the_server_signature_floor(pg_engine: Engine, token: str) -> None:

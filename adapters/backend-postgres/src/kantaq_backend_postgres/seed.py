@@ -7,7 +7,7 @@ and their bearer token so a runtime can authenticate. The token is shown once
     docker compose exec sync-server uv run python -m kantaq_backend_postgres.seed \
         --email you@team.dev --workspace "Acme"
 
-prints a ``kqt_…`` token; put it in the runtime's ``.env`` as ``HUB_TOKEN``.
+prints a ``kq_…`` token; put it in the runtime's ``.env`` as ``HUB_TOKEN``.
 """
 
 from __future__ import annotations

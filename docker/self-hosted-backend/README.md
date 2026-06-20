@@ -31,7 +31,7 @@ On each teammate's machine (the one running `kantaq`), set in the runtime's
 ```
 HUB_MODE=postgres
 HUB_URL=http://your-server-host:8889    # or https://your-domain behind Caddy
-HUB_TOKEN=kqt_<member token>            # a normal kantaq member token
+HUB_TOKEN=kq_<member token>            # a normal kantaq member token
 ```
 
 Then verify and sync:

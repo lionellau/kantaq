@@ -90,7 +90,7 @@ def test_backend_round_trips_through_the_client(
 
 
 def test_invalid_token_surfaces_an_error(client_for_server: httpx.Client) -> None:
-    backend = SyncServerBackend(SERVER_URL, "kqt_bogus.nope", client=client_for_server)
+    backend = SyncServerBackend(SERVER_URL, "kq_bogus.nope", client=client_for_server)
     with pytest.raises(SyncBackendError) as exc:
         backend.pull("tickets")
     assert exc.value.status_code == 401

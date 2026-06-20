@@ -94,7 +94,10 @@ class SessionRequest(BaseModel):
 
 
 class AckRequest(BaseModel):
-    member_id: str
+    # member_id is NOT taken from the body (SEC): the server binds the ack row to
+    # the authenticated member so a caller can never move a peer's watermark. The
+    # field is accepted-but-ignored for wire-compat with the Supabase client.
+    member_id: str | None = None
     replica_id: str
     acked_rev: int
 
@@ -235,8 +238,12 @@ def create_app(
     def ack(
         body: AckRequest, actor: Annotated[VerifiedActor, Depends(require_actor)]
     ) -> dict[str, str]:
+        # SEC: bind the ack row to the AUTHENTICATED member, never the body's
+        # member_id — otherwise any member could overwrite a peer's watermark
+        # (the cross-member stranding the Supabase RLS path prevents; no RLS
+        # here, so the binding lives in the validator/auth layer, D-31).
         _backend(actor.member_id).update_ack_watermark(
-            member_id=body.member_id, replica_id=body.replica_id, acked_rev=body.acked_rev
+            member_id=actor.member_id, replica_id=body.replica_id, acked_rev=body.acked_rev
         )
         return {"status": "ok"}
 

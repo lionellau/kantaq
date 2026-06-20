@@ -148,11 +148,11 @@ class SyncServerBackend:
     def update_ack_watermark(
         self, *, member_id: str, replica_id: str, acked_rev: int, now: datetime | None = None
     ) -> None:
-        del now  # the server timestamps the upsert
-        self._post(
-            "/v1/acks",
-            {"member_id": member_id, "replica_id": replica_id, "acked_rev": acked_rev},
-        )
+        # member_id is intentionally NOT sent: the server binds the ack row to the
+        # authenticated member (SEC — a caller cannot move a peer's watermark).
+        # The parameter is kept for BackendPort symmetry with SupabaseSyncBackend.
+        del now, member_id  # the server timestamps the upsert + owns the member binding
+        self._post("/v1/acks", {"replica_id": replica_id, "acked_rev": acked_rev})
 
     def safe_watermark_rev(self, *, ttl_days: int = 30, now: datetime | None = None) -> int | None:
         del now
