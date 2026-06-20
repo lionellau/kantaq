@@ -11,15 +11,12 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import type { Member } from "../../api/types";
+import { AGENT_SCOPES } from "../../lib/agent";
 import { fmtDateTime } from "../../lib/format";
 import { useSession } from "../../lib/session";
 import * as ui from "../../lib/ui";
 
 const ROLES = ["Member", "Maintainer", "Viewer", "Agent"] as const;
-
-// The propose-first default for agent tokens (docs/mcp.md): read tickets,
-// store proposals — never a direct write.
-const AGENT_SCOPES = ["tickets.read", "proposals.write"];
 
 interface MintedToken {
   memberEmail: string;
@@ -200,7 +197,7 @@ function InviteForm({
       body: {
         email: email.trim(),
         role,
-        scopes: role === "Agent" ? AGENT_SCOPES : [],
+        scopes: role === "Agent" ? [...AGENT_SCOPES] : [],
       },
     });
     if (apiError !== undefined || data === undefined) {

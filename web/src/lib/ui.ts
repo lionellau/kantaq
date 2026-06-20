@@ -84,6 +84,19 @@ export const dangerButton: CSSProperties = {
   borderColor: "#fecaca",
 };
 
+// A button that reads as an inline link (for low-emphasis affordances inside a
+// sentence, e.g. "switch back to a scoped agent token"). Keeps the semantics of
+// a button (an action) while looking like prose.
+export const linkButton: CSSProperties = {
+  border: "none",
+  background: "none",
+  padding: 0,
+  color: palette.accent,
+  font: "inherit",
+  textDecoration: "underline",
+  cursor: "pointer",
+};
+
 export const card: CSSProperties = {
   border: `1px solid ${palette.border}`,
   borderRadius: 8,

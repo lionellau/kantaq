@@ -1,21 +1,34 @@
 /**
- * E21-T2 (MOD-13, SEC) — Settings → My Agent: the loopback MCP snippet.
+ * E21-T2 + E20-T7 (MOD-13 / MOD-06 / MOD-08, SEC) — Settings → My Agent.
  *
  * The runtime returns the snippet skeleton with a placeholder where the token
  * goes (`/v1/me/agent-snippet` never carries a secret — NFR-E06-1); this page
- * substitutes the member's own session token client-side, so the secret never
- * makes a round trip. Defense in depth on the URL: even though the server
- * already asserts loopback, the page re-checks and refuses to render a
- * snippet that points anywhere but the member's own machine (FR-E21-3 — the
- * agent talks to *your* runtime, never someone else's).
+ * substitutes a token client-side, so the secret never round-trips.
+ *
+ * E20-T7 makes the **safe path the easy path**: the default embedded credential
+ * is a freshly-minted **scoped Agent token** (a propose-only Agent member —
+ * `tickets.read` + `proposals.write`, the D-03 ceiling), issued through the
+ * shipped Members invite path, *not* the human's own full-reach token. The
+ * embedded identity is labelled. The owner-token path stays available as an
+ * explicit, labelled opt-in, so a member who already pasted the owner snippet
+ * keeps working. The panel **auto-detects** the gateway coming up (a 2 s poll,
+ * no manual Reload), and a live **connection badge** reflects the gateway's pid
+ * liveness + the most-recent audited MCP call — honest, never optimistic.
+ *
+ * Defense in depth on the URL: even though the server asserts loopback, the page
+ * re-checks and refuses to render a snippet that points anywhere but the
+ * member's own machine (FR-E21-3).
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import type { AgentSnippet } from "../../api/types";
+import ConnectionBadge from "../../components/ConnectionBadge";
+import { AGENT_SCOPES } from "../../lib/agent";
 import { getToken, useSession } from "../../lib/session";
 import * as ui from "../../lib/ui";
+import { usePolling } from "../../lib/usePolling";
 
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
@@ -27,27 +40,45 @@ export function isLoopback(url: string): boolean {
   }
 }
 
+interface ScopedAgent {
+  email: string;
+  token: string;
+}
+
 export default function MyAgent() {
   const { connected } = useSession();
   const [snippet, setSnippet] = useState<AgentSnippet | null>(null);
+  const [lastCallAt, setLastCallAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!connected) {
       return;
     }
-    const { data, error: apiError } = await api.GET("/v1/me/agent-snippet");
-    if (apiError !== undefined) {
+    const [snipRes, callsRes] = await Promise.all([
+      api.GET("/v1/me/agent-snippet"),
+      api.GET("/v1/audit/range", { params: { query: { source: "mcp", limit: 25 } } }),
+    ]);
+    if (snipRes.error !== undefined) {
       setError("could not load the agent snippet");
       return;
     }
     setError(null);
-    setSnippet(data);
+    setSnippet(snipRes.data);
+    // The badge greens on the last *successful* agent call only. A denied call
+    // (a tool.deny row, which carries a `reason`) is real activity but not
+    // health, so it must never read as "active" — the Inbox/Agents denied
+    // surfaces are where denials belong.
+    const lastSuccess = callsRes.data?.find((call) => call.reason === null);
+    setLastCallAt(lastSuccess?.created_at ?? null);
   }, [connected]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+  // Auto-detect the gateway: poll so the panel flips the moment `kantaq mcp dev`
+  // comes up (and the connection badge stays current) — no manual Reload.
+  usePolling(refresh, 2000, connected);
 
   if (!connected) {
     return (
@@ -67,22 +98,57 @@ export default function MyAgent() {
           ← Settings
         </Link>
       </p>
-      <h1>My Agent</h1>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <h1>My Agent</h1>
+        <ConnectionBadge gatewayLive={snippet?.gateway_live ?? undefined} lastCallAt={lastCallAt} />
+      </div>
       <p style={ui.muted}>
         Connect your coding agent to <strong>your own</strong> loopback MCP gateway. It reads
         tickets and proposes changes; nothing applies until a human approves it in the Inbox.
       </p>
       {error !== null && <p style={ui.errorText}>{error}</p>}
-      {snippet !== null && <SnippetPanel snippet={snippet} onReload={() => void refresh()} />}
+      {snippet !== null && <SnippetPanel snippet={snippet} />}
     </section>
   );
 }
 
-function SnippetPanel({ snippet, onReload }: { snippet: AgentSnippet; onReload: () => void }) {
-  // The selected Tier-1 client; default to the first the runtime offered
-  // (Claude Code). Hooks must run before any early return.
+function SnippetPanel({ snippet }: { snippet: AgentSnippet }) {
   const [clientId, setClientId] = useState<string>(snippet.clients[0]?.client ?? "claude_code");
+  // The default identity is a scoped Agent token (minted on demand); the owner
+  // token is an explicit, labelled opt-in (it keeps existing setups working).
+  const [agent, setAgent] = useState<ScopedAgent | null>(null);
+  const [useOwnerToken, setUseOwnerToken] = useState(false);
+  const [agentEmail, setAgentEmail] = useState("my-coding-agent@agents.local");
+  const [genError, setGenError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
+  async function createScopedAgent() {
+    setBusy(true);
+    setGenError(null);
+    const { data, error, response } = await api.POST("/v1/members/invite", {
+      body: { email: agentEmail.trim(), role: "Agent", scopes: [...AGENT_SCOPES] },
+    });
+    setBusy(false);
+    if (error !== undefined || data === undefined) {
+      setGenError(
+        response?.status === 403
+          ? "your role may not invite an agent — ask an Owner or Maintainer"
+          : "could not create the agent (is that email already taken?)",
+      );
+      return;
+    }
+    setAgent({ email: data.member.email, token: data.token });
+  }
+
+  // Gateway down: tell the member to start it; we auto-detect (poll) — no Reload.
   if (
     !snippet.gateway_live ||
     snippet.gateway_url === null ||
@@ -92,19 +158,15 @@ function SnippetPanel({ snippet, onReload }: { snippet: AgentSnippet; onReload: 
     return (
       <div style={ui.card}>
         <p style={{ marginTop: 0 }}>
-          The MCP gateway is not running. Start it on this machine, then reload:
+          Start the MCP gateway on this machine — this panel detects it automatically:
         </p>
         <pre style={{ background: ui.palette.surface, padding: "0.5rem" }}>kantaq mcp dev</pre>
-        <button type="button" style={ui.button} onClick={onReload}>
-          Reload
-        </button>
+        <p style={ui.muted}>Waiting for your gateway… (no need to reload)</p>
       </div>
     );
   }
 
   if (!isLoopback(snippet.gateway_url)) {
-    // Should be unreachable (the server asserts loopback too), but a snippet
-    // pointing at another host is exactly the failure E21-T2 exists to stop.
     return (
       <p role="alert" style={ui.errorText}>
         Refusing to render: the gateway URL {snippet.gateway_url} is not loopback. Your agent must
@@ -114,12 +176,13 @@ function SnippetPanel({ snippet, onReload }: { snippet: AgentSnippet; onReload: 
   }
 
   const selected = snippet.clients.find((c) => c.client === clientId) ?? snippet.clients[0];
-  const token = getToken();
+  // The token to embed: the scoped Agent token by default (null until minted, so
+  // the snippet shows the placeholder, never the owner token); the owner token
+  // only on explicit opt-in.
+  const token = useOwnerToken ? getToken() : (agent?.token ?? null);
   const sub = (text: string) =>
-    text.replaceAll(snippet.token_placeholder, token ?? snippet.token_placeholder);
+    token !== null ? text.replaceAll(snippet.token_placeholder, token) : text;
   const rendered = sub(selected.text);
-  // Codex keeps the bearer out of the config file and reads it from an env var;
-  // `setup` carries that export (with the token substituted in).
   const setup = selected.setup !== null ? sub(selected.setup) : null;
 
   const preStyle = {
@@ -131,7 +194,22 @@ function SnippetPanel({ snippet, onReload }: { snippet: AgentSnippet; onReload: 
 
   return (
     <div style={ui.card}>
-      <div role="tablist" aria-label="Coding agent" style={{ display: "flex", gap: "0.5rem" }}>
+      <AgentIdentity
+        agent={agent}
+        useOwnerToken={useOwnerToken}
+        agentEmail={agentEmail}
+        busy={busy}
+        genError={genError}
+        onEmailChange={setAgentEmail}
+        onCreate={() => void createScopedAgent()}
+        onToggleOwner={(v) => setUseOwnerToken(v)}
+      />
+
+      <div
+        role="tablist"
+        aria-label="Coding agent"
+        style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}
+      >
         {snippet.clients.map((client) => (
           <button
             key={client.client}
@@ -162,17 +240,103 @@ function SnippetPanel({ snippet, onReload }: { snippet: AgentSnippet; onReload: 
       </pre>
       <p style={ui.muted}>
         Gateway: <code>{snippet.gateway_url}</code> (your machine only).{" "}
-        {setup !== null
-          ? "The config file carries no token — your token rides the KANTAQ_AGENT_TOKEN env var above; treat that like a credential."
-          : "The snippet carries your member token — treat the file like a credential."}{" "}
-        Rotate it from Members if it leaks.
+        {token === null
+          ? "Create a scoped agent above to fill in the token."
+          : setup !== null
+            ? "The config file carries no token — your token rides the KANTAQ_AGENT_TOKEN env var above; treat it like a credential."
+            : "Treat the file like a credential. Rotate it from Members if it leaks."}
       </p>
-      <CopySnippet text={setup !== null ? `${setup}\n\n${rendered}` : rendered} />
+      <CopySnippet
+        text={setup !== null ? `${setup}\n\n${rendered}` : rendered}
+        disabled={token === null}
+      />
     </div>
   );
 }
 
-function CopySnippet({ text }: { text: string }) {
+function AgentIdentity({
+  agent,
+  useOwnerToken,
+  agentEmail,
+  busy,
+  genError,
+  onEmailChange,
+  onCreate,
+  onToggleOwner,
+}: {
+  agent: ScopedAgent | null;
+  useOwnerToken: boolean;
+  agentEmail: string;
+  busy: boolean;
+  genError: string | null;
+  onEmailChange: (value: string) => void;
+  onCreate: () => void;
+  onToggleOwner: (value: boolean) => void;
+}) {
+  if (useOwnerToken) {
+    return (
+      <div style={{ ...ui.card, background: ui.palette.warnBg, borderColor: ui.palette.warnText }}>
+        <p style={{ margin: 0 }}>
+          <strong>Using your own member token (full access).</strong> Your agent will act with your
+          full reach. Prefer a scoped agent —{" "}
+          <button type="button" style={ui.linkButton} onClick={() => onToggleOwner(false)}>
+            switch back to a scoped agent token
+          </button>
+          .
+        </p>
+      </div>
+    );
+  }
+
+  if (agent !== null) {
+    return (
+      <div style={ui.card}>
+        <p style={{ margin: 0 }}>
+          Embedded identity: <strong>{agent.email}</strong>{" "}
+          <span style={ui.chip}>Agent · propose-only</span>
+        </p>
+        <p style={{ ...ui.muted, margin: "0.35rem 0 0" }}>
+          This token is shown once, here, embedded in the snippet below. Manage agents from{" "}
+          <Link to="/settings/members">Members</Link>; rotate it there if it leaks.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={ui.card}>
+      <p style={{ marginTop: 0 }}>
+        Create a <strong>scoped agent token</strong> — a propose-only identity (
+        {AGENT_SCOPES.join(", ")}). Your agent never runs with your full reach, and its actions are
+        attributed to it, not you.
+      </p>
+      <div style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }}>
+        <label style={ui.label}>
+          Agent name (email)
+          <input
+            style={{ ...ui.input, minWidth: "16rem" }}
+            aria-label="agent email"
+            value={agentEmail}
+            onChange={(event) => onEmailChange(event.target.value)}
+          />
+        </label>
+        <button type="button" style={ui.primaryButton} disabled={busy} onClick={onCreate}>
+          Create scoped agent token
+        </button>
+      </div>
+      {genError !== null && <p style={ui.errorText}>{genError}</p>}
+      <p style={{ ...ui.muted, margin: "0.5rem 0 0" }}>
+        Or invite an agent from <Link to="/settings/members">Members</Link>, or{" "}
+        <button type="button" style={ui.linkButton} onClick={() => onToggleOwner(true)}>
+          use your own member token
+        </button>{" "}
+        (full access).
+      </p>
+    </div>
+  );
+}
+
+function CopySnippet({ text, disabled }: { text: string; disabled: boolean }) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -185,7 +349,7 @@ function CopySnippet({ text }: { text: string }) {
   }
 
   return (
-    <button type="button" style={ui.primaryButton} onClick={() => void copy()}>
+    <button type="button" style={ui.primaryButton} disabled={disabled} onClick={() => void copy()}>
       {copied ? "Copied" : "Copy snippet"}
     </button>
   );

@@ -15,6 +15,7 @@ import type { AgentSession, AuditCall } from "../api/types";
 import { fmtEpoch } from "../lib/format";
 import * as ui from "../lib/ui";
 import CallList from "./CallList";
+import ConnectionBadge from "./ConnectionBadge";
 
 export default function SessionCard({
   session,
@@ -32,6 +33,10 @@ export default function SessionCard({
   onRotate: () => void;
 }) {
   const denied = calls.filter((c) => c.reason !== null);
+  // `calls` arrive newest-first (audit read_range); the badge greens on the last
+  // *successful* call only — a denied call (it carries a `reason`) is real
+  // activity but not health, and is shown in the denied list below.
+  const lastCallAt = calls.find((c) => c.reason === null)?.created_at ?? null;
   return (
     <li
       style={{ ...ui.card, opacity: session.active ? 1 : 0.7 }}
@@ -68,6 +73,7 @@ export default function SessionCard({
                 {session.reason === "revoked" ? "revoked" : `inactive: ${session.reason}`}
               </span>
             )}
+            <ConnectionBadge lastCallAt={lastCallAt} />
           </div>
           <div style={{ ...ui.muted, fontSize: "0.75rem", marginTop: 2 }}>
             grant {session.grant_id}
