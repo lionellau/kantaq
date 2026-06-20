@@ -11,7 +11,7 @@ kantaq is a **hybrid Python-core + TypeScript-UI** application:
 | Concern | Choice | Why |
 |---|---|---|
 | Core (protocol, sync, MCP gateway, domain, CLI) | **Python 3.12**, **FastAPI** runtime | One language for the security-critical core; FastAPI gives OpenAPI for free. |
-| MCP server | official **Python MCP SDK**, HTTP transport (stdio in v0.3) | First-party SDK; loopback HTTP is the lowest common denominator. |
+| MCP server | official **Python MCP SDK**, HTTP + **stdio** transports (stdio added v0.3, E09-T4) | First-party SDK; loopback HTTP is the lowest common denominator, stdio for launch-on-demand clients. |
 | Local database | **SQLite (WAL)** with **SQLModel** + **Alembic** | Zero-setup local replica; one model definition, two dialects. |
 | Crypto | **PyNaCl** (Ed25519), golden vectors checked in | Battle-tested libsodium binding. |
 | Web UI | **React + Vite** (TypeScript), built static, served by FastAPI | One process, one port (3939), one token. |
@@ -171,6 +171,7 @@ was not needed.
 |---|---|---|---|
 | MCP server + client | **modelcontextprotocol/python-sdk** (`mcp`) | MIT | Golden-rule run 2026-06 (GitHub API): the official SDK, **23.3k★**, pushed within 24 h, Anthropic-backed MCP org, no unpatched advisory. We use the **low-level `Server`** (the gateway needs per-session tool catalogs, custom checks, and audit interception — not a decorator framework) over **streamable HTTP** with the SDK's own `TransportSecuritySettings` (DNS-rebinding/Host validation) — the standard applied properly, not re-implemented. Beat **PrefectHQ/fastmcp 2.x** (25.6k★, Apache-2.0 — clears the bar but is a remote-deployment framework: auth providers, proxying, server composition; far more surface than a loopback security gateway wants, and it wraps these same protocol types) and **tadata-org/fastapi_mcp** (11.9k★, MIT — auto-exposes FastAPI routes as tools, the wrong shape for a capability-scoped gateway; last push 2025-11, fails the ~3-month maintenance bar). Also mandated by ADR-0001 ("official Python MCP SDK"). The harness's FakeMCPClient drives the **same SDK's client** over in-process ASGI, so the fake honors the real contract by construction. |
 | Untrusted-content tagging | **built from scratch** (`kantaq_mcp.security`, stdlib `re`, ~30 lines) | Apache-2.0 (ours) | PRD §15.1 content fencing with provenance + marker-escape neutralization. No OSS category exists for this contract (prompt-injection "guard" libraries are model-side classifiers, below the bar and out of scope — the product does not run models). The injection corpus in MOD-30 pins it in CI. |
+| **stdio transport (E09-T4, v0.3)** | **reuse the same `mcp` SDK** — its `stdio_server` (server) + `stdio_client` (the harness/Codex side) | MIT | **No new evaluation:** stdio is not a new capability, it is a second wire over the *already-chosen* SDK (the v0.0.5 golden-rule pick above). The gateway is transport-agnostic (`Gateway.handle_call`), so `serve_stdio` reuses the same low-level `Server` + the SDK's stdio transport, and the in-memory deny-matrix tests drive the SDK's own `create_connected_server_and_client_session`. Reuse-first, per the golden rule. |
 
 ### E19–E21 / MOD-11–13 tracker, approval, and onboarding UI
 
