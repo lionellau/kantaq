@@ -39,7 +39,7 @@ Best practice: give the agent its own **Agent** member (Settings → Members →
 - **Local-first.** Your tracker is one process on `127.0.0.1` serving both the web UI and the API. It works fully offline; sync is an explicit push/pull whenever you want it.
 - **Agents propose, humans approve.** Agents reach your tracker only through a loopback gateway that authorizes every call. An agent can open a *proposal* — it can never silently change a ticket. You review the diff in the Inbox and approve, or don't.
 - **Safe by default.** Ticket text handed to an agent is fenced as untrusted data, so instructions hidden in a ticket are never executed. Every agent session and every denied call shows up on the Agents page, with one-click revoke that takes effect in under 5 seconds.
-- **Made for real teamwork.** Offline edits that collide are detected and surfaced for review instead of silently lost. Your agent draws on shared workspace memory, and memory promotions are human-approved. Coming from Linear? Import your existing export.
+- **Made for real teamwork.** Offline edits that collide are detected and surfaced for review instead of silently lost. Your agent draws on shared workspace memory, and memory promotions are human-approved.
 - **Yours to keep.** Every synced change is Ed25519-signed and verified. Export the entire workspace to one deterministic file and re-import it losslessly, anywhere.
 
 ## Works with
