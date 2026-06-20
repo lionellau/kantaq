@@ -51,7 +51,7 @@ def test_memory_approve_is_human_only_propose_first() -> None:
 
 
 def test_agent_scope_ceiling_is_reads_plus_propose_first_writes() -> None:
-    """The ceiling (DEBT-37 / D-27) is exactly reads + proposals.write/memory.write
+    """The ceiling (DEBT-37 / D-33) is exactly reads + proposals.write/memory.write
     — no direct-write, approve, or admin action, so an agent is propose-first by
     construction. Explicit membership: a new Action is excluded by default."""
     assert (

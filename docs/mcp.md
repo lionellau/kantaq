@@ -84,11 +84,47 @@ client-side; for Codex it fills the `export`, not the file). Which clients are
 tested, and the tier they earn, is the published matrix:
 [`docs/clients/compatibility.md`](clients/compatibility.md).
 
+### stdio transport (v0.3)
+
+For a launch-on-demand client (Codex), the gateway also speaks MCP over this
+process's **stdin/stdout** — the same eight checks, the same audit, the same
+catalog, only the wire changes. A denial over stdio is byte-for-byte the
+decision it is over HTTP, because it is the same check.
+
+```bash
+kantaq mcp stdio
+```
+
+- **Loopback-only by construction.** stdio binds **no socket** — it is a pipe to
+  the parent process that spawned it. There is no network surface, so the
+  origin/DNS-rebind/Host defenses have nothing to defend; the threat model is the
+  local parent, which already holds the token it passed.
+- **The bearer rides the environment** (stdio has no request headers):
+  `KANTAQ_MCP_TOKEN` (required), and to bind a capability grant,
+  `KANTAQ_MCP_GRANT_ID` / `KANTAQ_MCP_AGENT_ROLE` (the env analogs of the
+  `mcp-grant-id` / `mcp-agent-role` headers). The token is **re-verified on every
+  call**, so revocation stops the session within the same budget as HTTP.
+- **One process is one session.** Expiry/kill stick to it; "re-initialize to
+  continue" is "restart the subprocess". A missing/invalid token fails the launch
+  closed (audited), it never serves-then-denies.
+
+Codex spawns the command and passes the token in the env (the bearer stays out
+of the config file):
+
+```toml
+[mcp_servers.kantaq]
+command = "kantaq"
+args = ["mcp", "stdio"]
+env = { KANTAQ_MCP_TOKEN = "<member token>", KANTAQ_MCP_GRANT_ID = "<grant id>" }
+```
+
 ## Sessions
 
-A **gateway session** is derived once at connection time (keyed by the
-transport's `mcp-session-id`) and is fixed for its lifetime — the model cannot
-escalate by changing headers mid-session. There are two ways to derive one:
+A **gateway session** is derived once at connection time (over HTTP, keyed by the
+transport's `mcp-session-id`; over stdio, one fixed session for the process) and
+is fixed for its lifetime — the model cannot escalate by changing headers
+mid-session. There are two ways to derive one (over stdio the grant binds via the
+`KANTAQ_MCP_GRANT_ID` / `KANTAQ_MCP_AGENT_ROLE` env vars instead of headers):
 
 - **Token-derived (minimal).** Present only the member bearer token: the
   allowlist and write mode come from your role (humans) or token scopes
@@ -117,7 +153,7 @@ a live session happens on the MCP transport with those headers.
 propose-first default (FR-E09-4): agents propose field changes for human
 approval, comment freely, and never mutate a tracked field directly. An **apply**
 verb (`approve`) needs `direct_write`, so it is unreachable via the gateway by
-any session (DEBT-37 / D-27) — approvals are a human Inbox action.
+any session (DEBT-37 / D-33) — approvals are a human Inbox action.
 
 ### The eight checks (FR-E09-3)
 
@@ -133,7 +169,7 @@ a structured `{"error": {"code", "message"}}`, and writes a detailed
 | 3 | **Collection scope** — every collection the tool touches is in the grant's resource scope | `collection_scope` |
 | 4 | **Tool allowlist** — fixed at creation; unknown tools deny the same way | `tool_allowlist` |
 | 5 | **Verb match** — the tool's required capability is one the grant authorized | `verb_match` |
-| 6 | **Write mode** — by verb class: a propose-first verb (`propose`/`comment`) needs `propose_only`; an **apply** verb (`approve`) needs `direct_write`, which no v0.1 session holds, so approve is unreachable via the gateway (DEBT-37 / D-27) | `write_mode` |
+| 6 | **Write mode** — by verb class: a propose-first verb (`propose`/`comment`) needs `propose_only`; an **apply** verb (`approve`) needs `direct_write`, which no v0.1 session holds, so approve is unreachable via the gateway (DEBT-37 / D-33) | `write_mode` |
 | 7 | **Memory policy on reads** — an agent's role policy filters memory; a withheld entry denies (no existence leak), a role-less agent is denied | `memory_policy` |
 | 8 | **Audit policy** — the session carries a known audit policy; a call that cannot be audited is refused | `audit_policy` |
 
@@ -212,7 +248,7 @@ preview. A `local`-visibility entry is never returned (NFR-E16-1).
   check (#8) requires a `direct_write` session — which the gateway never issues
   (it is propose-first). So **no gateway session reaches it**, agent or human:
   humans approve in the Inbox (the runtime `/v1/proposals/{id}/approve` API), an
-  agent only proposes. This is enforced in depth (DEBT-37 / D-27): an agent token
+  agent only proposes. This is enforced in depth (DEBT-37 / D-33): an agent token
   cannot even *hold* `tickets.write` (the issuance ceiling, below), and the
   write-mode check refuses approve regardless.
 

@@ -44,7 +44,7 @@ _RATE_WINDOW = timedelta(minutes=1)
 # v0.0.5 write modes. ``direct_write`` exists in the protocol but no v0.1
 # session can hold it (DEBT-08: graduation is undecided, propose-first rules) —
 # so a tool whose verb requires it (an *apply* verb, MOD-08 check 8) is
-# unreachable via the gateway by construction (DEBT-37/D-27).
+# unreachable via the gateway by construction (DEBT-37/D-33).
 WriteMode = str
 WRITE_MODE_READ_ONLY: WriteMode = "read_only"
 WRITE_MODE_PROPOSE_ONLY: WriteMode = "propose_only"

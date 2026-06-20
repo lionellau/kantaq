@@ -76,7 +76,7 @@ ATTACK_CATALOG: tuple[Attack, ...] = (
         AttackCategory.ESCALATION,
         "an OVER-scoped agent (tickets.write — issuance now refuses to mint it, but a "
         "legacy/forged session is simulated) passes allowlist + verb-match, yet the apply-verb "
-        "write-mode block still denies agent_action_approve — DEBT-37/D-27 defense-in-depth",
+        "write-mode block still denies agent_action_approve — DEBT-37/D-33 defense-in-depth",
         "write_mode",
     ),
     Attack(

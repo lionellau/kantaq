@@ -30,6 +30,8 @@ import anyio.from_thread
 import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
+from mcp.server.lowlevel import Server
+from mcp.shared.memory import create_connected_server_and_client_session
 from mcp.types import CallToolResult, InitializeResult, ListToolsResult
 from starlette.applications import Starlette
 
@@ -148,4 +150,77 @@ class FakeMCPClient:
     def _live_session(self) -> ClientSession:
         if self._session is None:
             raise RuntimeError("FakeMCPClient must be entered as a context manager first")
+        return self._session
+
+
+class FakeStdioMCPClient:
+    """Drive the gateway's **stdio**-configured MCP server like a real stdio agent.
+
+    The stdio analog of :class:`FakeMCPClient` (E09-T4): instead of the HTTP ASGI
+    transport, it connects the real SDK ``ClientSession`` to the server over the
+    SDK's in-memory client↔server streams (``create_connected_server_and_client_session``).
+    The server is the one ``kantaq mcp stdio`` runs (``build_stdio_server``), so
+    the deny matrix / audit / round-trip are proven against the same wiring the
+    CLI serves — without spawning a subprocess (hermetic; the real-pipe path gets
+    one separate smoke). The bearer token + grant are baked into the server's
+    stdio resolver (the env-var contract), not sent per call.
+
+    Same sync facade as ``FakeMCPClient``: the async SDK runs on one long-lived
+    blocking-portal task; individual calls hop onto the loop per call.
+    """
+
+    def __init__(self, server: Server[Any, Any]) -> None:
+        self._server = server
+        self._sync_stack = ExitStack()
+        self._session: ClientSession | None = None
+        self._close_event: anyio.Event | None = None
+        self.initialize_result: InitializeResult | None = None
+
+    async def _runner(self, *, task_status: TaskStatus[None]) -> None:
+        self._close_event = anyio.Event()
+        async with create_connected_server_and_client_session(self._server) as session:
+            # The helper runs server.run + the client initialize handshake; a
+            # usable session here means initialize succeeded.
+            self._session = session
+            task_status.started()
+            await self._close_event.wait()
+
+    def __enter__(self) -> FakeStdioMCPClient:
+        self._portal = self._sync_stack.enter_context(anyio.from_thread.start_blocking_portal())
+        try:
+            self._runner_future, _ = self._portal.start_task(self._runner)
+        except BaseException:
+            self._sync_stack.close()
+            raise
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        try:
+            if self._close_event is not None:
+                event = self._close_event
+                self._portal.call(event.set)
+                self._runner_future.result(timeout=30)
+        finally:
+            self._session = None
+            self._sync_stack.close()
+
+    def list_tools(self) -> ListToolsResult:
+        return self._portal.call(self._live_session().list_tools)
+
+    def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> CallToolResult:
+        session = self._live_session()
+
+        async def _call() -> CallToolResult:
+            return await session.call_tool(name, arguments or {})
+
+        return self._portal.call(_call)
+
+    def _live_session(self) -> ClientSession:
+        if self._session is None:
+            raise RuntimeError("FakeStdioMCPClient must be entered as a context manager first")
         return self._session

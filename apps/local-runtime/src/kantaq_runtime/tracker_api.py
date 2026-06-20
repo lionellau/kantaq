@@ -59,7 +59,7 @@ router = APIRouter(prefix="/v1", tags=["tracker"])
 EngineDep = Annotated[Engine, Depends(get_engine_dep)]
 ReaderActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_read))]
 # Writes are human-only: agents propose through the MCP gateway, never the HTTP
-# tracker API (DEBT-37 / D-27 — an over-scoped agent token is refused at the
+# tracker API (DEBT-37 / D-33 — an over-scoped agent token is refused at the
 # door, the boundary half of the issuance clamp).
 WriterActor = Annotated[VerifiedActor, Depends(require_human_action(Action.tickets_write))]
 # Resolved only on write routes (it ensures the member's self-grant); reads

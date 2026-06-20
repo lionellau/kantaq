@@ -153,7 +153,7 @@ def test_keychain_for_lives_next_to_the_database(tmp_path: Path) -> None:
     assert (tmp_path / "data" / "keychain" / RUNTIME_TOKEN_KEY).is_file()
 
 
-# ----------------------------------------- DEBT-37 / D-27: agents never write via REST
+# ----------------------------------------- DEBT-37 / D-33: agents never write via REST
 
 
 def test_require_human_action_refuses_an_agent_even_with_the_write_scope() -> None:

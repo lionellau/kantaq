@@ -22,7 +22,7 @@ operational liveness/rate cuts):
 8. write mode — by verb class: a propose-first verb (propose/comment) needs
    ``propose_only``; an *apply* verb (approve) needs ``direct_write``, which no
    v0.1 session holds (FR-E09-4, DEBT-08) — so approve is unreachable via the
-   gateway for anyone (an over-scoped agent cannot self-approve, DEBT-37/D-27).
+   gateway for anyone (an over-scoped agent cannot self-approve, DEBT-37/D-33).
 9. audit policy — the session carries a known audit policy; a call that cannot
    be audited per policy is refused (an agent action is never unaudited).
 
@@ -406,7 +406,7 @@ class Gateway:
                 DENY_VERB_MATCH,
                 f"the grant does not authorize {spec.required_action!r} for {tool_name!r}",
             )
-        # 8. write mode — propose-first by verb class (FR-E09-4, DEBT-37/D-27).
+        # 8. write mode — propose-first by verb class (FR-E09-4, DEBT-37/D-33).
         #    An APPLY verb (approve) mutates the canonical record directly, so it
         #    needs ``direct_write`` — which no v0.1 session holds (DEBT-08). So it
         #    is unreachable via the gateway for *anyone* (an over-scoped agent

@@ -107,6 +107,15 @@ class BearerAuthMiddleware:
         await self._app(scope, receive, send)
 
 
+# How a transport hands the call-tool/list-tools handlers the authenticated
+# actor + gateway session for the current call. HTTP reads the request context
+# (the bearer + grant headers the middleware verified); stdio re-verifies the
+# env-supplied token per call (E09-T4). One server-builder, two resolvers — the
+# checks, dispatch, audit, and structured errors are identical (the gateway is a
+# transport, not a new security path).
+ActorSessionResolver = Callable[[Server[Any, Any]], tuple[VerifiedActor, GatewaySession]]
+
+
 def _request_actor_session(
     server: Server[Any, Any], gateway: Gateway
 ) -> tuple[VerifiedActor, GatewaySession]:
@@ -137,8 +146,20 @@ def _error_result(code: str, message: str) -> types.CallToolResult:
     )
 
 
-def build_mcp_server(gateway: Gateway) -> Server[Any, Any]:
-    """The low-level MCP server: list_tools/call_tool wired through the gateway."""
+def build_mcp_server(
+    gateway: Gateway, resolve: ActorSessionResolver | None = None
+) -> Server[Any, Any]:
+    """The low-level MCP server: list_tools/call_tool wired through the gateway.
+
+    ``resolve`` supplies the (actor, session) for each call. It defaults to the
+    HTTP request-context resolver; the stdio transport (E09-T4) passes one that
+    re-verifies the env token per call. A resolver that fails identity raises
+    ``GatewayDenied`` — surfaced as a structured ``tools/call`` error and an
+    empty ``tools/list`` (fail closed, audited), exactly as over HTTP.
+    """
+    if resolve is None:
+        resolve = lambda srv: _request_actor_session(srv, gateway)  # noqa: E731
+
     server: Server[Any, Any] = Server(
         "kantaq-gateway",
         version=__version__,
@@ -149,7 +170,12 @@ def build_mcp_server(gateway: Gateway) -> Server[Any, Any]:
     # scoped ignores rather than losing strict mode for the module.
     @server.list_tools()  # type: ignore[no-untyped-call, untyped-decorator]
     async def list_tools() -> list[types.Tool]:
-        _, session = _request_actor_session(server, gateway)
+        try:
+            _, session = resolve(server)
+        except GatewayDenied:
+            # An unauthenticated/revoked session enumerates no tools (fail closed;
+            # the denial is already audited by the resolver).
+            return []
         return [
             types.Tool(
                 name=spec.name,
@@ -165,8 +191,8 @@ def build_mcp_server(gateway: Gateway) -> Server[Any, Any]:
     async def call_tool(
         name: str, arguments: dict[str, Any]
     ) -> dict[str, Any] | types.CallToolResult:
-        actor, session = _request_actor_session(server, gateway)
         try:
+            actor, session = resolve(server)
             return gateway.handle_call(actor=actor, session=session, tool_name=name, args=arguments)
         except GatewayDenied as denied:
             return _error_result(denied.reason, denied.message)

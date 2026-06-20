@@ -90,7 +90,7 @@ def test_rotate_preserves_agent_scopes(engine: Engine) -> None:
         assert token.scopes == ["members.read"]
 
 
-# ------------------------------------------ DEBT-37 / D-27: agent scope ceiling
+# ------------------------------------------ DEBT-37 / D-33: agent scope ceiling
 
 
 def test_invite_accepts_the_propose_first_agent_default(engine: Engine) -> None:
@@ -119,7 +119,7 @@ def test_invite_accepts_the_propose_first_agent_default(engine: Engine) -> None:
 )
 def test_invite_refuses_an_over_scoped_agent(engine: Engine, over_scope: str) -> None:
     """An agent scope outside AGENT_SCOPE_CEILING — direct-write, approve, admin,
-    or unknown — is refused at issuance, fail closed (DEBT-37 / D-27): the
+    or unknown — is refused at issuance, fail closed (DEBT-37 / D-33): the
     over-scoped agent that could self-approve or direct-write is unmintable."""
     with Session(engine) as session:
         service = IdentityService(session)
