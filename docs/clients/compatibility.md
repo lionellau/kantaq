@@ -32,6 +32,16 @@ Codex's *stdio* Tier-2 surface (the 6 S-tests) and Tier-3 (custom HTTP, curl)
 remain v0.3; the PRD §8.11 row that lists Codex as stdio-only is refreshed for the
 as-built HTTP support (tracked as DEBT-22).
 
+> **Tier-2 status (E11-T4, prepped — gated on E09-T4).** The S1–S6 acceptance
+> suite (`tests/compat/test_tier2.py`, the stdio versions of T1–T6: connect,
+> role-read, propose+approve, deny, rotation, untrusted-tagging) and the stdio
+> harness seam (`kantaq_test_harness.stdio` — the SDK stdio transport + env-var
+> grant binding) are **in place and skipped** until the gateway's stdio transport
+> (E09-T4) lands. The suite flips on the moment the transport + the seam are
+> wired; the real Codex run (pinned **0.130.0**) is then the manual release step,
+> and this matrix earns the Tier-2 badge only when all of S1–S6 pass. (The
+> exhaustive deny-matrix + audit-completeness over stdio is E09-T4's, not E11-T4's.)
+
 ## Connect (the three snippets)
 
 Settings → **My Agent** generates each client's exact config for *your own* live
