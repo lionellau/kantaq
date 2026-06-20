@@ -33,7 +33,12 @@ from kantaq_core.identity import Action, VerifiedActor
 from kantaq_core.telemetry import TelemetryService
 from kantaq_core.tracker import TrackerService
 from kantaq_db.models import AgentProposal, Ticket
-from kantaq_runtime.auth import get_engine_dep, get_event_signer, require_action
+from kantaq_runtime.auth import (
+    get_engine_dep,
+    get_event_signer,
+    require_action,
+    require_human_action,
+)
 from kantaq_runtime.tracker_api import TicketOut
 from kantaq_sync_engine import EventSigner
 
@@ -41,7 +46,10 @@ router = APIRouter(prefix="/v1/proposals", tags=["proposals"])
 
 EngineDep = Annotated[Engine, Depends(get_engine_dep)]
 ReaderActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_read))]
-WriterActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_write))]
+# Approve/reject are a human decision (a ticket write) — and human-only: an agent
+# proposes through the gateway but can never decide its own proposal, even with an
+# over-scoped token (DEBT-37 / D-27, the boundary half of the issuance clamp).
+WriterActor = Annotated[VerifiedActor, Depends(require_human_action(Action.tickets_write))]
 # A decision (approve/reject) is a ticket write, so it carries the device signer
 # (E04-T4): the agent_proposals + tickets events are signed by the approver past
 # the cutover, the same as any other runtime write.

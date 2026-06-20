@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, select
 
-from kantaq_core.identity import IdentityService, Role, TokenVerifier
+from kantaq_core.identity import IdentityError, IdentityService, Role, TokenVerifier
 from kantaq_db.models import AuditEvent, TelemetryEvent
 from kantaq_mcp.tools import agent_action_propose
 from kantaq_runtime.app import create_app
@@ -134,13 +134,24 @@ def test_agent_scope_does_not_include_telemetry(client: TestClient, agent: tuple
 def test_even_a_telemetry_scoped_agent_cannot_flip_the_toggle(
     client: TestClient, engine: Engine, owner_token: str
 ) -> None:
-    # SEC second review: the opt-in is a human privacy decision — an Agent
-    # token minted with telemetry scopes must still be refused on PUT.
+    # SEC second review + DEBT-37/D-27: the opt-in is a *human* privacy decision,
+    # protected in depth. (1) Issuance refuses to mint an agent with
+    # telemetry.write at all — it is over the propose-first AGENT_SCOPE_CEILING.
+    # (2) The PUT handler still refuses any Agent-role token (here one holding the
+    # readable telemetry.read scope), so the human-gate holds even for a
+    # legacy/over-scoped token that predates the clamp.
     with Session(engine) as session:
-        minted = IdentityService(session).invite(
+        service = IdentityService(session)
+        with pytest.raises(IdentityError, match="propose-first ceiling"):
+            service.invite(
+                email="overscoped-bot@example.com",
+                role=Role.agent,
+                scopes=["telemetry.read", "telemetry.write"],
+            )
+        minted = service.invite(
             email="scoped-bot@example.com",
             role=Role.agent,
-            scopes=["telemetry.read", "telemetry.write"],
+            scopes=["telemetry.read"],
         )
     response = client.put(
         "/v1/telemetry", json={"enabled": True}, headers=_bearer(minted.plaintext)

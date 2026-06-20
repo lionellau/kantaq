@@ -192,13 +192,19 @@ def test_red_team_gate_trips_when_an_attack_escapes(temp_sqlite: object) -> None
     """The containment gate's teeth: a queue-skip attempt the catalog expects
     denied must be *bounded* (denied + audited). The real battery lives in
     packages/mcp/tests/test_red_team.py; this proves its predicate bites — a
-    session widened (a simulated regression) so it can self-approve actually
+    session widened to ``tickets.write`` **with the apply-verb write-mode
+    hardening (DEBT-37/D-27) regressed away** so it can self-approve actually
     applies the change, which the `bounded` predicate reports as a scope escape
-    and which fails the build.
+    and which fails the build. (Widening alone no longer escapes — the apply-verb
+    block denies approve for *any* gateway session — so the seeded regression
+    disables that block to prove the predicate still detects a real escape.)
     """
+    from unittest.mock import patch
+
     from sqlalchemy.engine import Engine
     from sqlmodel import Session, SQLModel, select
 
+    import kantaq_mcp.gateway as gateway_module
     from kantaq_core.identity import IdentityService, Role, TokenVerifier
     from kantaq_core.tracker.service import TrackerService
     from kantaq_db.models import AuditEvent, Ticket, Workspace
@@ -279,21 +285,26 @@ def test_red_team_gate_trips_when_an_attack_escapes(temp_sqlite: object) -> None
         assert db.get(Ticket, ticket_id).status == "todo"  # type: ignore[union-attr]
 
     # Simulated regression: the agent was widened to tickets.write with approve in
-    # its allowlist — the call is NOT denied; it actually applies. The gate's
-    # `bounded` predicate is False (a real scope escape), which fails the build.
+    # its allowlist AND the apply-verb write-mode hardening (DEBT-37/D-27) is
+    # disabled — the call is NOT denied; it actually applies. (With the hardening
+    # in place the widened agent is still denied at write_mode, so widening alone
+    # no longer escapes; disabling the apply-verb block re-opens the hole, which is
+    # the seeded regression the gate predicate must catch.) The gate's `bounded`
+    # predicate is False (a real scope escape), which fails the build.
     widened = _session(
         suffix="widened",
         verbs=("tickets.read", "tickets.write", "proposals.write"),
         tools=("ticket_get", "agent_action_propose", "agent_action_approve"),
     )
-    escaped = attempt(
-        gateway,
-        actor=actor,
-        session=widened,
-        tool="agent_action_approve",
-        args={"proposal_id": proposal_id},
-        count_denials=denials,
-    )
+    with patch.object(gateway_module, "APPLY_VERBS", frozenset()):
+        escaped = attempt(
+            gateway,
+            actor=actor,
+            session=widened,
+            tool="agent_action_approve",
+            args={"proposal_id": proposal_id},
+            count_denials=denials,
+        )
     assert not escaped.bounded, "the gate must report an un-denied attack as a scope escape"
     with Session(temp_sqlite) as db:
         assert db.get(Ticket, ticket_id).status == "done"  # type: ignore[union-attr]

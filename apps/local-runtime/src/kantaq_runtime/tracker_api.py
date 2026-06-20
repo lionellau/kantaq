@@ -45,7 +45,12 @@ from kantaq_db.models import (
     TicketRelationship,
     Workspace,
 )
-from kantaq_runtime.auth import get_engine_dep, get_event_signer, require_action
+from kantaq_runtime.auth import (
+    get_engine_dep,
+    get_event_signer,
+    require_action,
+    require_human_action,
+)
 from kantaq_runtime.config import Settings
 from kantaq_sync_engine import EventLogSink, EventSigner
 
@@ -53,7 +58,10 @@ router = APIRouter(prefix="/v1", tags=["tracker"])
 
 EngineDep = Annotated[Engine, Depends(get_engine_dep)]
 ReaderActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_read))]
-WriterActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_write))]
+# Writes are human-only: agents propose through the MCP gateway, never the HTTP
+# tracker API (DEBT-37 / D-27 — an over-scoped agent token is refused at the
+# door, the boundary half of the issuance clamp).
+WriterActor = Annotated[VerifiedActor, Depends(require_human_action(Action.tickets_write))]
 # Resolved only on write routes (it ensures the member's self-grant); reads
 # never carry it, so a GET never triggers a grant write (E04-T4).
 SignerDep = Annotated[EventSigner | None, Depends(get_event_signer)]

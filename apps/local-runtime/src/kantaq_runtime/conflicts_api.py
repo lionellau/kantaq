@@ -19,9 +19,11 @@ production, builds the verifying Supabase backend from the keychain session. A
 local-only workspace has no shared log and thus no conflicts, so resolve there
 returns 409 with a clear pointer to sync.
 
-Permission: reading needs ``tickets.read``; resolving needs ``tickets.write`` —
-an agent scope carries only ``proposals.write``, so an agent can never silently
-resolve a human's conflict (the §8.5 propose-first rule, enforced at this edge).
+Permission: reading needs ``tickets.read``; resolving is a canonical ticket
+write, so it needs ``tickets.write`` **and is human-only** — an agent proposes
+through the gateway and can never silently resolve a human's conflict, even with
+an over-scoped token (the §8.5 propose-first rule + DEBT-37 / D-27, enforced at
+this edge).
 """
 
 from __future__ import annotations
@@ -36,14 +38,16 @@ from sqlmodel import Session, col, select
 
 from kantaq_core.identity import Action, VerifiedActor
 from kantaq_db.models import ConflictRecord
-from kantaq_runtime.auth import get_engine_dep, require_action
+from kantaq_runtime.auth import get_engine_dep, require_action, require_human_action
 from kantaq_sync_engine import RebaseRequired, ResolveResult, SyncEngine
 
 router = APIRouter(prefix="/v1/conflicts", tags=["conflicts"])
 
 EngineDep = Annotated[Engine, Depends(get_engine_dep)]
 ReaderActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_read))]
-WriterActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_write))]
+# Resolving a conflict is a canonical ticket write — human-only: an agent
+# proposes through the gateway, never the REST tracker domain (DEBT-37 / D-27).
+WriterActor = Annotated[VerifiedActor, Depends(require_human_action(Action.tickets_write))]
 
 CONFLICT_STATUSES = ("open", "resolved")
 RESOLVE_CHOICES = ("keep-A", "keep-B", "new-value")

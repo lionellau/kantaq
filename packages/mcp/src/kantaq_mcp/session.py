@@ -42,10 +42,13 @@ RATE_LIMIT_PER_SESSION = 500
 _RATE_WINDOW = timedelta(minutes=1)
 
 # v0.0.5 write modes. ``direct_write`` exists in the protocol but no v0.1
-# session can hold it (DEBT-08: graduation is undecided, propose-first rules).
+# session can hold it (DEBT-08: graduation is undecided, propose-first rules) —
+# so a tool whose verb requires it (an *apply* verb, MOD-08 check 8) is
+# unreachable via the gateway by construction (DEBT-37/D-27).
 WriteMode = str
 WRITE_MODE_READ_ONLY: WriteMode = "read_only"
 WRITE_MODE_PROPOSE_ONLY: WriteMode = "propose_only"
+WRITE_MODE_DIRECT_WRITE: WriteMode = "direct_write"
 
 # The action a grant must carry for a session to be allowed to propose writes.
 PROPOSALS_WRITE = Action.proposals_write.value

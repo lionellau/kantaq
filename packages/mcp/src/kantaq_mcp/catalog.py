@@ -28,6 +28,18 @@ from kantaq_mcp import tools
 # the audit; the rest are write verbs the write-mode check gates.
 Verb = Literal["read", "propose", "comment", "approve"]
 
+# Verb classes for the write-mode check (MOD-08 check 8, FR-E09-4):
+# - "read" is unrestricted (any session);
+# - a PROPOSE-FIRST verb queues a change for human review and needs a
+#   ``propose_only`` session;
+# - an APPLY verb mutates the canonical record *directly* and needs
+#   ``direct_write`` — which no v0.1 session holds (DEBT-08), so an apply verb is
+#   unreachable via the gateway for *anyone* (humans approve in the Inbox). This
+#   is what stops an over-scoped agent from self-approving (DEBT-37 / D-27), and
+#   because the check is the shared one it holds over HTTP *and* stdio.
+PROPOSE_FIRST_VERBS: frozenset[str] = frozenset({"propose", "comment"})
+APPLY_VERBS: frozenset[str] = frozenset({"approve"})
+
 ToolHandler = Callable[..., dict[str, Any]]
 
 _UNTRUSTED_NOTE = (
@@ -635,8 +647,10 @@ CATALOG: tuple[ToolSpec, ...] = (
         title="Approve a proposal",
         description=(
             "Approve a pending agent proposal — apply its diff to the ticket through the one "
-            "validated apply path. Requires tickets.write (an approver verb); an agent's "
-            "propose-only scope can never reach it."
+            "validated apply path. An APPLY verb: it mutates the canonical ticket directly, so "
+            "it needs a direct-write session, which the gateway never issues (propose-first) — "
+            "no gateway session (agent or human) reaches it. Humans approve in the Inbox; an "
+            "agent only proposes (DEBT-37 / D-27)."
         ),
         verb="approve",
         collections=("agent_proposals", "tickets"),

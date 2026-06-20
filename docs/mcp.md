@@ -115,7 +115,9 @@ a live session happens on the MCP transport with those headers.
 
 `read_only` / `propose_only`. Nothing grants `direct_write` in v0.1 — the
 propose-first default (FR-E09-4): agents propose field changes for human
-approval, comment freely, and never mutate a tracked field directly.
+approval, comment freely, and never mutate a tracked field directly. An **apply**
+verb (`approve`) needs `direct_write`, so it is unreachable via the gateway by
+any session (DEBT-37 / D-27) — approvals are a human Inbox action.
 
 ### The eight checks (FR-E09-3)
 
@@ -131,7 +133,7 @@ a structured `{"error": {"code", "message"}}`, and writes a detailed
 | 3 | **Collection scope** — every collection the tool touches is in the grant's resource scope | `collection_scope` |
 | 4 | **Tool allowlist** — fixed at creation; unknown tools deny the same way | `tool_allowlist` |
 | 5 | **Verb match** — the tool's required capability is one the grant authorized | `verb_match` |
-| 6 | **Write mode** — non-read verbs need `propose_only` | `write_mode` |
+| 6 | **Write mode** — by verb class: a propose-first verb (`propose`/`comment`) needs `propose_only`; an **apply** verb (`approve`) needs `direct_write`, which no v0.1 session holds, so approve is unreachable via the gateway (DEBT-37 / D-27) | `write_mode` |
 | 7 | **Memory policy on reads** — an agent's role policy filters memory; a withheld entry denies (no existence leak), a role-less agent is denied | `memory_policy` |
 | 8 | **Audit policy** — the session carries a known audit policy; a call that cannot be audited is refused | `audit_policy` |
 
@@ -205,9 +207,26 @@ preview. A `local`-visibility entry is never returned (NFR-E16-1).
   + note ≤ 2000; full value validation happens at apply time.
 - **`agent_action_approve`** applies a pending proposal's diff through the one
   validated apply path (`kantaq_core.proposals`, shared with the Inbox API) — a
-  compare-and-swap status flip + the ticket patch in one transaction. It
-  requires `tickets.write`, so an agent's propose-only scope can never reach it
-  (agents propose; humans approve).
+  compare-and-swap status flip + the ticket patch in one transaction. It is an
+  **apply** verb: it mutates the canonical ticket directly, so the write-mode
+  check (#8) requires a `direct_write` session — which the gateway never issues
+  (it is propose-first). So **no gateway session reaches it**, agent or human:
+  humans approve in the Inbox (the runtime `/v1/proposals/{id}/approve` API), an
+  agent only proposes. This is enforced in depth (DEBT-37 / D-27): an agent token
+  cannot even *hold* `tickets.write` (the issuance ceiling, below), and the
+  write-mode check refuses approve regardless.
+
+### The agent scope ceiling (issuance clamp)
+
+An Agent's authority is its token scopes. To keep agents **propose-first by
+construction**, issuance clamps an agent token to a fixed ceiling — reads
+(`*.read`) plus the two propose-first writes (`proposals.write`, `memory.write`).
+A direct-write (`tickets.write`), approve (`memory.approve`), admin, or unknown
+scope is **refused at `/v1/members/invite`** (HTTP 400), so an over-scoped agent
+that could self-approve or direct-write is unmintable, not merely blocked at the
+endpoints. The runtime tracker/proposal **write** APIs additionally refuse any
+Agent-role token (`agents propose through the gateway, not the HTTP write API`),
+so the boundary holds even for a legacy token minted before the clamp.
 
 Tool errors are structured `{"error": {code, message}}` with codes `not_found`,
 `validation`, or `conflict` (a proposal already decided).

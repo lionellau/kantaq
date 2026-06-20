@@ -11,14 +11,26 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel
 
-from kantaq_core.identity import IdentityService, MintedToken, TokenVerifier
+from kantaq_core.identity import (
+    Action,
+    IdentityService,
+    MintedToken,
+    Role,
+    TokenVerifier,
+    VerifiedActor,
+)
 from kantaq_runtime.app import create_app
-from kantaq_runtime.auth import RUNTIME_TOKEN_KEY, ensure_local_identity, keychain_for
+from kantaq_runtime.auth import (
+    RUNTIME_TOKEN_KEY,
+    ensure_local_identity,
+    keychain_for,
+    require_human_action,
+)
 from kantaq_runtime.config import Settings
 from kantaq_test_harness import FakeKeychain
 from kantaq_test_harness.clock import FakeClock
@@ -139,3 +151,49 @@ def test_keychain_for_lives_next_to_the_database(tmp_path: Path) -> None:
     keychain = keychain_for(settings)
     keychain.set(RUNTIME_TOKEN_KEY, "kq_x.y")
     assert (tmp_path / "data" / "keychain" / RUNTIME_TOKEN_KEY).is_file()
+
+
+# ----------------------------------------- DEBT-37 / D-27: agents never write via REST
+
+
+def test_require_human_action_refuses_an_agent_even_with_the_write_scope() -> None:
+    """The boundary half of the clamp: even a (legacy/forged) agent token that
+    *does* carry tickets.write is refused by role at the door, fail closed — so
+    the self-approve / direct-write hole stays closed regardless of issuance."""
+    over_scoped_agent = VerifiedActor(
+        member_id="01JAGENTZZZZZZZZZZZZZZZZZZ",
+        role=Role.agent.value,
+        token_id="t1",
+        scopes=("tickets.read", "tickets.write"),
+    )
+    with pytest.raises(HTTPException) as caught:
+        require_human_action(Action.tickets_write)(over_scoped_agent)
+    assert caught.value.status_code == 403
+    assert "gateway" in caught.value.detail
+    # A human with the action still passes through.
+    human = VerifiedActor(
+        member_id="01JHUMANZZZZZZZZZZZZZZZZZZ", role=Role.member.value, token_id="t2", scopes=()
+    )
+    assert require_human_action(Action.tickets_write)(human) is human
+
+
+def test_agent_token_cannot_write_tickets_over_rest(
+    client: TestClient, engine: Engine, owner: MintedToken
+) -> None:
+    """End to end: an in-ceiling agent token is refused on POST /v1/tickets with
+    the agent-deny detail — agents propose through the gateway, not the HTTP API."""
+    with Session(engine) as session:
+        agent = IdentityService(session).invite(
+            email="bot@team.dev",
+            role=Role.agent,
+            scopes=["tickets.read", "proposals.write"],
+        )
+    project = client.post("/v1/projects", json={"name": "P"}, headers=_bearer(owner))
+    assert project.status_code == 201
+    response = client.post(
+        "/v1/tickets",
+        json={"project_id": project.json()["id"], "title": "t"},
+        headers={"Authorization": f"Bearer {agent.plaintext}"},
+    )
+    assert response.status_code == 403
+    assert "gateway" in response.json()["detail"]

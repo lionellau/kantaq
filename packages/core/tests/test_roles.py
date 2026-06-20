@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from kantaq_core.identity import Action, Role, can
+from kantaq_core.identity import (
+    AGENT_SCOPE_CEILING,
+    Action,
+    Role,
+    agent_scopes_over_ceiling,
+    can,
+    clamp_agent_scopes,
+)
 
 
 def test_owner_can_do_everything() -> None:
@@ -41,6 +48,56 @@ def test_memory_approve_is_human_only_propose_first() -> None:
     agent_scopes = ["memory.read", "memory.write"]
     assert can(Role.agent, Action.memory_write, scopes=agent_scopes)
     assert not can(Role.agent, Action.memory_approve, scopes=agent_scopes)
+
+
+def test_agent_scope_ceiling_is_reads_plus_propose_first_writes() -> None:
+    """The ceiling (DEBT-37 / D-27) is exactly reads + proposals.write/memory.write
+    — no direct-write, approve, or admin action, so an agent is propose-first by
+    construction. Explicit membership: a new Action is excluded by default."""
+    assert (
+        frozenset(
+            {
+                Action.members_read,
+                Action.tickets_read,
+                Action.memory_read,
+                Action.telemetry_read,
+                Action.skills_read,
+                Action.proposals_write,
+                Action.memory_write,
+            }
+        )
+        == AGENT_SCOPE_CEILING
+    )
+    # The dangerous actions an over-scoped agent could abuse are out of the ceiling.
+    for danger in (
+        Action.tickets_write,
+        Action.memory_approve,
+        Action.telemetry_write,
+        Action.skills_manage,
+        Action.members_invite,
+        Action.conflict_records_write,
+    ):
+        assert danger not in AGENT_SCOPE_CEILING
+
+
+def test_agent_scopes_over_ceiling_flags_excess_and_unknown() -> None:
+    assert agent_scopes_over_ceiling(["tickets.read", "proposals.write"]) == []
+    assert agent_scopes_over_ceiling(["tickets.read", "tickets.write"]) == ["tickets.write"]
+    # Unknown scope strings fail closed (an action we do not recognize is excess).
+    assert agent_scopes_over_ceiling(["bogus.scope"]) == ["bogus.scope"]
+    # Order-preserving + de-duplicated.
+    assert agent_scopes_over_ceiling(["memory.approve", "tickets.write", "memory.approve"]) == [
+        "memory.approve",
+        "tickets.write",
+    ]
+
+
+def test_clamp_agent_scopes_keeps_only_in_ceiling() -> None:
+    assert clamp_agent_scopes(["tickets.read", "tickets.write", "proposals.write"]) == [
+        "tickets.read",
+        "proposals.write",
+    ]
+    assert clamp_agent_scopes(["memory.approve", "bogus"]) == []
 
 
 def test_unknown_role_fails_closed() -> None:

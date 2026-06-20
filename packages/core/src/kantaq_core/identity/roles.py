@@ -137,3 +137,54 @@ def can(role: Role | str, action: Action, *, scopes: list[str] | None = None) ->
     if resolved is Role.agent:
         return action.value in (scopes or [])
     return action in ROLE_PERMISSIONS[resolved]
+
+
+# -------------------------------------------------------- the agent scope ceiling
+#
+# An Agent's authority *is* its token scopes (``can`` consults the scope list, not
+# a role row). The propose-first invariant (PRD §6.9 / §15.1, FR-E09-4) says an
+# agent may *propose* and *read*, but never *approve* a proposal or *direct-write*
+# a tracked record — those are human decisions. Issuance must enforce that
+# invariant at the source: ``AGENT_SCOPE_CEILING`` is the exhaustive allow-list of
+# actions an Agent token may carry, so an over-scoped agent (e.g. ``tickets.write``)
+# is **unmintable**, not merely action-blocked at the endpoints (DEBT-37, D-27).
+#
+# Explicit (not derived from a ``.read`` suffix) so a future Action is **excluded by
+# default** — fail closed: a new capability enters the agent ceiling only by a
+# deliberate edit here, never by accident. Reads + the two propose-first writes.
+AGENT_SCOPE_CEILING: frozenset[Action] = frozenset(
+    {
+        Action.members_read,
+        Action.tickets_read,
+        Action.memory_read,
+        Action.telemetry_read,
+        Action.skills_read,
+        Action.proposals_write,
+        Action.memory_write,
+    }
+)
+_AGENT_CEILING_VALUES: frozenset[str] = frozenset(action.value for action in AGENT_SCOPE_CEILING)
+
+
+def agent_scopes_over_ceiling(scopes: list[str]) -> list[str]:
+    """The requested agent scopes that exceed :data:`AGENT_SCOPE_CEILING`.
+
+    Order-preserving and de-duplicated. Includes unknown scope strings (fail
+    closed — an action we do not recognize is not one an agent may hold). Empty
+    list means every scope is inside the ceiling.
+    """
+    over: list[str] = []
+    for scope in scopes:
+        if scope not in _AGENT_CEILING_VALUES and scope not in over:
+            over.append(scope)
+    return over
+
+
+def clamp_agent_scopes(scopes: list[str]) -> list[str]:
+    """Drop any scope outside :data:`AGENT_SCOPE_CEILING` (privilege only narrows).
+
+    Used on token rotation to **heal** a legacy over-scoped token to the ceiling
+    rather than carry the excess forward; ``invite`` rejects out-of-ceiling
+    scopes loudly instead (the caller chose them). Order-preserving.
+    """
+    return [scope for scope in scopes if scope in _AGENT_CEILING_VALUES]
