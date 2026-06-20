@@ -400,10 +400,13 @@ def cmd_token(args: argparse.Namespace) -> int:
 def cmd_mcp(args: argparse.Namespace) -> int:
     """Run the loopback MCP gateway (E09 / MOD-08).
 
-    Binds 127.0.0.1 on a random port by default (`LOCAL_MCP_PORT=auto`),
+    ``dev`` binds 127.0.0.1 on a random port by default (`LOCAL_MCP_PORT=auto`),
     publishes the bound URL on stdout and in a 0600 discovery file beside the
-    database (`mcp.json`, no secrets), and serves the v0.0.5 tool catalog.
-    Agents authenticate with a member bearer token (`kantaq token show`).
+    database (`mcp.json`, no secrets), and serves the tool catalog over HTTP.
+    ``stdio`` serves the **same** gateway (same checks, audit, catalog) over this
+    process's stdin/stdout for a launch-on-demand client (Codex); the member
+    token rides ``KANTAQ_MCP_TOKEN`` (no socket, no discovery file). Agents
+    authenticate with a member bearer token (`kantaq token show`).
     """
     from sqlmodel import Session
 
@@ -411,6 +414,7 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     from kantaq_db.session import get_engine
     from kantaq_mcp.gateway import Gateway
     from kantaq_mcp.server import GatewayBindError, serve_gateway
+    from kantaq_mcp.stdio import StdioAuthError, serve_stdio
     from kantaq_runtime.auth import keychain_for
     from kantaq_runtime.config import get_settings
     from kantaq_sync_engine import EventSigner
@@ -450,6 +454,16 @@ def cmd_mcp(args: argparse.Namespace) -> int:
             session.commit()
             policy_ref = grant.id
         return EventSigner(private_key=seed, policy_ref=policy_ref)
+
+    if args.mcp_command == "stdio":
+        # Same Gateway, the stdio transport (no socket, no discovery file): the
+        # token rides KANTAQ_MCP_TOKEN, the optional grant rides KANTAQ_MCP_*.
+        try:
+            serve_stdio(Gateway(engine, signer_for=signer_for))
+        except StdioAuthError as exc:
+            print(f"kantaq mcp stdio: {exc}", file=sys.stderr)
+            return 1
+        return 0
 
     try:
         serve_gateway(
@@ -999,7 +1013,11 @@ def build_parser() -> argparse.ArgumentParser:
     token.set_defaults(func=cmd_token)
 
     mcp = sub.add_parser("mcp", help="MCP gateway (E09)")
-    mcp.add_argument("mcp_command", choices=["dev"])
+    mcp.add_argument(
+        "mcp_command",
+        choices=["dev", "stdio"],
+        help="dev = loopback HTTP gateway; stdio = MCP over stdin/stdout (KANTAQ_MCP_TOKEN)",
+    )
     mcp.add_argument(
         "--host", default=None, help="override bind host (loopback only; default: LOCAL_MCP_HOST)"
     )

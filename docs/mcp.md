@@ -84,11 +84,47 @@ client-side; for Codex it fills the `export`, not the file). Which clients are
 tested, and the tier they earn, is the published matrix:
 [`docs/clients/compatibility.md`](clients/compatibility.md).
 
+### stdio transport (v0.3)
+
+For a launch-on-demand client (Codex), the gateway also speaks MCP over this
+process's **stdin/stdout** — the same eight checks, the same audit, the same
+catalog, only the wire changes. A denial over stdio is byte-for-byte the
+decision it is over HTTP, because it is the same check.
+
+```bash
+kantaq mcp stdio
+```
+
+- **Loopback-only by construction.** stdio binds **no socket** — it is a pipe to
+  the parent process that spawned it. There is no network surface, so the
+  origin/DNS-rebind/Host defenses have nothing to defend; the threat model is the
+  local parent, which already holds the token it passed.
+- **The bearer rides the environment** (stdio has no request headers):
+  `KANTAQ_MCP_TOKEN` (required), and to bind a capability grant,
+  `KANTAQ_MCP_GRANT_ID` / `KANTAQ_MCP_AGENT_ROLE` (the env analogs of the
+  `mcp-grant-id` / `mcp-agent-role` headers). The token is **re-verified on every
+  call**, so revocation stops the session within the same budget as HTTP.
+- **One process is one session.** Expiry/kill stick to it; "re-initialize to
+  continue" is "restart the subprocess". A missing/invalid token fails the launch
+  closed (audited), it never serves-then-denies.
+
+Codex spawns the command and passes the token in the env (the bearer stays out
+of the config file):
+
+```toml
+[mcp_servers.kantaq]
+command = "kantaq"
+args = ["mcp", "stdio"]
+env = { KANTAQ_MCP_TOKEN = "<member token>", KANTAQ_MCP_GRANT_ID = "<grant id>" }
+```
+
 ## Sessions
 
-A **gateway session** is derived once at connection time (keyed by the
-transport's `mcp-session-id`) and is fixed for its lifetime — the model cannot
-escalate by changing headers mid-session. There are two ways to derive one:
+A **gateway session** is derived once at connection time (over HTTP, keyed by the
+transport's `mcp-session-id`; over stdio, one fixed session for the process) and
+is fixed for its lifetime — the model cannot escalate by changing headers
+mid-session. There are two ways to derive one (over stdio the grant binds via the
+`KANTAQ_MCP_GRANT_ID` / `KANTAQ_MCP_AGENT_ROLE` env vars instead of headers):
 
 - **Token-derived (minimal).** Present only the member bearer token: the
   allowlist and write mode come from your role (humans) or token scopes
