@@ -24,7 +24,7 @@ from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
@@ -87,6 +87,14 @@ class ApproveOut(BaseModel):
     ticket: TicketOut
 
 
+class RejectIn(BaseModel):
+    """An optional human reason when declining a proposal (E20-T6). The reason
+    rides the audit trail and reaches the proposing agent's owner; it never
+    touches the ticket."""
+
+    reason: str | None = Field(default=None, max_length=2000)
+
+
 def _ticket_title(session: Session, ticket_id: str) -> str | None:
     ticket = session.get(Ticket, ticket_id)
     return ticket.title if ticket is not None else None
@@ -143,12 +151,24 @@ def approve_proposal(
 
 @router.post("/{proposal_id}/reject", response_model=ProposalOut)
 def reject_proposal(
-    proposal_id: str, actor: WriterActor, engine: EngineDep, signer: SignerDep
+    proposal_id: str,
+    actor: WriterActor,
+    engine: EngineDep,
+    signer: SignerDep,
+    body: RejectIn | None = None,
 ) -> ProposalOut:
+    # An empty or whitespace-only reason is "no reason" — keep the audit clean.
+    raw = body.reason if body is not None else None
+    reason = raw.strip() if raw and raw.strip() else None
     with Session(engine) as session:
         try:
             proposal = proposals.reject_proposal(
-                session, proposal_id, actor_id=actor.member_id, source="app", signer=signer
+                session,
+                proposal_id,
+                actor_id=actor.member_id,
+                source="app",
+                signer=signer,
+                reason=reason,
             )
         except proposals.ProposalError as exc:
             raise _http(exc) from exc

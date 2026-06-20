@@ -291,6 +291,62 @@ def test_reject_declines_without_touching_the_ticket(
         assert any(e.collection == "agent_proposals" and e.entity_id == proposal_id for e in events)
 
 
+def test_reject_reason_rides_the_audit_not_the_synced_entity(
+    client: TestClient, engine: Engine, owner_token: str, agent: tuple[str, str]
+) -> None:
+    """E20-T6: a reject reason is carried (trimmed) on the proposal.reject audit
+    row so the proposing agent's owner can see the 'why', but it never leaks into
+    the synced agent_proposals payload (the entity has no reason column)."""
+    agent_id, _ = agent
+    ticket = _create_ticket(client, owner_token)
+    proposal_id = _propose(engine, agent_id, ticket["id"], {"status": "doing"})
+
+    response = client.post(
+        f"/v1/proposals/{proposal_id}/reject",
+        headers=_bearer(owner_token),
+        json={"reason": "  duplicate of TCK-12  "},
+    )
+    assert response.status_code == 200, response.text
+
+    with Session(engine) as session:
+        reject = next(
+            a for a in session.exec(select(AuditEvent)).all() if a.action == "proposal.reject"
+        )
+        assert reject.after is not None
+        assert reject.after["reason"] == "duplicate of TCK-12"  # whitespace trimmed
+        event = next(
+            e
+            for e in session.exec(select(EventLog)).all()
+            if e.collection == "agent_proposals" and e.entity_id == proposal_id
+        )
+        assert "reason" not in event.payload  # the synced entity is not widened
+
+
+def test_reject_without_a_reason_leaves_the_audit_clean(
+    client: TestClient, engine: Engine, owner_token: str, agent: tuple[str, str]
+) -> None:
+    """A blank/whitespace-only reason is 'no reason' — no reason key is written."""
+    agent_id, _ = agent
+    ticket = _create_ticket(client, owner_token)
+    proposal_id = _propose(engine, agent_id, ticket["id"], {"status": "doing"})
+
+    assert (
+        client.post(
+            f"/v1/proposals/{proposal_id}/reject",
+            headers=_bearer(owner_token),
+            json={"reason": "   "},
+        ).status_code
+        == 200
+    )
+
+    with Session(engine) as session:
+        reject = next(
+            a for a in session.exec(select(AuditEvent)).all() if a.action == "proposal.reject"
+        )
+        assert reject.after is not None
+        assert "reason" not in reject.after
+
+
 # ------------------------------------------- SEC second-review regressions
 
 

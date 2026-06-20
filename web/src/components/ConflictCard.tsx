@@ -16,15 +16,19 @@
 
 import { useState } from "react";
 import type { Conflict } from "../api/types";
+import type { MemberDirectory } from "../lib/members";
 import * as ui from "../lib/ui";
+import ActorName from "./ActorName";
 import { displayValue } from "./FieldDiff";
 
 export default function ConflictCard({
   conflict,
+  directory,
   busy,
   onResolve,
 }: {
   conflict: Conflict;
+  directory: MemberDirectory;
   busy: boolean;
   onResolve: (choice: "keep-A" | "keep-B" | "new-value", newValue?: string) => void;
 }) {
@@ -42,7 +46,8 @@ export default function ConflictCard({
         <span style={ui.chip}>conflict</span>
       </div>
       <p style={{ ...ui.muted, margin: "0.35rem 0" }}>
-        {conflict.actor}'s write lost the last-writer-wins tie. Revisions{" "}
+        <ActorName id={conflict.actor} directory={directory} />
+        's write lost the last-writer-wins tie. Revisions{" "}
         {conflict.contending_revisions.join(" vs ")} · base {conflict.base_rev} · head{" "}
         {conflict.head_rev}. Pick the value that should stand.
       </p>

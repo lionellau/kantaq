@@ -27,20 +27,33 @@ import type {
   MemoryEntry,
   Proposal,
   Ticket,
+  TicketPatch,
 } from "../api/types";
 import CallList from "../components/CallList";
 import ConflictCard from "../components/ConflictCard";
+import { displayValue } from "../components/FieldDiff";
 import MemoryPromotionCard from "../components/MemoryPromotionCard";
-import ProposalCard from "../components/ProposalCard";
+import ProposalCard, { proposedChanges } from "../components/ProposalCard";
 import Tabs from "../components/Tabs";
+import { useMemberDirectory } from "../lib/members";
 import { useSession } from "../lib/session";
 import * as ui from "../lib/ui";
 import { usePolling } from "../lib/usePolling";
+
+/** A just-approved proposal we can still revert (E20-T6 Undo): the fields it
+ *  changed, with the live value captured before the apply. */
+interface ApprovedUndo {
+  proposalId: string;
+  ticketId: string;
+  ticketTitle: string;
+  fields: { field: string; before: unknown; after: unknown }[];
+}
 
 type TabId = "proposals" | "conflicts" | "memory" | "denied";
 
 export default function Inbox() {
   const { connected } = useSession();
+  const directory = useMemberDirectory(connected);
   const [tab, setTab] = useState<TabId>("proposals");
   const [proposals, setProposals] = useState<Proposal[] | null>(null);
   const [tickets, setTickets] = useState<Record<string, Ticket>>({});
@@ -51,6 +64,7 @@ export default function Inbox() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [approved, setApproved] = useState<ApprovedUndo | null>(null);
 
   const refresh = useCallback(async () => {
     if (!connected) {
@@ -104,23 +118,81 @@ export default function Inbox() {
   }, [refresh]);
   usePolling(refresh, 2000, connected);
 
-  async function decide(proposal: Proposal, decision: "approve" | "reject") {
+  async function decide(proposal: Proposal, decision: "approve" | "reject", reason?: string) {
     setBusy(proposal.id);
     setNotice(null);
     const path = { params: { path: { proposal_id: proposal.id } } };
-    const { response, error: apiError } =
-      decision === "approve"
-        ? await api.POST("/v1/proposals/{proposal_id}/approve", path)
-        : await api.POST("/v1/proposals/{proposal_id}/reject", path);
+
+    if (decision === "approve") {
+      const { response, error: apiError } = await api.POST(
+        "/v1/proposals/{proposal_id}/approve",
+        path,
+      );
+      setBusy(null);
+      if (apiError !== undefined) {
+        setNotice(
+          response?.status === 409
+            ? "that proposal was already decided elsewhere"
+            : "could not approve the proposal",
+        );
+      } else {
+        // Stage an Undo: the fields the proposal changed, with the live value
+        // captured *before* the apply, so we can revert through the ticket path.
+        const live = (tickets[proposal.ticket_id] ?? {}) as Record<string, unknown>;
+        setApproved({
+          proposalId: proposal.id,
+          ticketId: proposal.ticket_id,
+          ticketTitle: proposal.ticket_title ?? proposal.ticket_id,
+          fields: proposedChanges(proposal).map(([field, after]) => ({
+            field,
+            before: live[field],
+            after,
+          })),
+        });
+      }
+      void refresh();
+      return;
+    }
+
+    const { response, error: apiError } = await api.POST("/v1/proposals/{proposal_id}/reject", {
+      ...path,
+      body: { reason: reason ?? null },
+    });
     setBusy(null);
     if (apiError !== undefined) {
       setNotice(
         response?.status === 409
           ? "that proposal was already decided elsewhere"
-          : `could not ${decision} the proposal`,
+          : "could not reject the proposal",
       );
     } else {
-      setNotice(decision === "approve" ? "Approved — the ticket is updated." : "Rejected.");
+      setNotice(
+        reason !== undefined ? "Rejected — your reason reaches the agent's owner." : "Rejected.",
+      );
+    }
+    void refresh();
+  }
+
+  // Undo a just-approved proposal: revert the changed fields to their captured
+  // pre-approve values through the one ticket write path (audited like any edit).
+  async function undo(record: ApprovedUndo) {
+    setBusy(record.proposalId);
+    const revert: Record<string, unknown> = {};
+    for (const { field, before } of record.fields) {
+      if (before !== undefined) {
+        revert[field] = before;
+      }
+    }
+    const { error: apiError } = await api.PATCH("/v1/tickets/{ticket_id}", {
+      params: { path: { ticket_id: record.ticketId } },
+      body: revert as TicketPatch,
+    });
+    setBusy(null);
+    if (apiError !== undefined) {
+      setNotice("could not undo — the ticket may have moved on; edit it directly.");
+    } else {
+      setApproved(null);
+      setNotice("Undone — the ticket is back to its previous values.");
     }
     void refresh();
   }
@@ -207,6 +279,44 @@ export default function Inbox() {
         </p>
       )}
 
+      {approved !== null && (
+        <output
+          style={{
+            ...ui.card,
+            display: "block",
+            borderColor: ui.palette.accent,
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <strong>Approved</strong> —{" "}
+              <Link to={`/tickets/${approved.ticketId}`}>{approved.ticketTitle}</Link> is updated:
+              <ul style={{ margin: "0.4rem 0 0", paddingLeft: "1.2rem" }}>
+                {approved.fields.map((f) => (
+                  <li key={f.field} style={ui.muted}>
+                    {f.field}: <code>{displayValue(f.after)}</code>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexShrink: 0, alignItems: "flex-start" }}>
+              <button
+                type="button"
+                style={ui.button}
+                disabled={busy === approved.proposalId}
+                onClick={() => void undo(approved)}
+              >
+                Undo
+              </button>
+              <button type="button" style={ui.button} onClick={() => setApproved(null)}>
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </output>
+      )}
+
       <Tabs
         tabs={[
           { id: "proposals", label: "Proposals", count: pendingCount },
@@ -228,8 +338,9 @@ export default function Inbox() {
                   proposal={proposal}
                   ticket={tickets[proposal.ticket_id] ?? null}
                   citedMemory={memory[proposal.ticket_id] ?? []}
+                  directory={directory}
                   busy={busy === proposal.id}
-                  onDecide={(decision) => void decide(proposal, decision)}
+                  onDecide={(decision, reason) => void decide(proposal, decision, reason)}
                 />
               ))}
             </ul>
@@ -244,6 +355,7 @@ export default function Inbox() {
                 <ConflictCard
                   key={conflict.id}
                   conflict={conflict}
+                  directory={directory}
                   busy={busy === conflict.id}
                   onResolve={(choice, newValue) => void resolve(conflict, choice, newValue)}
                 />
@@ -263,6 +375,7 @@ export default function Inbox() {
                 <MemoryPromotionCard
                   key={entry.id}
                   entry={entry}
+                  directory={directory}
                   busy={busy === entry.id}
                   onDecide={(decision) => void decideMemory(entry, decision)}
                 />

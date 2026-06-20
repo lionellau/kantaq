@@ -1636,6 +1636,16 @@ export interface components {
             /** Why */
             why: string;
         };
+        /**
+         * RejectIn
+         * @description An optional human reason when declining a proposal (E20-T6). The reason
+         *     rides the audit trail and reaches the proposing agent's owner; it never
+         *     touches the ticket.
+         */
+        RejectIn: {
+            /** Reason */
+            reason?: string | null;
+        };
         /** RelationIn */
         RelationIn: {
             /** To Id */
@@ -3149,7 +3159,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RejectIn"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

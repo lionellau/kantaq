@@ -11,6 +11,7 @@ import {
   buildAuditCall,
   buildConflict,
   buildLinkedMemory,
+  buildMember,
   buildMemoryEntry,
   buildProposal,
   buildTicket,
@@ -46,7 +47,9 @@ describe("the Inbox queue", () => {
     renderApp("/inbox");
 
     expect(await screen.findByRole("link", { name: "Fix the flux capacitor" })).toBeDefined();
-    expect(screen.getByText(/proposed by agent-1/)).toBeDefined();
+    // The proposer renders through ActorName; with no member directory loaded it
+    // falls back to the raw id (E20-T6 resolves it to an email when known).
+    expect(screen.getByText("agent-1")).toBeDefined();
     // Field-level diff: the live ticket value (todo) struck, the proposed value (doing).
     expect(screen.getByText("status")).toBeDefined();
     expect(screen.getByText("todo")).toBeDefined();
@@ -64,7 +67,7 @@ describe("the Inbox queue", () => {
     expect(screen.getByText("Cited design note")).toBeDefined();
   });
 
-  it("approve posts the decision and the queue goes to Inbox zero", async () => {
+  it("approve posts the decision and offers an Undo; the queue goes to Inbox zero", async () => {
     server.on("POST /v1/proposals/{proposal_id}/approve", () => {
       queue = [];
       return { proposal: buildProposal({ status: "approved" }), ticket: buildTicket() };
@@ -74,9 +77,9 @@ describe("the Inbox queue", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
 
-    await waitFor(() => {
-      expect(screen.getByText(/Approved — the ticket is updated\./)).toBeDefined();
-    });
+    // The persistent success row surfaces the resulting state + an Undo (E20-T6).
+    expect(await screen.findByRole("button", { name: "Undo" })).toBeDefined();
+    expect(screen.getByText("Approved")).toBeDefined();
     expect(await screen.findByText(/Inbox zero/)).toBeDefined();
     const call = server.calls.find(
       (c) => c.method === "POST" && c.path === "/v1/proposals/prop-1/approve",
@@ -84,7 +87,7 @@ describe("the Inbox queue", () => {
     expect(call).toBeDefined();
   });
 
-  it("reject posts the decision", async () => {
+  it("reject opens the reason panel, then Confirm reject posts the decision", async () => {
     server.on("POST /v1/proposals/{proposal_id}/reject", () => {
       queue = [];
       return buildProposal({ status: "rejected" });
@@ -93,6 +96,7 @@ describe("the Inbox queue", () => {
     await screen.findByRole("button", { name: "Reject" });
 
     fireEvent.click(screen.getByRole("button", { name: "Reject" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm reject" }));
 
     await waitFor(() => expect(screen.getByText("Rejected.")).toBeDefined());
     const call = server.calls.find(
@@ -227,6 +231,57 @@ describe("the Inbox memory-promotions tab (E13-T6 / MOD-19 — closes DEBT-28)",
     renderApp("/inbox");
     fireEvent.click(await screen.findByRole("tab", { name: /Memory promotions/ }));
     expect(await screen.findByText(/No memory promotions waiting/)).toBeDefined();
+  });
+});
+
+describe("the Inbox decision affordances + identity humanization (E20-T6)", () => {
+  it("humanizes the proposer ULID to a member email, keeping the ULID on hover", async () => {
+    server.on("GET /v1/members", [
+      buildMember({ id: "agent-1", email: "claude@bot.dev", role: "Agent" }),
+    ]);
+    renderApp("/inbox");
+
+    expect(await screen.findByText(/claude@bot\.dev/)).toBeDefined();
+    // The raw ULID stays available for the auditor (the expand/detail).
+    expect(screen.getByTitle("agent-1")).toBeDefined();
+  });
+
+  it("Undo reverts the approved fields to their pre-approve values via PATCH", async () => {
+    server.on("POST /v1/proposals/{proposal_id}/approve", () => {
+      queue = [];
+      return { proposal: buildProposal({ status: "approved" }), ticket: buildTicket() };
+    });
+    server.on("PATCH /v1/tickets/{ticket_id}", () => buildTicket({ status: "todo" }));
+    renderApp("/inbox");
+    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+
+    // The proposal changed status todo→doing; Undo reverts to the captured 'todo'.
+    fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+
+    await waitFor(() => expect(screen.getByText(/Undone/)).toBeDefined());
+    const call = server.calls.find((c) => c.method === "PATCH" && c.path === "/v1/tickets/tick-1");
+    const body = (await call?.request.json()) as Record<string, unknown>;
+    expect(body).toEqual({ status: "todo" });
+  });
+
+  it("a reject reason rides the request body to the agent's owner", async () => {
+    server.on("POST /v1/proposals/{proposal_id}/reject", () => {
+      queue = [];
+      return buildProposal({ status: "rejected" });
+    });
+    renderApp("/inbox");
+    fireEvent.click(await screen.findByRole("button", { name: "Reject" }));
+    fireEvent.change(await screen.findByLabelText("reject reason"), {
+      target: { value: "duplicate of TCK-12" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm reject" }));
+
+    await waitFor(() => expect(screen.getByText(/reason reaches the agent's owner/)).toBeDefined());
+    const call = server.calls.find(
+      (c) => c.method === "POST" && c.path === "/v1/proposals/prop-1/reject",
+    );
+    const body = (await call?.request.json()) as { reason?: string | null };
+    expect(body.reason).toBe("duplicate of TCK-12");
   });
 });
 

@@ -8,10 +8,13 @@
  * through `FieldDiff`, never as markup.
  */
 
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { LinkedMemory, Proposal, Ticket } from "../api/types";
 import { fmtDateTime } from "../lib/format";
+import type { MemberDirectory } from "../lib/members";
 import * as ui from "../lib/ui";
+import ActorName from "./ActorName";
 import CitedMemory from "./CitedMemory";
 import FieldDiff from "./FieldDiff";
 
@@ -30,17 +33,23 @@ export default function ProposalCard({
   proposal,
   ticket,
   citedMemory,
+  directory,
   busy,
   onDecide,
 }: {
   proposal: Proposal;
   ticket: Ticket | null;
   citedMemory: LinkedMemory[];
+  directory: MemberDirectory;
   busy: boolean;
-  onDecide: (decision: "approve" | "reject") => void;
+  onDecide: (decision: "approve" | "reject", reason?: string) => void;
 }) {
   const changes = proposedChanges(proposal);
   const note = proposalNote(proposal);
+  // Reject opens an optional "why?" the proposing agent's owner will see; a
+  // remote teammate needs the reason, not a silent decline (E20-T6).
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState("");
   // `before` is the live ticket value; null when the ticket has not loaded yet
   // (the diff still shows the proposed side, never a guessed before).
   const current = (ticket ?? {}) as Record<string, unknown>;
@@ -55,7 +64,8 @@ export default function ProposalCard({
             </Link>
           </div>
           <div style={ui.muted}>
-            proposed by {proposal.proposer_id} · {fmtDateTime(proposal.created_at)}
+            proposed by <ActorName id={proposal.proposer_id} directory={directory} /> ·{" "}
+            {fmtDateTime(proposal.created_at)}
           </div>
 
           <div style={{ display: "grid", gap: 8, margin: "0.6rem 0 0" }}>
@@ -90,13 +100,49 @@ export default function ProposalCard({
           <button
             type="button"
             style={ui.dangerButton}
-            disabled={busy}
-            onClick={() => onDecide("reject")}
+            disabled={busy || rejecting}
+            onClick={() => setRejecting(true)}
           >
             Reject
           </button>
         </div>
       </div>
+
+      {rejecting && (
+        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+          <label style={ui.label}>
+            Reason (optional) — the proposing agent's owner sees this
+            <textarea
+              aria-label="reject reason"
+              style={{ ...ui.input, minHeight: "3rem", resize: "vertical" }}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="why this proposal is declined"
+            />
+          </label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              style={ui.dangerButton}
+              disabled={busy}
+              onClick={() => onDecide("reject", reason.trim() || undefined)}
+            >
+              Confirm reject
+            </button>
+            <button
+              type="button"
+              style={ui.button}
+              disabled={busy}
+              onClick={() => {
+                setRejecting(false);
+                setReason("");
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </li>
   );
 }
