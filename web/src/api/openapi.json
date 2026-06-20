@@ -1994,6 +1994,25 @@
         "title": "RecommendationOut",
         "type": "object"
       },
+      "RejectIn": {
+        "description": "An optional human reason when declining a proposal (E20-T6). The reason\nrides the audit trail and reaches the proposing agent's owner; it never\ntouches the ticket.",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "RejectIn",
+        "type": "object"
+      },
       "RelationIn": {
         "properties": {
           "to_id": {
@@ -4746,6 +4765,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RejectIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {

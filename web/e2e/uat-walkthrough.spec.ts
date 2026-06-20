@@ -138,7 +138,8 @@ test("UAT walkthrough — every delivered screen, with screenshots", async ({ pa
     .filter({ hasText: "Seeded ticket" })
     .getByRole("button", { name: "Approve" })
     .click();
-  await expect(page.getByText("Approved — the ticket is updated.")).toBeVisible();
+  // E20-T6: approve shows a persistent success row (with the resulting state + Undo).
+  await expect(page.getByRole("status")).toContainText("Approved");
   await shot(page, "inbox-proposal-approved");
 
   // the approved change is applied on the ticket (status todo → doing)

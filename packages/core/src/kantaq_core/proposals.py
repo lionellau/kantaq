@@ -132,11 +132,18 @@ def _flip_status(
     status: str,
     now: datetime,
     signer: EventSigner | None = None,
+    reason: str | None = None,
 ) -> None:
     """Stage the compare-and-swap status flip with its audit row and sync event.
 
     ``signer`` (E04-T4) signs the emitted ``agent_proposals`` event past the
-    signing cutover; ``None`` leaves it unsigned (pre-cutover / solo)."""
+    signing cutover; ``None`` leaves it unsigned (pre-cutover / solo).
+
+    ``reason`` (E20-T6) is the human's optional note when declining a proposal;
+    it rides the audit row's ``after`` (the same lift-from-``after`` convention
+    the gateway uses for a denial's reason), so it reaches the proposing agent's
+    owner through the audit trail. It is *not* added to the emitted
+    ``agent_proposals`` payload — the synced entity has no reason column."""
     before = audit.snapshot(proposal)
     claimed = cast(
         "CursorResult[Any]",
@@ -150,6 +157,7 @@ def _flip_status(
         session.rollback()
         raise ProposalConflictError("proposal was decided concurrently")
     session.refresh(proposal)
+    after = audit.snapshot(proposal)
     audit.write(
         session,
         actor_id=actor_id,
@@ -157,17 +165,20 @@ def _flip_status(
         source=source,
         object_ref=f"agent_proposals/{proposal.id}",
         before=before,
-        after=audit.snapshot(proposal),
+        # The reason lifts out of ``after`` (AuditEventOut), never widening the
+        # synced proposal entity below.
+        after={**after, "reason": reason} if reason else after,
         now=now,
     )
     # The decision syncs to every replica (FR-E20-1: one queue, synced), signed
-    # at append when the runtime is post-cutover (E04-T4).
+    # at append when the runtime is post-cutover (E04-T4). The payload is the
+    # bare entity snapshot — the reason is an audit detail, not an entity field.
     EventLogSink(session, actor_id, signer=signer).emit(
         DomainEvent(
             collection="agent_proposals",
             entity_id=proposal.id,
             op="patch",
-            payload=audit.snapshot(proposal),
+            payload=after,
         )
     )
     # Telemetry (E28, opt-in no-op): outcome + wait — numbers only, no content.
@@ -234,8 +245,12 @@ def reject_proposal(
     source: str,
     now: Callable[[], datetime] | None = None,
     signer: EventSigner | None = None,
+    reason: str | None = None,
 ) -> AgentProposal:
-    """Decline a pending proposal; the ticket is never touched."""
+    """Decline a pending proposal; the ticket is never touched.
+
+    ``reason`` (E20-T6) is the human's optional "why", carried in the audit row
+    so the proposing agent's owner can see it."""
     ts = (now or _now)()
     proposal = _get_pending(session, proposal_id)
     _flip_status(
@@ -246,6 +261,7 @@ def reject_proposal(
         status="rejected",
         now=ts,
         signer=signer,
+        reason=reason,
     )
     session.commit()
     session.refresh(proposal)

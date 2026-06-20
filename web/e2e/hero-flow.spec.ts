@@ -59,7 +59,10 @@ test("approve a seeded agent proposal from the Inbox", async ({ page }) => {
   await expect(proposal.getByText("e2e seeded proposal")).toBeVisible();
 
   await proposal.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByText("Approved — the ticket is updated.")).toBeVisible();
+  // E20-T6: approve shows a persistent success row with the resulting state + Undo.
+  const approved = page.getByRole("status");
+  await expect(approved).toContainText("Approved");
+  await expect(approved.getByRole("button", { name: "Undo" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
 
   // The approved change is applied: the ticket page shows the new status.

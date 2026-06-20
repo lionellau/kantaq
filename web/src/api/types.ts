@@ -4,6 +4,7 @@ import type { components } from "./schema";
 
 export type Project = components["schemas"]["ProjectOut"];
 export type Ticket = components["schemas"]["TicketOut"];
+export type TicketPatch = components["schemas"]["TicketPatch"];
 export type Comment = components["schemas"]["CommentOut"];
 export type Activity = components["schemas"]["ActivityOut"];
 export type Attachment = components["schemas"]["AttachmentOut"];

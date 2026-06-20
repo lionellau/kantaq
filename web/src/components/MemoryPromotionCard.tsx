@@ -12,7 +12,9 @@
 
 import type { MemoryEntry } from "../api/types";
 import { fmtDateTime } from "../lib/format";
+import type { MemberDirectory } from "../lib/members";
 import * as ui from "../lib/ui";
+import ActorName from "./ActorName";
 
 /** Provenance is a flat string→string map (who/when/how); show its entries. */
 export function provenanceEntries(entry: MemoryEntry): [string, string][] {
@@ -21,10 +23,12 @@ export function provenanceEntries(entry: MemoryEntry): [string, string][] {
 
 export default function MemoryPromotionCard({
   entry,
+  directory,
   busy,
   onDecide,
 }: {
   entry: MemoryEntry;
+  directory: MemberDirectory;
   busy: boolean;
   onDecide: (decision: "approve" | "reject") => void;
 }) {
@@ -37,7 +41,12 @@ export default function MemoryPromotionCard({
           <div style={{ fontWeight: 600 }}>{entry.title}</div>
           <div style={ui.muted}>
             {entry.type} · {entry.space} · confidence {entry.confidence} · proposed by{" "}
-            {entry.created_by ?? "unknown"} · {fmtDateTime(entry.updated_at)}
+            {entry.created_by !== null ? (
+              <ActorName id={entry.created_by} directory={directory} />
+            ) : (
+              "unknown"
+            )}{" "}
+            · {fmtDateTime(entry.updated_at)}
           </div>
 
           {entry.body.trim() !== "" && (
