@@ -311,6 +311,14 @@ Golden-rule re-run 2026-06 for the v0.2 offline-first + conflict layer (original
 |---|---|---|---|
 | Full conformance suite (signed event A → backend → B at every hop) + export round-trip CI gate | **the in-stack seams — no new dependency** (the two-replica `Replica` harness + `VerifyingBackend` + `FakeBackend` + the conformance vectors + `roundtrip_check.py`) | Apache-2.0 (ours) | Extends the E27-T4 conformance-smoke entry above: the v0.2 suite drives all golden vectors + every syncable collection through replica A → `VerifyingBackend` → replica B, and automates the export → import (incl. incremental `?since`) round-trip — all assembled from shipped primitives, each gate proven by a deliberately-failing fixture. No new tooling (RISK-05: fewer jobs, faster CI). |
 
+### E25 / MOD-28 self-hosted Postgres backend (v0.3 core, E25-T1/T2)
+
+| Need | Chosen | License | Notes |
+|---|---|---|---|
+| The self-hosted **sync-server** (HTTP backend over Postgres) | **the in-stack FastAPI + uvicorn + SQLAlchemy/SQLModel + psycopg** — no new dependency | Apache-2.0 (ours) | Golden-rule run 2026-06 (E25-T0). The capability is not new: it is an HTTP server (the local runtime is already FastAPI/uvicorn) over Postgres (SQLAlchemy + psycopg already in-stack, used by the harness + the Supabase adapter). The decisive constraint is **D-30 "one validator core, no fork"** — so the server *reuses* `verify_event` + `detect_merge` from `kantaq_sync_engine` rather than re-deriving them. Candidates considered against the >5k-star bar for a drop-in "sync-server": a ready-made sync framework (e.g. PowerSync / ElectricSQL-class) would impose its **own** merge/validation model, **forking** the validator core — the one thing the roadmap forbids — and none speaks the kantaq event/grant protocol. **Conclusion: assemble from the in-stack primitives + the shared validators; build nothing new.** |
+| The atomic commit (the `events.sql` twin) | **the shared `kantaq_sync_engine` validators + a Postgres advisory xact lock** | Apache-2.0 (ours) | `commit.py` reuses `verify_event` (grant + Ed25519) and `detect_merge` (the §8.1 merge) verbatim and serialises commit-order with `pg_advisory_xact_lock` (the same lock key the plpgsql RPC uses). The parity contract test pins it == the golden vectors == `detect_merge`, so the two backends cannot drift. No CRDT/merge library adopted (the merge rule is ours, D-05/§8.1). |
+| The container stack | **Docker Compose + the official `postgres:16` + optional `caddy:2`** | (images: PostgreSQL License / Apache-2.0) | Standard, boring infra (architecture §1.5: "Docker for self-host"). Caddy is the optional HTTPS terminator (automatic ACME); no reverse-proxy code written. |
+
 ## Consequences
 
 - Two toolchains in CI (Python + web). Keep total CI **under 10 minutes**
