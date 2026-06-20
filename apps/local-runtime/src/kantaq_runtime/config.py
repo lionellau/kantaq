@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     local_mcp_port: str = "auto"
     supabase_url: str | None = None
     supabase_anon_key: str | None = None
+    # Self-hosted backend (HUB_MODE=postgres, MOD-28 / E25). `hub_url` is the
+    # sync-server base URL (e.g. https://kantaq.team.example or http://host:8889);
+    # `hub_token` is the member's bearer token the server authenticates the
+    # caller with (the same token/grant auth as Supabase mode — OIDC deferred,
+    # DEBT-14). Both come from `.env` (see docker/self-hosted-backend/.env.self-hosted.example).
+    hub_url: str | None = None
+    hub_token: str | None = None
     # The signing cutover switch (E04-T4 / FR-E04-6). Off until a workspace
     # deliberately cuts over to signed sync; the cutover is a recorded,
     # one-way decision (dev-planning D-15) because pre-cutover events stay

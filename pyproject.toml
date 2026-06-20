@@ -14,6 +14,7 @@ dependencies = [
     "kantaq-db",
     "kantaq-local-runtime",
     "kantaq-backend-supabase",
+    "kantaq-backend-postgres",
 ]
 
 [project.scripts]
@@ -30,9 +31,9 @@ packages = ["src/kantaq"]
 # uv workspace: one `uv sync` installs the umbrella + every member + dev tools.
 # ---------------------------------------------------------------------------
 [tool.uv.workspace]
-# backend-postgres stays an empty scaffold until v0.3 (MOD-28), so adapters are
-# listed explicitly rather than globbed.
-members = ["packages/*", "apps/*", "adapters/backend-supabase"]
+# Both adapters now build (MOD-28 self-hosted backend landed in v0.3, E25);
+# adapters are listed explicitly rather than globbed.
+members = ["packages/*", "apps/*", "adapters/backend-supabase", "adapters/backend-postgres"]
 
 [tool.uv.sources]
 kantaq-protocol = { workspace = true }
@@ -42,6 +43,7 @@ kantaq-mcp = { workspace = true }
 kantaq-db = { workspace = true }
 kantaq-local-runtime = { workspace = true }
 kantaq-backend-supabase = { workspace = true }
+kantaq-backend-postgres = { workspace = true }
 kantaq-test-harness = { workspace = true }
 
 [dependency-groups]
@@ -80,6 +82,7 @@ known-first-party = [
     "kantaq_db",
     "kantaq_runtime",
     "kantaq_backend_supabase",
+    "kantaq_backend_postgres",
     "kantaq_test_harness",
 ]
 

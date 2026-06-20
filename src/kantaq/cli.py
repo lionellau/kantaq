@@ -487,10 +487,14 @@ def cmd_sync(args: argparse.Namespace) -> int:
     settings = get_settings()
     if args.sync_command == "status":
         return _sync_status(settings)
+    if settings.hub_mode is HubMode.postgres:
+        # Self-hosted backend (MOD-28 / E25): token-authenticated, no login step.
+        return _postgres_sync(args, settings)
     if settings.hub_mode is not HubMode.supabase:
         print(
             f"kantaq sync {args.sync_command}: HUB_MODE={settings.hub_mode.value} has no "
-            "shared backend (set HUB_MODE=supabase; see docs/setup-supabase.md)",
+            "shared backend (set HUB_MODE=supabase or postgres; see docs/setup-supabase.md "
+            "or docker/self-hosted-backend/README.md)",
             file=sys.stderr,
         )
         return 1
@@ -653,6 +657,94 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
     return 0
 
 
+def _postgres_sync(args: argparse.Namespace, settings: Settings) -> int:
+    """`kantaq sync` against the self-hosted Postgres backend (MOD-28 / E25).
+
+    Unlike Supabase mode there is no interactive login: the runtime authenticates
+    with ``HUB_TOKEN`` (a normal member token). ``once`` runs one push + pull
+    cycle through the sync-server; ``login`` is a no-op that points at the env.
+    """
+    from kantaq_backend_postgres import SyncBackendError
+
+    if args.sync_command == "login":
+        print(
+            "postgres mode authenticates with HUB_TOKEN (no login step). Set HUB_MODE, "
+            "HUB_URL and HUB_TOKEN in .env; see docker/self-hosted-backend/README.md.",
+            file=sys.stderr,
+        )
+        return 0
+    if not settings.hub_url or not settings.hub_token:
+        print("HUB_URL and HUB_TOKEN are required for HUB_MODE=postgres", file=sys.stderr)
+        return 1
+    try:
+        return _postgres_sync_once(settings)
+    except SyncBackendError as exc:
+        print(f"kantaq sync once: {exc}", file=sys.stderr)
+        return 1
+
+
+def _postgres_sync_once(settings: Settings) -> int:
+    """One push + pull cycle through the self-hosted sync-server.
+
+    Mirrors ``_sync_once`` (Supabase) but over ``SyncServerBackend``: the local
+    member + workspace are resolved from the local store (the runtime's own
+    identity), the events verify against the local trust store on the way out and
+    the way in, and the durable outbox drains with the same offline-aware engine.
+    """
+    from sqlmodel import Session, col, select
+
+    from kantaq_backend_postgres import SyncServerBackend
+    from kantaq_core.identity import local_device
+    from kantaq_db import Member, Workspace
+    from kantaq_db.schema_version import EXPECTED_SCHEMA_VERSION
+    from kantaq_db.session import get_engine
+    from kantaq_runtime.auth import keychain_for
+    from kantaq_sync_engine import SYNC_VERSION, SyncEngine
+
+    assert settings.hub_url and settings.hub_token  # checked by the caller
+    db = get_engine(_db_url())
+    with Session(db) as session:
+        workspace = session.exec(select(Workspace)).first()
+        me = session.exec(
+            select(Member).where(Member.status == "active").order_by(col(Member.id))
+        ).first()
+    if workspace is None or me is None:
+        print("no workspace/member yet — boot the runtime first", file=sys.stderr)
+        return 1
+
+    hub = SyncServerBackend(settings.hub_url, settings.hub_token, workspace_id=workspace.id)
+    # Connection-verify up front: a wrong URL/token fails here with a clear error
+    # rather than mid-drain (the §B7 handshake also negotiates the sync version).
+    hub.session_init(sync_version=SYNC_VERSION, schema_version=EXPECTED_SCHEMA_VERSION)
+
+    backend = _verifying_backend(
+        hub, db=db, actor_id=me.id, workspace_id=workspace.id, settings=settings
+    )
+    engine = SyncEngine(db, backend, actor_id=me.id, workspace_id=workspace.id)
+    flushed = engine.flush_outbox(proposal_stale_policy=settings.agent_proposal_stale_policy.value)
+    pulled = engine.apply_inbox()
+    # Report this replica's acked pull position so the server's retention
+    # compaction never prunes below what a live replica still needs (E07-T4).
+    try:
+        with Session(db) as dsession:
+            keychain = keychain_for(settings)
+            device = local_device(dsession, keychain)
+        replica_id = device.id if device is not None else me.id
+        hub.update_ack_watermark(member_id=me.id, replica_id=replica_id, acked_rev=pulled.cursor)
+    except Exception:  # noqa: BLE001 - best-effort watermark; never break the cycle
+        pass
+    stale = f", {flushed.stale} stale" if flushed.stale else ""
+    rejected = f", {flushed.rejected} rejected" if flushed.rejected else ""
+    rebased = f", {flushed.rebased} rebased" if flushed.rebased else ""
+    print(
+        f"flush: {flushed.committed} committed, {flushed.reconciled} reconciled"
+        f"{rejected}{stale}{rebased} (of {flushed.submitted} pending) · "
+        f"pull: {pulled.applied} applied, {pulled.own_reconciled} own reconciled · "
+        f"cursor {pulled.cursor}"
+    )
+    return 0
+
+
 def _verifying_backend(
     inner: BackendPort, *, db: Engine, actor_id: str, workspace_id: str, settings: Settings
 ) -> BackendPort:
@@ -718,11 +810,36 @@ def _sync_status(settings: Settings) -> int:
         ).one()
         cursors = session.exec(select(SyncCursor)).all()
     print(f"hub_mode = {settings.hub_mode.value}")
-    print(f"session  = {email or '(not signed in)'}")
+    if settings.hub_mode.value == "postgres":
+        print(f"hub_url  = {settings.hub_url or '(unset)'}")
+        print(f"hub      = {_postgres_hub_status(settings)}")
+    else:
+        print(f"session  = {email or '(not signed in)'}")
     print(f"pending  = {pending} event(s) awaiting push")
     for cursor in cursors:
         print(f"cursor   = {cursor.collection}: {cursor.acked_rev} (actor {cursor.actor_id})")
     return 0
+
+
+def _postgres_hub_status(settings: Settings) -> str:
+    """A one-line connection-verify against the self-hosted sync-server.
+
+    Hits the §B7 session handshake so a wrong URL/token shows up here (the
+    `.env.self-hosted.example` connection-verify) rather than on the next sync."""
+    from kantaq_backend_postgres import SyncBackendError, SyncServerBackend
+    from kantaq_db.schema_version import EXPECTED_SCHEMA_VERSION
+    from kantaq_sync_engine import SYNC_VERSION
+
+    if not settings.hub_url or not settings.hub_token:
+        return "not configured (set HUB_URL and HUB_TOKEN)"
+    try:
+        hub = SyncServerBackend(settings.hub_url, settings.hub_token)
+        init = hub.session_init(sync_version=SYNC_VERSION, schema_version=EXPECTED_SCHEMA_VERSION)
+        return f"OK (sync v{init.sync_version}, schema v{init.schema_version})"
+    except SyncBackendError as exc:
+        return f"unreachable: {exc}"
+    except Exception as exc:  # noqa: BLE001 - status must never raise
+        return f"error: {exc}"
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:

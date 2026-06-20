@@ -1,0 +1,38 @@
+[project]
+name = "kantaq-backend-postgres"
+version = "0.3.0"
+description = "kantaq self-hosted Postgres backend: the sync-server + the same validators as MOD-05 (MOD-28)"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+dependencies = [
+    # The HTTP sync-server (the same FastAPI stack as the local runtime).
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "httpx>=0.27.0",
+    "pydantic-settings>=2.4.0",
+    # The Postgres engine + driver (psycopg v3, the same driver the harness uses).
+    "sqlalchemy>=2.0.0",
+    "sqlmodel>=0.0.22",
+    "psycopg[binary]>=3.2.0",
+    # The SHARED validator core — no fork (MOD-28's main constraint, D-30):
+    #   verify_event  (grant + signature) and detect_merge (the §8.1 merge rule)
+    # are reused verbatim from the sync engine, and the trust-store readers
+    # (verification_roots / local_grant_index) + audit from core.
+    "kantaq-sync-engine",
+    "kantaq-protocol",
+    "kantaq-db",
+    "kantaq-core",
+]
+
+[tool.uv.sources]
+kantaq-sync-engine = { workspace = true }
+kantaq-protocol = { workspace = true }
+kantaq-db = { workspace = true }
+kantaq-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kantaq_backend_postgres"]

@@ -1,0 +1,74 @@
+# kantaq self-hosted backend (MOD-28 / E25-T2): the whole sync backend from one
+# `docker compose up` — sync-server + Postgres + optional Caddy HTTPS. No
+# Supabase. The server exposes the same protocol endpoints and runs the same
+# validators as the Supabase backend (one validator core, two backends).
+#
+#   cp .env.self-hosted.example .env   # then edit POSTGRES_PASSWORD
+#   docker compose up -d               # sync-server on :8889
+#   docker compose --profile tls up -d # …behind Caddy on :443 (set CADDY_DOMAIN)
+#
+# Build context is the repo root so the uv workspace resolves.
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kantaq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kantaq}
+      POSTGRES_DB: ${POSTGRES_DB:-kantaq}
+    volumes:
+      - kantaq-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kantaq} -d ${POSTGRES_DB:-kantaq}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  sync-server:
+    build:
+      context: ../..
+      dockerfile: docker/self-hosted-backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      # The server creates the schema on boot (idempotent) and serves /v1/*.
+      KANTAQ_DATABASE_URL: postgresql://${POSTGRES_USER:-kantaq}:${POSTGRES_PASSWORD:-kantaq}@postgres:5432/${POSTGRES_DB:-kantaq}
+      KANTAQ_SYNC_PORT: "8889"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${SYNC_PORT:-8889}:8889"
+    healthcheck:
+      # stdlib-only (the slim image has no curl); the compose smoke waits on this.
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8889/healthz').status==200 else 1)"
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  # Optional HTTPS termination. Enable with `--profile tls` and set CADDY_DOMAIN
+  # to a public hostname Caddy can solve an ACME challenge for.
+  caddy:
+    image: caddy:2
+    profiles: ["tls"]
+    restart: unless-stopped
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - kantaq-caddy-data:/data
+      - kantaq-caddy-config:/config
+    depends_on:
+      - sync-server
+
+volumes:
+  kantaq-pg-data:
+  kantaq-caddy-data:
+  kantaq-caddy-config:
