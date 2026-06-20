@@ -50,6 +50,19 @@ export function VisibilityBadge({ entry }: { entry: MemoryEntry }) {
   );
 }
 
+/**
+ * Can this entry be promoted to a team proposal? (MOD-19 lifecycle, E13-T6)
+ * A `local` entry promotes to a new team/`proposed` copy (the local stays
+ * private, NFR-E13-1); a `team` entry in `draft`/`stale` promotes in place.
+ * Anything already `proposed`/`approved`/`rejected` is not promotable.
+ */
+export function isPromotable(entry: MemoryEntry): boolean {
+  if (entry.visibility === "local") {
+    return true;
+  }
+  return entry.review_status === "draft" || entry.review_status === "stale";
+}
+
 export default function Memory() {
   const { connected } = useSession();
   const [entries, setEntries] = useState<MemoryEntry[] | null>(null);
@@ -57,6 +70,7 @@ export default function Memory() {
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [linkingId, setLinkingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!connected) {
@@ -89,6 +103,27 @@ export default function Memory() {
 
   function setFilter(key: keyof Filters, value: string) {
     setFilters((current) => ({ ...current, [key]: value }));
+  }
+
+  // "Promote to team" — route a local/draft entry into the Inbox approval queue
+  // (POST /v1/memory/{id}/promote, human-only, memory.write). Nothing is shared
+  // until a human approves the resulting `proposed` entry in the Inbox.
+  async function promote(entry: MemoryEntry) {
+    setNotice(null);
+    const { response, error: apiError } = await api.POST("/v1/memory/{memory_id}/promote", {
+      params: { path: { memory_id: entry.id } },
+    });
+    if (apiError !== undefined) {
+      setError(
+        response?.status === 422
+          ? "this entry can't be promoted from its current state"
+          : "could not promote the entry",
+      );
+      return;
+    }
+    setError(null);
+    setNotice("Promoted — it's now awaiting approval in the Inbox.");
+    void refresh();
   }
 
   if (!connected) {
@@ -154,6 +189,11 @@ export default function Memory() {
       <CreateMemory onCreated={() => void refresh()} />
 
       {error !== null && <p style={ui.errorText}>{error}</p>}
+      {notice !== null && (
+        <p>
+          <output>{notice}</output>
+        </p>
+      )}
       {entries !== null && entries.length === 0 && <p style={ui.muted}>No memory entries.</p>}
       {entries !== null && entries.length > 0 && (
         <table style={ui.table}>
@@ -186,14 +226,19 @@ export default function Memory() {
                 </td>
                 <td style={ui.td}>{entry.confidence}</td>
                 <td style={ui.td}>{fmtDateTime(entry.updated_at)}</td>
-                <td style={ui.td}>
+                <td style={{ ...ui.td, whiteSpace: "nowrap" }}>
                   <button
                     type="button"
                     style={ui.button}
                     onClick={() => setLinkingId(linkingId === entry.id ? null : entry.id)}
                   >
                     Link to ticket
-                  </button>
+                  </button>{" "}
+                  {isPromotable(entry) && (
+                    <button type="button" style={ui.button} onClick={() => void promote(entry)}>
+                      Promote to team
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

@@ -1,27 +1,36 @@
 /**
- * E20-T1/T3/T4 (MOD-12) — the Inbox: the human review queue.
+ * E20-T1/T3/T4 (MOD-12) + E13-T6 (MOD-19) — the Inbox: the human review queue.
  *
- * Three tabs (FR-E20-2): **proposals** (pending agent writes, shown as a
+ * Four tabs (FR-E20-2): **proposals** (pending agent writes, shown as a
  * field-level diff against the live ticket plus the memory cited for that
- * ticket), **memory promotions** (a pointer to the working CLI/MCP approval
- * loop — the in-Inbox approve/reject UI is a deferred follow-up, MOD-19 /
- * DEBT-28, landing in v0.3; the backend loop is API-complete today), and
- * **denied calls** (recent gateway denials, read live from audit). A count
- * badge rides each tab; when no proposal is pending the proposals tab shows the
- * Inbox-zero state.
+ * ticket), **sync conflicts** (open field collisions), **memory promotions**
+ * (entries proposed for the team — preview + Approve/Reject over the v0.2
+ * `/v1/memory/{id}/approve|reject` routes, the GUI for the API loop that closes
+ * DEBT-28), and **denied calls** (recent gateway denials, read live from
+ * audit). A count badge rides each tab; when a queue is empty it shows its
+ * inbox-zero state.
  *
  * Approve applies the proposed change through the runtime's one write path and
  * flips the proposal; Reject declines it; a 409 means someone decided first.
- * Proposed values are untrusted agent text — rendered as plain text via
- * FieldDiff, never markup (PRD §15).
+ * Memory Approve/Reject are human-only (agents 403 at the route). Proposed
+ * values are untrusted agent text — rendered as plain text (via FieldDiff for
+ * tickets, plain text for memory bodies), never markup (PRD §15).
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
-import type { AuditCall, Conflict, LinkedMemory, Proposal, Ticket } from "../api/types";
+import type {
+  AuditCall,
+  Conflict,
+  LinkedMemory,
+  MemoryEntry,
+  Proposal,
+  Ticket,
+} from "../api/types";
 import CallList from "../components/CallList";
 import ConflictCard from "../components/ConflictCard";
+import MemoryPromotionCard from "../components/MemoryPromotionCard";
 import ProposalCard from "../components/ProposalCard";
 import Tabs from "../components/Tabs";
 import { useSession } from "../lib/session";
@@ -38,6 +47,7 @@ export default function Inbox() {
   const [memory, setMemory] = useState<Record<string, LinkedMemory[]>>({});
   const [denied, setDenied] = useState<AuditCall[]>([]);
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
+  const [promotions, setPromotions] = useState<MemoryEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -46,12 +56,13 @@ export default function Inbox() {
     if (!connected) {
       return;
     }
-    const [proposalsRes, deniedRes, conflictsRes] = await Promise.all([
+    const [proposalsRes, deniedRes, conflictsRes, promotionsRes] = await Promise.all([
       api.GET("/v1/proposals", { params: { query: { status: "pending" } } }),
       api.GET("/v1/audit/range", {
         params: { query: { action: "tool.deny", source: "mcp", limit: 200 } },
       }),
       api.GET("/v1/conflicts", { params: { query: { status: "open" } } }),
+      api.GET("/v1/memory", { params: { query: { review_status: "proposed" } } }),
     ]);
     if (proposalsRes.error !== undefined) {
       setError("could not load the queue");
@@ -62,6 +73,7 @@ export default function Inbox() {
     setProposals(pending);
     setDenied(deniedRes.data ?? []);
     setConflicts(conflictsRes.data ?? []);
+    setPromotions(promotionsRes.data ?? []);
 
     // Fetch each proposal's ticket (for the before-values) and its cited memory.
     const ticketIds = [...new Set(pending.map((p) => p.ticket_id))];
@@ -109,6 +121,33 @@ export default function Inbox() {
       );
     } else {
       setNotice(decision === "approve" ? "Approved — the ticket is updated." : "Rejected.");
+    }
+    void refresh();
+  }
+
+  // Memory promotions reuse the same human-gated loop as proposals, but call the
+  // v0.2 `/v1/memory/{id}/approve|reject` routes (human-only — an agent gets 403
+  // at the route, never here). Approve flips the entry to `team`/`approved` and
+  // it syncs; a 409 means someone decided it first.
+  async function decideMemory(entry: MemoryEntry, decision: "approve" | "reject") {
+    setBusy(entry.id);
+    setNotice(null);
+    const path = { params: { path: { memory_id: entry.id } } };
+    const { response, error: apiError } =
+      decision === "approve"
+        ? await api.POST("/v1/memory/{memory_id}/approve", path)
+        : await api.POST("/v1/memory/{memory_id}/reject", path);
+    setBusy(null);
+    if (apiError !== undefined) {
+      setNotice(
+        response?.status === 409
+          ? "that promotion was already decided elsewhere"
+          : `could not ${decision} the promotion`,
+      );
+    } else {
+      setNotice(
+        decision === "approve" ? "Approved — the entry is now shared with the team." : "Rejected.",
+      );
     }
     void refresh();
   }
@@ -172,7 +211,7 @@ export default function Inbox() {
         tabs={[
           { id: "proposals", label: "Proposals", count: pendingCount },
           { id: "conflicts", label: "Sync conflicts", count: conflicts.length },
-          { id: "memory", label: "Memory promotions" },
+          { id: "memory", label: "Memory promotions", count: promotions?.length ?? 0 },
           { id: "denied", label: "Denied calls", count: denied.length },
         ]}
         active={tab}
@@ -212,13 +251,24 @@ export default function Inbox() {
             </ul>
           ))}
 
-        {tab === "memory" && (
-          <p style={ui.muted}>
-            Memory promotions are available today via the CLI and MCP — an agent proposes an entry
-            and a human approves it with <code>POST /v1/memory/{"{id}"}/approve</code>. Approving
-            them here in the Inbox lands in v0.3.
-          </p>
-        )}
+        {tab === "memory" &&
+          (promotions !== null && promotions.length === 0 ? (
+            <p style={ui.muted}>
+              No memory promotions waiting. Promote a draft from the{" "}
+              <Link to="/memory">Memory</Link> page to share it with the team. 🎉
+            </p>
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: 12 }}>
+              {promotions?.map((entry) => (
+                <MemoryPromotionCard
+                  key={entry.id}
+                  entry={entry}
+                  busy={busy === entry.id}
+                  onDecide={(decision) => void decideMemory(entry, decision)}
+                />
+              ))}
+            </ul>
+          ))}
 
         {tab === "denied" && (
           <CallList
