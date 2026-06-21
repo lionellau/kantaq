@@ -40,6 +40,7 @@ from sqlmodel import Session
 
 from kantaq_core.identity import VerifiedActor
 from kantaq_db.models import Member, Workspace
+from kantaq_mcp.stdio import TOKEN_ENV as MCP_STDIO_TOKEN_ENV
 from kantaq_runtime.auth import get_engine_dep, require_actor
 from kantaq_runtime.config import Settings
 
@@ -54,7 +55,9 @@ TOKEN_PLACEHOLDER = "${KANTAQ_MEMBER_TOKEN}"
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 _START_GATEWAY = (
-    "the MCP gateway is not running; start it with `kantaq mcp dev` and reload this snippet"
+    "the HTTP MCP gateway is not running; the stdio configs below work without it "
+    "(the client launches `kantaq mcp stdio` itself). For the HTTP option, start the "
+    "gateway with `kantaq mcp dev` and reload this snippet"
 )
 
 
@@ -92,6 +95,10 @@ class AgentClientSnippet(BaseModel):
     text: str
     save_as: str
     setup: str | None
+    # "http" (the live loopback gateway) or "stdio" (the client spawns
+    # `kantaq mcp stdio` itself). Both run the exact same eight checks + audit
+    # (E09-T4/T5); the client picks whichever transport it speaks.
+    transport: str = "http"
     instructions: str
 
 
@@ -164,8 +171,8 @@ def _codex_toml(url: str) -> str:
     return f'[mcp_servers.kantaq]\nurl = "{url}"\nbearer_token_env_var = "{CODEX_TOKEN_ENV}"'
 
 
-def _client_snippets(url: str) -> list[AgentClientSnippet]:
-    """Each compatible client's MCP config for a live loopback gateway (E11).
+def _http_snippets(url: str) -> list[AgentClientSnippet]:
+    """Each client's HTTP MCP config for a live loopback gateway (E11).
 
     One entry per client, differing only where the client's config schema and
     auth style differ: Claude Code's ``.mcp.json`` names the transport
@@ -186,12 +193,13 @@ def _client_snippets(url: str) -> list[AgentClientSnippet]:
     return [
         AgentClientSnippet(
             client="claude_code",
-            label="Claude Code",
+            label="Claude Code (HTTP)",
             config=claude_config,
             format=FORMAT_MCP_JSON,
             text=_mcp_json(claude_config),
             save_as=".mcp.json",
             setup=None,
+            transport="http",
             instructions=(
                 "save as .mcp.json in your project (Claude Code reads it on start), "
                 f"replacing {TOKEN_PLACEHOLDER} with your member token"
@@ -199,12 +207,13 @@ def _client_snippets(url: str) -> list[AgentClientSnippet]:
         ),
         AgentClientSnippet(
             client="cursor",
-            label="Cursor",
+            label="Cursor (HTTP)",
             config=cursor_config,
             format=FORMAT_MCP_JSON,
             text=_mcp_json(cursor_config),
             save_as=".cursor/mcp.json",
             setup=None,
+            transport="http",
             instructions=(
                 "save as .cursor/mcp.json in your project (or ~/.cursor/mcp.json for every "
                 f"project), then replace {TOKEN_PLACEHOLDER} with your member token"
@@ -212,18 +221,128 @@ def _client_snippets(url: str) -> list[AgentClientSnippet]:
         ),
         AgentClientSnippet(
             client="codex",
-            label="Codex",
+            label="Codex (HTTP)",
             config=codex_config,
             format=FORMAT_TOML,
             text=_codex_toml(url),
             save_as="~/.codex/config.toml",
             setup=f"export {CODEX_TOKEN_ENV}={TOKEN_PLACEHOLDER}",
+            transport="http",
             instructions=(
                 "add this table to ~/.codex/config.toml, then export your member token as "
                 f"{CODEX_TOKEN_ENV} (Codex reads the bearer from the env var, never the file)"
             ),
         ),
     ]
+
+
+def _stdio_command_config() -> dict[str, Any]:
+    """The Claude Code / Cursor stdio server block — spawn `kantaq mcp stdio`.
+
+    The bearer rides the ``KANTAQ_MCP_TOKEN`` env the child reads at startup, so
+    it never lands in the config file's server URL. No gateway URL: the client
+    launches the gateway itself.
+    """
+    return {
+        "mcpServers": {
+            "kantaq": {
+                "command": "kantaq",
+                "args": ["mcp", "stdio"],
+                "env": {MCP_STDIO_TOKEN_ENV: TOKEN_PLACEHOLDER},
+            }
+        }
+    }
+
+
+def _codex_stdio_toml() -> str:
+    """The Codex stdio server table — command + args + the bearer in an env block."""
+    return (
+        "[mcp_servers.kantaq]\n"
+        'command = "kantaq"\n'
+        'args = ["mcp", "stdio"]\n'
+        f'env = {{ {MCP_STDIO_TOKEN_ENV} = "{TOKEN_PLACEHOLDER}" }}'
+    )
+
+
+def _stdio_snippets() -> list[AgentClientSnippet]:
+    """Each client's stdio MCP config — the gateway spawned as a child (E09-T5).
+
+    Unlike HTTP, stdio needs no live gateway URL: the client launches
+    ``kantaq mcp stdio`` itself, which runs the exact same eight checks + audit
+    over the pipe (E09-T4). The bearer rides the ``KANTAQ_MCP_TOKEN`` env var the
+    child reads at startup; like the HTTP snippets, nothing here carries a real
+    token — only the placeholder the web client substitutes locally.
+    """
+    json_config = _stdio_command_config()
+    json_text = _mcp_json(json_config)
+    codex_config: dict[str, Any] = {
+        "mcp_servers": {
+            "kantaq": {
+                "command": "kantaq",
+                "args": ["mcp", "stdio"],
+                "env": {MCP_STDIO_TOKEN_ENV: TOKEN_PLACEHOLDER},
+            }
+        }
+    }
+    return [
+        AgentClientSnippet(
+            client="claude_code",
+            label="Claude Code (stdio)",
+            config=json_config,
+            format=FORMAT_MCP_JSON,
+            text=json_text,
+            save_as=".mcp.json",
+            setup=None,
+            transport="stdio",
+            instructions=(
+                "save as .mcp.json — Claude Code launches `kantaq mcp stdio` itself; "
+                f"replace {TOKEN_PLACEHOLDER} with your member token (it rides the "
+                f"{MCP_STDIO_TOKEN_ENV} env var)"
+            ),
+        ),
+        AgentClientSnippet(
+            client="cursor",
+            label="Cursor (stdio)",
+            config=json_config,
+            format=FORMAT_MCP_JSON,
+            text=json_text,
+            save_as=".cursor/mcp.json",
+            setup=None,
+            transport="stdio",
+            instructions=(
+                "save as .cursor/mcp.json — Cursor launches `kantaq mcp stdio` itself; "
+                f"replace {TOKEN_PLACEHOLDER} with your member token"
+            ),
+        ),
+        AgentClientSnippet(
+            client="codex",
+            label="Codex (stdio)",
+            config=codex_config,
+            format=FORMAT_TOML,
+            text=_codex_stdio_toml(),
+            save_as="~/.codex/config.toml",
+            setup=None,
+            transport="stdio",
+            instructions=(
+                "add this table to ~/.codex/config.toml — Codex launches "
+                f"`kantaq mcp stdio` and passes {MCP_STDIO_TOKEN_ENV} from the env block; "
+                f"replace {TOKEN_PLACEHOLDER} with your member token"
+            ),
+        ),
+    ]
+
+
+def _client_snippets(url: str) -> list[AgentClientSnippet]:
+    """Every client's MCP config for a live gateway — both transports (E09-T5).
+
+    The HTTP variants point at the live loopback ``url``; the stdio variants
+    launch ``kantaq mcp stdio`` as a child (no URL needed). Both resolve to the
+    same session derivation, the same eight checks, and the same audit (E09-T4) —
+    a contract test pins that equivalence. A client picks whichever it speaks.
+    The HTTP Claude Code config stays first so the back-compat ``snippet`` field
+    keeps its meaning.
+    """
+    return _http_snippets(url) + _stdio_snippets()
 
 
 @router.get("/agent-snippet", response_model=AgentSnippetOut)
@@ -233,13 +352,16 @@ def agent_snippet(actor: AnyActor, request: Request) -> AgentSnippetOut:
     url = _live_gateway_url(discovery)
 
     if url is None:
+        # stdio needs no live HTTP gateway — the client spawns `kantaq mcp stdio`
+        # itself — so the stdio configs are always available; only the HTTP
+        # variants need the discovered URL (E09-T5).
         return AgentSnippetOut(
             member_id=actor.member_id,
             gateway_url=None,
             gateway_live=False,
             token_placeholder=TOKEN_PLACEHOLDER,
             snippet=None,
-            clients=[],
+            clients=_stdio_snippets(),
             instructions=_START_GATEWAY,
         )
 

@@ -126,10 +126,10 @@ describe("Settings → My Agent: the scoped-token default (E20-T7, SEC)", () => 
 });
 
 describe("Settings → My Agent: gateway auto-detect + connection badge (E20-T7)", () => {
-  it("prompts `kantaq mcp dev` and auto-detects (no manual Reload) when the gateway is down", async () => {
+  it("prompts `kantaq mcp dev` and auto-detects (no manual Reload) when nothing is offered", async () => {
     server.on(
       "GET /v1/me/agent-snippet",
-      buildSnippet({ gateway_live: false, gateway_url: null, snippet: null }),
+      buildSnippet({ gateway_live: false, gateway_url: null, snippet: null, clients: [] }),
     );
     renderApp("/settings/my-agent");
 
@@ -137,6 +137,47 @@ describe("Settings → My Agent: gateway auto-detect + connection badge (E20-T7)
     expect(screen.queryByTestId("agent-snippet")).toBeNull();
     expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
     expect(screen.getByText(/no need to reload/i)).toBeDefined();
+  });
+
+  it("offers the stdio configs even when the HTTP gateway is down (E09-T5)", async () => {
+    const stdioConfig = {
+      mcpServers: {
+        kantaq: {
+          command: "kantaq",
+          args: ["mcp", "stdio"],
+          env: { KANTAQ_MCP_TOKEN: "${KANTAQ_MEMBER_TOKEN}" },
+        },
+      },
+    };
+    server.on(
+      "GET /v1/me/agent-snippet",
+      buildSnippet({
+        gateway_live: false,
+        gateway_url: null,
+        snippet: null,
+        clients: [
+          {
+            client: "claude_code",
+            label: "Claude Code (stdio)",
+            config: stdioConfig,
+            format: "mcp_json",
+            text: JSON.stringify(stdioConfig, null, 2),
+            save_as: ".mcp.json",
+            setup: null,
+            transport: "stdio",
+            instructions: "save as .mcp.json",
+          },
+        ],
+      }),
+    );
+    renderApp("/settings/my-agent");
+
+    // stdio needs no HTTP gateway — the snippet renders, with the offline banner.
+    expect(await screen.findByTestId("agent-snippet")).toBeDefined();
+    expect(screen.getByText(/HTTP gateway isn't running/i)).toBeDefined();
+    const snippetText = screen.getByTestId("agent-snippet").textContent ?? "";
+    expect(snippetText).toContain('"command": "kantaq"');
+    expect(snippetText).toContain("stdio");
   });
 
   it("the badge says offline when the gateway is down — never an optimistic green", async () => {

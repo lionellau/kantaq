@@ -347,6 +347,7 @@ export function buildSnippet(overrides: Partial<AgentSnippet> = {}): AgentSnippe
         text: JSON.stringify(claudeConfig, null, 2),
         save_as: ".mcp.json",
         setup: null,
+        transport: "http",
         instructions: "save as .mcp.json",
       },
       {
@@ -357,6 +358,7 @@ export function buildSnippet(overrides: Partial<AgentSnippet> = {}): AgentSnippe
         text: JSON.stringify(cursorConfig, null, 2),
         save_as: ".cursor/mcp.json",
         setup: null,
+        transport: "http",
         instructions: "save as .cursor/mcp.json",
       },
       {
@@ -367,6 +369,7 @@ export function buildSnippet(overrides: Partial<AgentSnippet> = {}): AgentSnippe
         text: `[mcp_servers.kantaq]\nurl = "${url}"\nbearer_token_env_var = "KANTAQ_AGENT_TOKEN"`,
         save_as: "~/.codex/config.toml",
         setup: "export KANTAQ_AGENT_TOKEN=${KANTAQ_MEMBER_TOKEN}",
+        transport: "http",
         instructions: "add to ~/.codex/config.toml; export KANTAQ_AGENT_TOKEN",
       },
     ],

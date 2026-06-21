@@ -7,7 +7,19 @@ backend, never to another member's machine. Every call passes the gateway's
 
 ## Connecting
 
-Start the gateway (it runs against the same local database as the runtime):
+**Two transports, one gateway (E09-T5).** kantaq speaks MCP over **HTTP** (a
+loopback server you start with `kantaq mcp dev`) and over **stdio** (your client
+launches `kantaq mcp stdio` as a child process — no server, no port). They are
+two wires onto the *same* gateway: both resolve to the same session derivation
+and run the same eight checks + audit, so a denial over stdio is byte-for-byte
+the HTTP decision (pinned by `packages/mcp/tests/test_dual_transport.py`). The
+**Settings → My Agent** snippet lists both per client; pick whichever your agent
+speaks. The HTTP variants need the live gateway URL; the stdio variants work
+without it (the client spawns the gateway itself), so the stdio configs are
+offered even when the HTTP gateway is down. The stdio details are below under
+[stdio transport](#stdio-transport-v03).
+
+Start the HTTP gateway (it runs against the same local database as the runtime):
 
 ```bash
 kantaq mcp dev

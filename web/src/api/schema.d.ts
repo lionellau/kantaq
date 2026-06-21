@@ -1089,6 +1089,11 @@ export interface components {
             setup: string | null;
             /** Text */
             text: string;
+            /**
+             * Transport
+             * @default http
+             */
+            transport: string;
         };
         /** AgentSessionOut */
         AgentSessionOut: {
