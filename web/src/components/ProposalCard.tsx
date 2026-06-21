@@ -29,6 +29,51 @@ export function proposalNote(proposal: Proposal): string {
   return typeof note === "string" ? note : "";
 }
 
+/** The follow-up kind if this proposal targets a follow_up, else null (E15-T1). */
+export function followUpKind(proposal: Proposal): string | null {
+  const kind = (proposal.diff as { kind?: unknown }).kind;
+  return typeof kind === "string" && kind.startsWith("follow_up.") ? kind : null;
+}
+
+function asText(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+/**
+ * The body of a follow-up proposal in the Inbox (E15-T1 / MOD-29). A follow_up
+ * proposal carries a `{kind, ...}` diff, not the ticket `{changes, note}` — so
+ * it renders its own summary. Agent-authored title/body are untrusted (PRD §15)
+ * and render as plain text (React escapes), never as markup.
+ */
+function FollowUpProposalBody({ proposal }: { proposal: Proposal }) {
+  const diff = proposal.diff as {
+    kind: string;
+    follow_up?: { title?: unknown; body?: unknown; due_at?: unknown };
+    changes?: Record<string, unknown>;
+    status?: unknown;
+  };
+  if (diff.kind === "follow_up.create") {
+    const f = diff.follow_up ?? {};
+    return (
+      <div style={{ display: "grid", gap: 4 }}>
+        <div style={ui.muted}>Proposes a follow-up:</div>
+        <div style={{ fontWeight: 600 }}>{asText(f.title)}</div>
+        {asText(f.due_at) !== "" && <div style={ui.muted}>due {fmtDateTime(asText(f.due_at))}</div>}
+        {asText(f.body) !== "" && <div>{asText(f.body)}</div>}
+      </div>
+    );
+  }
+  if (diff.kind === "follow_up.update") {
+    const fields = Object.keys(diff.changes ?? {}).join(", ");
+    return <p style={{ ...ui.muted, margin: 0 }}>Proposes editing a follow-up ({fields}).</p>;
+  }
+  return (
+    <p style={{ ...ui.muted, margin: 0 }}>
+      Proposes marking a follow-up <strong>{asText(diff.status) || "done"}</strong>.
+    </p>
+  );
+}
+
 export default function ProposalCard({
   proposal,
   ticket,
@@ -46,6 +91,7 @@ export default function ProposalCard({
 }) {
   const changes = proposedChanges(proposal);
   const note = proposalNote(proposal);
+  const followUp = followUpKind(proposal);
   // Reject opens an optional "why?" the proposing agent's owner will see; a
   // remote teammate needs the reason, not a silent decline (E20-T6).
   const [rejecting, setRejecting] = useState(false);
@@ -69,7 +115,9 @@ export default function ProposalCard({
           </div>
 
           <div style={{ display: "grid", gap: 8, margin: "0.6rem 0 0" }}>
-            {changes.length === 0 ? (
+            {followUp !== null ? (
+              <FollowUpProposalBody proposal={proposal} />
+            ) : changes.length === 0 ? (
               <p style={{ ...ui.muted, margin: 0 }}>No field changes.</p>
             ) : (
               changes.map(([field, value]) => (

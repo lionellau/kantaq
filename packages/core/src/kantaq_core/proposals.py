@@ -40,7 +40,7 @@ from kantaq_core.tracker.service import (
     TrackerService,
     TrackerValidationError,
 )
-from kantaq_db.models import AgentProposal, Ticket
+from kantaq_db.models import AgentProposal, FollowUp, Ticket
 from kantaq_sync_engine.log import (
     EventLogSink,
     EventSigner,
@@ -59,6 +59,14 @@ PROPOSAL_STATUSES = ("pending", "approved", "rejected", "rebase_required")
 # datetime; the rest of the patchable fields are already JSON-native and the
 # tracker validates them at apply time (one validator).
 _DATETIME_FIELDS = ("due_date",)
+
+# A proposal's ``diff.kind`` selects what approving it applies. Absent kind ==
+# the original ticket-field change (back-compat with every v0.1/v0.2 proposal,
+# which has no ``kind``). E15-T1 adds the follow-up kinds: the agent proposes a
+# follow_up write, and approving it commits the follow_up through the tracker's
+# one write path — never a second apply path (the codebase's "one validator").
+_KIND_TICKET_UPDATE = "ticket.update"
+_FOLLOW_UP_KINDS = ("follow_up.create", "follow_up.update", "follow_up.complete")
 
 
 class ProposalError(Exception):
@@ -121,6 +129,53 @@ def coerce_changes(diff: Any) -> dict[str, Any]:
                     f"{field} is not a valid ISO datetime: {value!r}"
                 ) from exc
     return changes
+
+
+def _opt_datetime(value: Any) -> datetime | None:
+    """Parse an optional ISO datetime carried in a proposal diff (JSON string)."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ProposalChangesError(f"not a valid ISO datetime: {value!r}") from exc
+
+
+def _apply_follow_up(service: TrackerService, proposal: AgentProposal) -> FollowUp:
+    """Apply an approved follow-up proposal through the tracker's one write path.
+
+    ``diff.kind`` selects create / update / complete; the follow_up's anchor
+    ticket is the proposal's own ``ticket_id`` (the propose handler pins them
+    equal). Value validation happens here, at apply time, exactly like a ticket
+    proposal — ``TrackerValidationError`` surfaces as ``ProposalChangesError``.
+    """
+    diff = proposal.diff or {}
+    kind = diff.get("kind")
+    if kind == "follow_up.create":
+        payload = diff.get("follow_up")
+        if not isinstance(payload, dict):
+            raise ProposalChangesError("follow_up.create proposal carries no follow_up payload")
+        return service.create_follow_up(
+            ticket_id=proposal.ticket_id,
+            title=str(payload.get("title", "")),
+            body=str(payload.get("body", "")),
+            due_at=_opt_datetime(payload.get("due_at")),
+            provenance=payload.get("provenance"),
+        )
+    follow_up_id = str(diff.get("follow_up_id", ""))
+    if not follow_up_id:
+        raise ProposalChangesError(f"{kind} proposal carries no follow_up_id")
+    if kind == "follow_up.update":
+        changes_raw = diff.get("changes")
+        if not isinstance(changes_raw, dict) or not changes_raw:
+            raise ProposalChangesError("follow_up.update proposal carries no applicable changes")
+        changes = dict(changes_raw)
+        if "due_at" in changes:
+            changes["due_at"] = _opt_datetime(changes["due_at"])
+        return service.update_follow_up(follow_up_id, changes)
+    if kind == "follow_up.complete":
+        return service.complete_follow_up(follow_up_id, status=str(diff.get("status", "done")))
+    raise ProposalChangesError(f"unknown follow-up proposal kind {kind!r}")
 
 
 def _flip_status(
@@ -206,7 +261,10 @@ def approve_proposal(
     """
     ts = (now or _now)()
     proposal = _get_pending(session, proposal_id)
-    changes = coerce_changes(proposal.diff)
+    kind = (proposal.diff or {}).get("kind", _KIND_TICKET_UPDATE)
+    # Coerce the ticket-change set up front (fail before the flip) for the
+    # default kind; follow-up payloads validate inside ``_apply_follow_up``.
+    changes = coerce_changes(proposal.diff) if kind == _KIND_TICKET_UPDATE else None
     _flip_status(
         session,
         proposal,
@@ -218,6 +276,25 @@ def approve_proposal(
     )
     sink = EventLogSink(session, actor_id, signer=signer)
     service = TrackerService(session, actor_id=actor_id, source=source, sink=sink, now=lambda: ts)
+
+    if kind in _FOLLOW_UP_KINDS:
+        # Approving a follow-up proposal commits the follow_up through the
+        # tracker's one write path; the returned ticket is the unchanged anchor
+        # (so the Inbox can still show which ticket the follow-up is on). A
+        # follow_up create is a fresh row, so there is no rebase-origin tag.
+        try:
+            _apply_follow_up(service, proposal)
+            ticket = service.get_ticket(proposal.ticket_id)
+        except TrackerNotFoundError as exc:
+            session.rollback()
+            raise ProposalNotFoundError(proposal.ticket_id) from exc
+        except (TrackerValidationError, ProposalChangesError) as exc:
+            session.rollback()
+            raise ProposalChangesError(str(exc)) from exc
+        session.refresh(proposal)
+        return proposal, ticket
+
+    assert changes is not None  # kind == _KIND_TICKET_UPDATE
     # The actor_seq the ticket patch will take — captured before the emit so we
     # can tag exactly that event as proposal-originated (MOD-26 §B3 / E05-T3),
     # without threading a proposal id through the tracker domain.

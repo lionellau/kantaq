@@ -27,6 +27,7 @@ from kantaq_db import (
     Comment,
     ConflictRecord,
     Device,
+    FollowUp,
     Member,
     MemoryEntry,
     MemoryLink,
@@ -62,6 +63,9 @@ DOMAIN_MODELS: dict[str, type[SQLModel]] = {
     # ticket↔milestone membership is created + tombstoned — both fold lww.
     "milestones": Milestone,
     "ticket_milestones": TicketMilestone,
+    # follow_ups (E15 v0.3 / MOD-29): self-scheduled reminders, patched (status
+    # flip, edits) — folds lww like the other tracker collections.
+    "follow_ups": FollowUp,
 }
 
 # The trust roots (MOD-06): devices + the capability grants issued under them.

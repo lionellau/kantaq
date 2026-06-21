@@ -39,8 +39,16 @@ ALTER TABLE sync_events ADD CONSTRAINT ck_sync_events_collection CHECK (collecti
   ('workspaces', 'projects', 'tickets', 'comments', 'ticket_relationships',
    'members', 'agent_proposals', 'memory_entries', 'memory_links',
    'devices', 'capability_grants', 'conflict_records',
-   'milestones', 'ticket_milestones'));
+   'milestones', 'ticket_milestones', 'follow_ups'));
 ```
+
+**E15-T1 (MOD-29 v0.3) adds the `follow_ups` collection** (schema 16→17): create
+the new table + its RLS, then refresh the verb-map/merge-policy RPC. The table
+DDL is in `0001_collections.sql` (the `follow_ups` block); the RLS is in
+`0001_rls.sql` (`follow_ups_*` policies + the grant). On a live project already
+past v0.2, run the additive table + policy + the CHECK ALTER above, then re-apply
+`\i rpc/events.sql` so `collection_write_verbs`/`collection_merge_policy` know the
+new collection. Run the parity check after (live drift recurs on every schema bump).
 
 Then apply the v0.2 backend additions (idempotent — `create or replace`):
 

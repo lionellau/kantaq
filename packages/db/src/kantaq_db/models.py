@@ -434,6 +434,35 @@ class TicketMilestone(CollectionBase, table=True):
     created_by: str | None = Field(default=None)
 
 
+class FollowUp(CollectionBase, table=True):
+    """A self-scheduled reminder attached to a ticket (MOD-29 v0.3 / FR-E15-1).
+
+    An agent (or human) queues "revisit this" against a ticket. Agent-created
+    follow-ups are **propose-first** (E08): the agent's ``follow_up_create`` tool
+    stores an ``agent_proposal`` that lands in the Inbox, and the follow_up row
+    is only written when a human approves it — so this collection's rows are
+    always human-committed (the same ``tickets.write`` authority as the rest of
+    the tracker domain). ``status`` ∈ open | done | dismissed (VARCHAR for
+    dialect parity, enforced in ``kantaq_core.tracker``); ``due_at`` is the
+    optional naive-UTC date an agent or human queries ("what's due before X?").
+    A follow_up is patched (status flip, edits), so it folds ``lww`` like the
+    other tracker collections. ``provenance`` mirrors memory's {origin, actor_id,
+    captured_at, detail?} shape (PRD §15) so who/when/how is auditable.
+    """
+
+    __tablename__ = "follow_ups"
+
+    ticket_id: str = Field(foreign_key="tickets.id", index=True)
+    title: str
+    body: str = ""
+    # status ∈ open | done | dismissed (enforced in the service).
+    status: str = Field(default="open", max_length=16)
+    due_at: datetime | None = Field(default=None)
+    created_by: str | None = Field(default=None)
+    # {origin, actor_id, captured_at, detail?} — who/when/how (PRD §15), like memory.
+    provenance: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+
+
 class SchemaVersion(SQLModel, table=True):
     """Single-row table guarding boot (FR-E02-4).
 
@@ -572,4 +601,6 @@ COLLECTION_MODELS: tuple[type[CollectionBase], ...] = (
     # E14 v0.3 (MOD-20): milestones + the ticket↔milestone junction.
     Milestone,
     TicketMilestone,
+    # E15 v0.3 (MOD-29): self-scheduled follow-ups.
+    FollowUp,
 )

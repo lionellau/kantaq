@@ -216,6 +216,7 @@ alter table conflict_records enable row level security;
 alter table audit_anchors    enable row level security;
 alter table milestones       enable row level security;
 alter table ticket_milestones enable row level security;
+alter table follow_ups       enable row level security;
 
 grant select, insert, update         on workspaces      to authenticated;
 grant select, insert, update, delete on projects        to authenticated;
@@ -254,6 +255,10 @@ grant select, insert                 on audit_anchors   to authenticated;
 -- create+delete only — a membership is never patched (like ticket_relationships).
 grant select, insert, update, delete on milestones      to authenticated;
 grant select, insert, delete         on ticket_milestones to authenticated;
+-- follow_ups (E15-T1) are tracker domain like comments — created + patched
+-- (status flip, edits), never deleted (a resolved follow-up is kept). RLS scopes
+-- to the ticket's workspace; Member+ writes enforced by the app role check.
+grant select, insert, update         on follow_ups       to authenticated;
 
 grant all on all tables in schema public to service_role;
 
@@ -509,6 +514,30 @@ drop policy if exists ticket_milestones_delete on ticket_milestones;
 create policy ticket_milestones_delete on ticket_milestones
   for delete to authenticated
   using (kantaq.ticket_in_my_workspaces(ticket_id));
+
+-- ---------------------------------------------------------------------------
+-- follow_ups (E15-T1) — self-scheduled reminders, scoped through their ticket's
+-- workspace exactly like comments. SELECT/UPDATE gate on the ticket; INSERT's
+-- WITH CHECK re-validates ticket_id (so a follow-up can never be planted on a
+-- ticket outside my workspaces). No DELETE policy — a follow-up is resolved
+-- (status flip), never removed. Role (Member+ writes) is enforced by the app.
+-- ---------------------------------------------------------------------------
+
+drop policy if exists follow_ups_select on follow_ups;
+create policy follow_ups_select on follow_ups
+  for select to authenticated
+  using (kantaq.ticket_in_my_workspaces(ticket_id));
+
+drop policy if exists follow_ups_insert on follow_ups;
+create policy follow_ups_insert on follow_ups
+  for insert to authenticated
+  with check (kantaq.ticket_in_my_workspaces(ticket_id));
+
+drop policy if exists follow_ups_update on follow_ups;
+create policy follow_ups_update on follow_ups
+  for update to authenticated
+  using (kantaq.ticket_in_my_workspaces(ticket_id))
+  with check (kantaq.ticket_in_my_workspaces(ticket_id));
 
 -- ---------------------------------------------------------------------------
 -- agent_proposals — readable across the workspace; proposed AS yourself.

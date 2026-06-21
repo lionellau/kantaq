@@ -32,6 +32,7 @@ from kantaq_core.tracker.events import DomainEvent, EventSink, Op
 from kantaq_db.models import (
     AuditEvent,
     Comment,
+    FollowUp,
     Member,
     Milestone,
     Project,
@@ -48,6 +49,11 @@ PROJECT_STATUSES: tuple[str, ...] = ("active", "paused", "done")
 # Milestone lifecycle (MOD-20 v0.3 / FR-E14-3). Flat (not nestable); a milestone
 # moves active → complete, and archived retires it from the default views.
 MILESTONE_STATUSES: tuple[str, ...] = ("active", "complete", "archived")
+# Follow-up lifecycle (MOD-29 v0.3 / FR-E15-1). A follow-up is queued ``open``;
+# ``complete`` resolves it to ``done`` or ``dismissed`` (never re-opened — a new
+# follow-up is cheaper than a status dance). v1 writes accept ``open`` only.
+FOLLOW_UP_STATUSES: tuple[str, ...] = ("open", "done", "dismissed")
+FOLLOW_UP_RESOLVED_STATUSES: tuple[str, ...] = ("done", "dismissed")
 
 # Typed ticket relationships (MOD-03 v0.1 / FR-E12-3). Five types, two of them
 # symmetric (``related``/``duplicate``: an edge means the same fact from either
@@ -93,10 +99,14 @@ _TICKET_PATCHABLE = frozenset(
 )
 _PROJECT_PATCHABLE = frozenset({"name", "goal", "scope", "owner", "target_date", "status"})
 _MILESTONE_PATCHABLE = frozenset({"name", "description", "target_date", "status"})
+# Follow-up fields a human (or an approved proposal) may patch. ``status`` moves
+# only through ``complete_follow_up`` (validated to a resolved value), not a raw
+# patch, so it is deliberately absent here.
+_FOLLOW_UP_PATCHABLE = frozenset({"title", "body", "due_at"})
 
 
 # Rows _apply_patch can update in place (audit + emit share the same flow).
-_TRow = TypeVar("_TRow", "Project", "Ticket", "Milestone")
+_TRow = TypeVar("_TRow", "Project", "Ticket", "Milestone", "FollowUp")
 
 
 def _default_now() -> datetime:
@@ -856,6 +866,135 @@ class TrackerService:
         )
         self._emit("ticket_milestones", membership.id, "tombstone", {})
         self._session.delete(membership)
+
+    # ------------------------------------------------------------- follow-ups
+
+    def create_follow_up(
+        self,
+        *,
+        ticket_id: str,
+        title: str,
+        body: str = "",
+        due_at: datetime | None = None,
+        provenance: dict[str, Any] | None = None,
+    ) -> FollowUp:
+        """Queue a follow-up against a ticket (FR-E15-1).
+
+        Fail-closed before any write: a non-empty title within the title bound
+        and an existing ticket. The audit row + the lww event land together,
+        exactly like a milestone create. Agent-created follow-ups reach here only
+        after a human approves the proposal (propose-first, E08); ``provenance``
+        then records the original agent proposer rather than the approver.
+        """
+        title = title.strip()
+        if not title:
+            raise TrackerValidationError("a follow-up needs a non-empty title")
+        if len(title) > _TITLE_MAX:
+            raise TrackerValidationError(f"follow-up title exceeds {_TITLE_MAX} characters")
+        if self._session.get(Ticket, ticket_id) is None:
+            raise TrackerNotFoundError("tickets", ticket_id)
+
+        ts = self._now()
+        follow_up = FollowUp(
+            ticket_id=ticket_id,
+            title=title,
+            body=body,
+            status="open",
+            due_at=_naive_utc(due_at) if due_at is not None else None,
+            created_by=self._actor_id,
+            provenance=provenance
+            or {"origin": "manual", "actor_id": self._actor_id, "captured_at": ts.isoformat()},
+            created_at=ts,
+            updated_at=ts,
+        )
+        self._session.add(follow_up)
+        self._session.flush()
+        audit.write(
+            self._session,
+            actor_id=self._actor_id,
+            action="follow_up.create",
+            source=self._source,
+            object_ref=f"follow_ups/{follow_up.id}",
+            after=audit.snapshot(follow_up),
+            now=ts,
+        )
+        self._emit("follow_ups", follow_up.id, "patch", audit.snapshot(follow_up))
+        self._session.commit()
+        self._session.refresh(follow_up)
+        return follow_up
+
+    def update_follow_up(self, follow_up_id: str, changes: dict[str, Any]) -> FollowUp:
+        """Patch a follow-up's title/body/due_at. ``status`` moves only through
+        ``complete_follow_up`` (so it can never silently re-open)."""
+        follow_up = self.get_follow_up(follow_up_id)
+        unknown = set(changes) - _FOLLOW_UP_PATCHABLE
+        if unknown:
+            raise TrackerValidationError(f"unknown follow-up fields: {sorted(unknown)}")
+        if "title" in changes:
+            changes["title"] = str(changes["title"]).strip()
+            if not changes["title"]:
+                raise TrackerValidationError("a follow-up needs a non-empty title")
+            if len(changes["title"]) > _TITLE_MAX:
+                raise TrackerValidationError(f"follow-up title exceeds {_TITLE_MAX} characters")
+        if changes.get("due_at") is not None:
+            changes["due_at"] = _naive_utc(changes["due_at"])
+        return self._apply_patch(
+            follow_up, changes, collection="follow_ups", action="follow_up.update"
+        )
+
+    def complete_follow_up(self, follow_up_id: str, *, status: str = "done") -> FollowUp:
+        """Resolve a follow-up to ``done`` or ``dismissed`` (FR-E15-1).
+
+        Only an ``open`` follow-up can be completed — completing an
+        already-resolved one fails closed (a fresh follow-up is cheaper than a
+        re-open dance)."""
+        if status not in FOLLOW_UP_RESOLVED_STATUSES:
+            raise TrackerValidationError(
+                f"a follow-up completes to one of {FOLLOW_UP_RESOLVED_STATUSES}, not {status!r}"
+            )
+        follow_up = self.get_follow_up(follow_up_id)
+        if follow_up.status != "open":
+            raise TrackerValidationError(
+                f"follow-up is already {follow_up.status}; only an open one can be completed"
+            )
+        return self._apply_patch(
+            follow_up, {"status": status}, collection="follow_ups", action="follow_up.complete"
+        )
+
+    def get_follow_up(self, follow_up_id: str) -> FollowUp:
+        follow_up = self._session.get(FollowUp, follow_up_id)
+        if follow_up is None:
+            raise TrackerNotFoundError("follow_ups", follow_up_id)
+        return follow_up
+
+    def search_follow_ups(
+        self,
+        *,
+        ticket_id: str | None = None,
+        due_before: datetime | None = None,
+        status: str | None = None,
+    ) -> list[FollowUp]:
+        """Follow-ups by ticket / due-before / status, due soonest first.
+
+        Ordering (FR-E15-1, "what's due before X?"): dated follow-ups first by
+        ``due_at`` ascending, undated last, id-stable on ties — the milestone
+        target_date rule applied to due dates."""
+        if status is not None and status not in FOLLOW_UP_STATUSES:
+            raise TrackerValidationError(
+                f"unknown follow-up status {status!r}; expected one of {FOLLOW_UP_STATUSES}"
+            )
+        statement = select(FollowUp)
+        if ticket_id is not None:
+            statement = statement.where(FollowUp.ticket_id == ticket_id)
+        if status is not None:
+            statement = statement.where(FollowUp.status == status)
+        if due_before is not None:
+            statement = statement.where(
+                col(FollowUp.due_at).is_not(None),
+                col(FollowUp.due_at) < _naive_utc(due_before),
+            )
+        rows = self._session.exec(statement).all()
+        return sorted(rows, key=lambda f: (f.due_at is None, f.due_at or datetime.max, f.id))
 
     # ----------------------------------------------------------------- helpers
 

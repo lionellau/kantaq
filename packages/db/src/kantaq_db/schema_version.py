@@ -19,14 +19,14 @@ from typing import Literal
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
-# Bump this whenever a migration changes the version row. Version 16 adds the
-# E14 v0.3 milestone slice (MOD-20): the ``milestones`` entity + the
-# ``ticket_milestones`` junction — two new syncable collections (19 declared /
-# 14 on the backend sync allowlist now).
-EXPECTED_SCHEMA_VERSION = 16
+# Bump this whenever a migration changes the version row. Version 17 adds the
+# E15 v0.3 follow-up slice (MOD-29): the ``follow_ups`` collection — one new
+# syncable collection (20 declared / 15 on the backend sync allowlist now).
+# Version 16 added the E14 milestone slice (``milestones`` + ``ticket_milestones``).
+EXPECTED_SCHEMA_VERSION = 17
 # The Alembic head revision that defines the expected schema. Kept in sync with
 # the migration filename in ``migrations/versions``.
-HEAD_REVISION = "0016"
+HEAD_REVISION = "0017"
 
 Status = Literal["ok", "uninitialized", "mismatch"]
 

@@ -211,6 +211,8 @@ timestamps come back raw. The full machine contract is pinned in
 | `memory_get` | `memory.read` | `{memory_id}` | `{entry: {…, title*, body*}}` — policy-gated (check 7) |
 | `role_context_get` | `memory.read` | `{ticket_id, role?}` | `{bundle: {ticket_id, role, policy_id, included:[entry…], token_estimate}}` |
 | `role_context_preview` | `memory.read` | `{ticket_id, role?}` | bundle + `excluded:[{memory_id, reason}]`, `missing:[scope]`, `rationale` |
+| `milestone_get` (v0.3) | `tickets.read` | `{milestone_id}` | `{milestone: {…, name*, description*, target_date, status, ticket_ids, ticket_count}}` |
+| `follow_up_search` (v0.3) | `tickets.read` | `{ticket_id?, due_before?, status?}` | `{follow_ups: [{id, ticket_id, title*, body*, status, due_at, …}], count}` — due soonest first |
 
 `role_context_*`: an **agent** session resolves only its own context role (a
 request for any other role is denied); a **human** session names the role to
@@ -223,6 +225,9 @@ preview. A `local`-visibility entry is never returned (NFR-E16-1).
 | `ticket_comment_create` | `comment` | `proposals.write` | `{ticket_id, body}` | `{comment: {id, ticket_id, author_actor_id, body*, created_at}}` |
 | `agent_action_propose` | `propose` | `proposals.write` | `{ticket_id, changes, note?}` | `{proposal: {…, status:"pending", diff}, applied:false}` |
 | `memory_promote` | `propose` | `memory.write` | `{memory_id}` | `{entry: {…, title*, body*}}` — the proposed/flipped memory row |
+| `follow_up_create` (v0.3) | `propose` | `proposals.write` | `{ticket_id, title, body?, due_at?}` | `{proposal: {…, status:"pending", diff:{kind:"follow_up.create", …}}, applied:false}` |
+| `follow_up_update` (v0.3) | `propose` | `proposals.write` | `{follow_up_id, changes}` | `{proposal: {…, diff:{kind:"follow_up.update", …}}, applied:false}` |
+| `follow_up_complete` (v0.3) | `propose` | `proposals.write` | `{follow_up_id, status?}` | `{proposal: {…, diff:{kind:"follow_up.complete", …}}, applied:false}` |
 | `agent_action_approve` | `approve` | `tickets.write` | `{proposal_id}` | `{proposal:{id, ticket_id, status:"approved"}, ticket:{…}, applied:true}` |
 
 - **`ticket_comment_create`** is the agent's communication channel: it mutates
@@ -241,6 +246,13 @@ preview. A `local`-visibility entry is never returned (NFR-E16-1).
   touches the ticket**; the row syncs to every member's Inbox, where a human
   decides. Propose-time validation = field allowlist + `status`/`priority` enums
   + note ≤ 2000; full value validation happens at apply time.
+- **`follow_up_*`** (v0.3, MOD-29) are the agent's self-scheduled reminders, and
+  they are **propose-first like `agent_action_propose`**: `follow_up_create` /
+  `update` / `complete` store a pending `agent_proposal` (a `{kind:"follow_up.*"}`
+  diff) that lands in the Inbox — the `follow_ups` row is created / edited /
+  resolved only when a human approves it, through the same one apply path. The
+  follow_up's anchor ticket is the proposal's `ticket_id`. `follow_up_search`
+  reads (due soonest first), fencing the agent-authored title/body untrusted.
 - **`agent_action_approve`** applies a pending proposal's diff through the one
   validated apply path (`kantaq_core.proposals`, shared with the Inbox API) — a
   compare-and-swap status flip + the ticket patch in one transaction. It is an

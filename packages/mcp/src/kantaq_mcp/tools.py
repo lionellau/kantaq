@@ -32,13 +32,14 @@ from kantaq_core.memory.service import (
 from kantaq_core.memory_policy import MemoryPolicy
 from kantaq_core.tracker.events import DomainEvent
 from kantaq_core.tracker.service import (
+    FOLLOW_UP_STATUSES,
     TICKET_PRIORITIES,
     TICKET_STATUSES,
     TrackerNotFoundError,
     TrackerService,
     TrackerValidationError,
 )
-from kantaq_db.models import AgentProposal, MemoryEntry, Project, Ticket, Workspace
+from kantaq_db.models import AgentProposal, FollowUp, MemoryEntry, Project, Ticket, Workspace
 from kantaq_mcp.security import tag_untrusted
 from kantaq_sync_engine.log import EventLogSink, EventSigner
 
@@ -320,6 +321,260 @@ def agent_action_propose(
         },
         "applied": False,
     }
+
+
+# -------------------------------------------------- v0.3 follow-up tools (MOD-29)
+
+
+def _follow_up_id(args: dict[str, Any]) -> str:
+    """Fail closed on a missing/garbage follow_up_id (same discipline as _ticket_id)."""
+    follow_up_id = args.get("follow_up_id")
+    if not isinstance(follow_up_id, str) or not follow_up_id.strip():
+        raise ToolError("validation", "follow_up_id (string) is required")
+    return follow_up_id
+
+
+def _opt_iso(value: Any, *, field: str) -> str | None:
+    """Validate an optional ISO datetime arg, kept as its string for the diff.
+
+    Full value validation happens at apply time in the tracker (one validator);
+    this is the propose-time fail-closed check that the string is even a date."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ToolError("validation", f"{field} must be an ISO datetime string")
+    try:
+        datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ToolError("validation", f"{field} is not a valid ISO datetime: {value!r}") from exc
+    return value
+
+
+def _store_follow_up_proposal(
+    session: Session,
+    *,
+    actor_id: str,
+    ticket_id: str,
+    diff: dict[str, Any],
+    now: Callable[[], datetime],
+    scope: ToolScope,
+) -> dict[str, Any]:
+    """Store a pending ``agent_proposal`` for a follow-up write (propose-first).
+
+    Identical contract to ``agent_action_propose``: the proposal row, its
+    detailed ``proposal.create`` audit row, and its ``agent_proposals`` sync
+    event commit atomically, so the proposal reaches every member's Inbox while
+    the follow_up itself waits for a human approval (E08). The follow_up is
+    written only when the approver decides it (``proposals.approve_proposal``).
+    """
+    ts = now()
+    proposal = AgentProposal(
+        ticket_id=ticket_id,
+        proposer_id=actor_id,
+        diff=diff,
+        status="pending",
+        created_at=ts,
+        updated_at=ts,
+    )
+    session.add(proposal)
+    session.flush()
+    audit.write(
+        session,
+        actor_id=actor_id,
+        action="proposal.create",
+        source="mcp",
+        object_ref=f"agent_proposals/{proposal.id}",
+        after=audit.snapshot(proposal),
+        now=ts,
+    )
+    EventLogSink(session, actor_id, signer=scope.signer).emit(
+        DomainEvent(
+            collection="agent_proposals",
+            entity_id=proposal.id,
+            op="patch",
+            payload=audit.snapshot(proposal),
+        )
+    )
+    session.commit()
+    session.refresh(proposal)
+    return {
+        "proposal": {
+            "id": proposal.id,
+            "ticket_id": proposal.ticket_id,
+            "proposer_id": proposal.proposer_id,
+            "status": proposal.status,
+            "diff": proposal.diff,
+            "created_at": proposal.created_at.isoformat(),
+        },
+        "applied": False,
+    }
+
+
+def follow_up_create(
+    session: Session,
+    *,
+    actor_id: str,
+    args: dict[str, Any],
+    now: Callable[[], datetime],
+    scope: ToolScope = UNSCOPED,
+) -> dict[str, Any]:
+    """Propose a self-scheduled follow-up on a ticket (propose-first, E08).
+
+    Stores a pending ``agent_proposal`` for the Inbox; the follow_up row is NOT
+    written until a human approves it. The proposal's ``ticket_id`` is the
+    follow_up's anchor ticket, so the Inbox shows which work it is about.
+    """
+    ticket_id = _ticket_id(args)
+    title = args.get("title")
+    if not isinstance(title, str) or not title.strip():
+        raise ToolError("validation", "title (non-empty string) is required")
+    body = args.get("body", "")
+    if not isinstance(body, str):
+        raise ToolError("validation", "body must be a string")
+    due_at = _opt_iso(args.get("due_at"), field="due_at")
+
+    # Fail before storing a proposal that anchors to a missing ticket.
+    service = TrackerService(session, actor_id=actor_id, source="mcp")
+    try:
+        service.get_ticket(ticket_id)
+    except TrackerNotFoundError as exc:
+        raise ToolError("not_found", str(exc)) from exc
+
+    follow_up: dict[str, Any] = {
+        "title": title.strip(),
+        "body": body,
+        # provenance records the agent proposer, surviving the human approval.
+        "provenance": {
+            "origin": "agent",
+            "actor_id": actor_id,
+            "captured_at": now().isoformat(),
+        },
+    }
+    if due_at is not None:
+        follow_up["due_at"] = due_at
+    diff = {"kind": "follow_up.create", "follow_up": follow_up}
+    return _store_follow_up_proposal(
+        session, actor_id=actor_id, ticket_id=ticket_id, diff=diff, now=now, scope=scope
+    )
+
+
+def follow_up_update(
+    session: Session,
+    *,
+    actor_id: str,
+    args: dict[str, Any],
+    now: Callable[[], datetime],
+    scope: ToolScope = UNSCOPED,
+) -> dict[str, Any]:
+    """Propose an edit to a follow-up's title/body/due_at (propose-first)."""
+    follow_up_id = _follow_up_id(args)
+    changes_raw = args.get("changes")
+    if not isinstance(changes_raw, dict) or not changes_raw:
+        raise ToolError("validation", "changes must be a non-empty object")
+    allowed = {"title", "body", "due_at"}
+    unknown = set(changes_raw) - allowed
+    if unknown:
+        raise ToolError(
+            "validation", f"fields not updatable: {sorted(unknown)}; allowed: {sorted(allowed)}"
+        )
+    changes = dict(changes_raw)
+    if "title" in changes and (
+        not isinstance(changes["title"], str) or not changes["title"].strip()
+    ):
+        raise ToolError("validation", "title must be a non-empty string")
+    if "body" in changes and not isinstance(changes["body"], str):
+        raise ToolError("validation", "body must be a string")
+    if "due_at" in changes:
+        changes["due_at"] = _opt_iso(changes["due_at"], field="due_at")
+
+    service = TrackerService(session, actor_id=actor_id, source="mcp")
+    try:
+        follow_up = service.get_follow_up(follow_up_id)
+    except TrackerNotFoundError as exc:
+        raise ToolError("not_found", str(exc)) from exc
+
+    diff = {"kind": "follow_up.update", "follow_up_id": follow_up_id, "changes": changes}
+    return _store_follow_up_proposal(
+        session, actor_id=actor_id, ticket_id=follow_up.ticket_id, diff=diff, now=now, scope=scope
+    )
+
+
+def follow_up_complete(
+    session: Session,
+    *,
+    actor_id: str,
+    args: dict[str, Any],
+    now: Callable[[], datetime],
+    scope: ToolScope = UNSCOPED,
+) -> dict[str, Any]:
+    """Propose resolving a follow-up to done/dismissed (propose-first)."""
+    follow_up_id = _follow_up_id(args)
+    status = args.get("status", "done")
+    if status not in ("done", "dismissed"):
+        raise ToolError("validation", "status must be 'done' or 'dismissed'")
+
+    service = TrackerService(session, actor_id=actor_id, source="mcp")
+    try:
+        follow_up = service.get_follow_up(follow_up_id)
+    except TrackerNotFoundError as exc:
+        raise ToolError("not_found", str(exc)) from exc
+
+    diff = {"kind": "follow_up.complete", "follow_up_id": follow_up_id, "status": status}
+    return _store_follow_up_proposal(
+        session, actor_id=actor_id, ticket_id=follow_up.ticket_id, diff=diff, now=now, scope=scope
+    )
+
+
+def _follow_up_summary(follow_up: FollowUp) -> dict[str, Any]:
+    """A fenced, light follow-up row for ``follow_up_search`` results."""
+    return {
+        "id": follow_up.id,
+        "ticket_id": follow_up.ticket_id,
+        "title": tag_untrusted(follow_up.title, "follow_up.title"),
+        "body": tag_untrusted(follow_up.body, "follow_up.body"),
+        "status": follow_up.status,
+        "due_at": _iso(follow_up.due_at),
+        "created_by": follow_up.created_by,
+        "created_at": follow_up.created_at.isoformat(),
+        "updated_at": follow_up.updated_at.isoformat(),
+    }
+
+
+def follow_up_search(
+    session: Session,
+    *,
+    actor_id: str,
+    args: dict[str, Any],
+    now: Callable[[], datetime],
+    scope: ToolScope = UNSCOPED,
+) -> dict[str, Any]:
+    """Read follow-ups by ticket / due-before / status (read-only).
+
+    Human-authored strings (title, body) come back fenced untrusted. The
+    gateway's eight checks have already authorized ``tickets.read``.
+    """
+
+    def _opt(key: str) -> str | None:
+        value = args.get(key)
+        return value if isinstance(value, str) and value.strip() else None
+
+    status = _opt("status")
+    if status is not None and status not in FOLLOW_UP_STATUSES:
+        raise ToolError(
+            "validation", f"unknown status {status!r}; expected one of {FOLLOW_UP_STATUSES}"
+        )
+    due_before_str = _opt_iso(args.get("due_before"), field="due_before")
+    due_before = datetime.fromisoformat(due_before_str) if due_before_str is not None else None
+
+    service = TrackerService(session, actor_id=actor_id, source="mcp")
+    try:
+        rows = service.search_follow_ups(
+            ticket_id=_opt("ticket_id"), due_before=due_before, status=status
+        )
+    except TrackerValidationError as exc:
+        raise ToolError("validation", str(exc)) from exc
+
+    return {"follow_ups": [_follow_up_summary(f) for f in rows], "count": len(rows)}
 
 
 # ---------------------------------------------------------- v0.1 read tools

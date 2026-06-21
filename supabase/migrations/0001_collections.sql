@@ -349,6 +349,27 @@ CREATE TABLE comments (
 
 CREATE INDEX ix_comments_ticket_id ON comments (ticket_id);
 
+CREATE TABLE follow_ups (
+	id VARCHAR(26) NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	actor_seq INTEGER NOT NULL,
+	visibility VARCHAR(16) NOT NULL,
+	hosting_mode VARCHAR(16) NOT NULL,
+	retention_policy VARCHAR(16) NOT NULL,
+	ticket_id VARCHAR NOT NULL,
+	title VARCHAR NOT NULL,
+	body VARCHAR NOT NULL,
+	status VARCHAR(16) NOT NULL,
+	due_at TIMESTAMP WITHOUT TIME ZONE,
+	created_by VARCHAR,
+	provenance JSON NOT NULL,
+	PRIMARY KEY (id),
+	FOREIGN KEY(ticket_id) REFERENCES tickets (id)
+);
+
+CREATE INDEX ix_follow_ups_ticket_id ON follow_ups (ticket_id);
+
 CREATE TABLE memory_links (
 	id VARCHAR(26) NOT NULL,
 	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
