@@ -83,6 +83,10 @@ _COLLECTION_WRITE_VERBS: dict[str, frozenset[str]] = {
     # the same tickets.write authority governs grouping work, no new grant verb.
     "milestones": frozenset({"tickets.write"}),
     "ticket_milestones": frozenset({"tickets.write"}),
+    # E15 (MOD-29): follow_ups are tracker domain too; the committed row is a
+    # human approve/direct write (tickets.write). The agent's propose lands in
+    # agent_proposals (already proposals.write/tickets.write gated above).
+    "follow_ups": frozenset({"tickets.write"}),
 }
 
 

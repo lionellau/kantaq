@@ -71,6 +71,7 @@ as $$
     when 'conflict_records' then array['conflict_records.write']
     when 'milestones' then array['tickets.write']
     when 'ticket_milestones' then array['tickets.write']
+    when 'follow_ups' then array['tickets.write']
     else null
   end
 $$;
@@ -106,6 +107,7 @@ as $$
     when 'audit_anchors' then 'append_only'  -- E07-T5: never synced, declared for meta parity
     when 'milestones' then 'lww'  -- E14-T2: tracker domain, lww
     when 'ticket_milestones' then 'lww'  -- E14-T2: junction, created+tombstoned, lww
+    when 'follow_ups' then 'lww'  -- E15-T1: tracker domain, patched (status flip), lww
     else null
   end
 $$;

@@ -61,11 +61,13 @@ CREATE TABLE sync_events (
 	-- at the merge; on PULL it routes to its own ingest, not the domain fold.
 	-- milestones + ticket_milestones joined with E14-T2 (MOD-20 v0.3): lww
 	-- tracker collections (a milestone is patched, a membership created+tombstoned).
+	-- follow_ups joined with E15-T1 (MOD-29 v0.3): lww tracker collection (a
+	-- self-scheduled reminder, patched on status flip / edit).
 	CONSTRAINT ck_sync_events_collection CHECK (collection IN
 		('workspaces', 'projects', 'tickets', 'comments', 'ticket_relationships',
 		 'members', 'agent_proposals', 'memory_entries', 'memory_links',
 		 'devices', 'capability_grants', 'conflict_records',
-		 'milestones', 'ticket_milestones'))
+		 'milestones', 'ticket_milestones', 'follow_ups'))
 );
 
 CREATE INDEX ix_sync_events_collection ON sync_events (collection, revision);

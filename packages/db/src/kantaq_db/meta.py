@@ -104,9 +104,13 @@ COLLECTION_META: dict[str, CollectionMeta] = {
     # (rename, re-date, status), a membership is created + tombstoned.
     "milestones": CollectionMeta("milestones", "backend", "lww", _DEFAULT_PRIVACY),
     "ticket_milestones": CollectionMeta("ticket_milestones", "backend", "lww", _DEFAULT_PRIVACY),
+    # E15 v0.3 (MOD-29): self-scheduled follow-ups. Agent creates are propose-first
+    # (the proposal rides agent_proposals); the committed follow_up row is patched
+    # (status flip, edits), so it folds lww like the other tracker collections.
+    "follow_ups": CollectionMeta("follow_ups", "backend", "lww", _DEFAULT_PRIVACY),
 }
 
 
 def collection_names() -> tuple[str, ...]:
-    """The declared collection names, in declaration order (19 in v0.3)."""
+    """The declared collection names, in declaration order (20 in v0.3)."""
     return tuple(COLLECTION_META)
