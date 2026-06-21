@@ -65,6 +65,8 @@ _SYNCABLE_COLLECTIONS = (
     "devices",
     "capability_grants",
     "conflict_records",
+    "milestones",
+    "ticket_milestones",
 )
 
 # A dedicated metadata for the two hand-shaped tables so they create cleanly

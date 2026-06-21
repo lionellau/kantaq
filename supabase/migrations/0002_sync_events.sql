@@ -59,10 +59,13 @@ CREATE TABLE sync_events (
 	-- other (and the README ALTER note against this CHECK).
 	-- conflict_records joined with E05-T2 (MOD-26 §B4): authoritative_tx, minted
 	-- at the merge; on PULL it routes to its own ingest, not the domain fold.
+	-- milestones + ticket_milestones joined with E14-T2 (MOD-20 v0.3): lww
+	-- tracker collections (a milestone is patched, a membership created+tombstoned).
 	CONSTRAINT ck_sync_events_collection CHECK (collection IN
 		('workspaces', 'projects', 'tickets', 'comments', 'ticket_relationships',
 		 'members', 'agent_proposals', 'memory_entries', 'memory_links',
-		 'devices', 'capability_grants', 'conflict_records'))
+		 'devices', 'capability_grants', 'conflict_records',
+		 'milestones', 'ticket_milestones'))
 );
 
 CREATE INDEX ix_sync_events_collection ON sync_events (collection, revision);

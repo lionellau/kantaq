@@ -28,12 +28,14 @@ __all__ = [
     "Member",
     "MemoryEntry",
     "MemoryLink",
+    "Milestone",
     "Op",
     "PrivacyClass",
     "Project",
     "SkillContainer",
     "SkillMapping",
     "Ticket",
+    "TicketMilestone",
     "TicketRelationship",
     "Token",
     "Workspace",
@@ -92,6 +94,29 @@ class TicketRelationship:
     from_id: str
     to_id: str
     type: str = "related"
+
+
+@dataclass
+class Milestone:
+    """Look-alike of the v0.3 milestone (E14-T2 / MOD-20)."""
+
+    id: str
+    project_id: str
+    name: str
+    description: str = ""
+    target_date: datetime | None = None
+    status: str = "active"
+    created_by: str | None = None
+
+
+@dataclass
+class TicketMilestone:
+    """Look-alike of the v0.3 ticket↔milestone membership (E14-T2 / MOD-20)."""
+
+    id: str
+    ticket_id: str
+    milestone_id: str
+    created_by: str | None = None
 
 
 @dataclass

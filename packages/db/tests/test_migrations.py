@@ -35,6 +35,8 @@ _ALL_TABLES = {
     "skill_containers",
     "skill_mappings",
     "conflict_records",
+    "milestones",
+    "ticket_milestones",
 }
 
 

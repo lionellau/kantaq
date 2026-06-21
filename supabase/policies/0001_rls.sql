@@ -147,6 +147,34 @@ as $$
   )
 $$;
 
+-- Is this project inside one of my workspaces? (E14 — milestones scope through
+-- their project's workspace, exactly as tickets do.)
+create or replace function kantaq.project_in_my_workspaces(pid varchar)
+returns boolean
+language sql stable security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.projects p
+    where p.id = pid and p.workspace_id in (select kantaq.workspace_ids())
+  )
+$$;
+
+-- Is this milestone inside one of my workspaces? (E14 — the ticket_milestones
+-- junction gates its milestone endpoint through milestone -> project -> ws.)
+create or replace function kantaq.milestone_in_my_workspaces(mid varchar)
+returns boolean
+language sql stable security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.milestones m
+    join public.projects p on p.id = m.project_id
+    where m.id = mid and p.workspace_id in (select kantaq.workspace_ids())
+  )
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Enable RLS on every collection and grant table access to the signed-in
 -- role. With RLS enabled and no matching policy, the default is DENY — the
@@ -186,6 +214,8 @@ alter table skill_containers enable row level security;
 alter table skill_mappings  enable row level security;
 alter table conflict_records enable row level security;
 alter table audit_anchors    enable row level security;
+alter table milestones       enable row level security;
+alter table ticket_milestones enable row level security;
 
 grant select, insert, update         on workspaces      to authenticated;
 grant select, insert, update, delete on projects        to authenticated;
@@ -219,6 +249,11 @@ grant select on conflict_records to authenticated;
 -- audit_anchors (E07-T5) are append-only AT THE DATABASE, like audit_events:
 -- INSERT-as-self + SELECT, and no UPDATE/DELETE grant for any client role.
 grant select, insert                 on audit_anchors   to authenticated;
+-- milestones (E14 v0.3) are full CRUD like tickets (Member+ writes, enforced by
+-- the app role check; RLS scopes to the project's workspace). The junction is
+-- create+delete only — a membership is never patched (like ticket_relationships).
+grant select, insert, update, delete on milestones      to authenticated;
+grant select, insert, delete         on ticket_milestones to authenticated;
 
 grant all on all tables in schema public to service_role;
 
@@ -408,6 +443,72 @@ drop policy if exists ticket_relationships_delete on ticket_relationships;
 create policy ticket_relationships_delete on ticket_relationships
   for delete to authenticated
   using (kantaq.ticket_in_my_workspaces(from_id));
+
+-- ---------------------------------------------------------------------------
+-- milestones (E14-T2) — scoped through their project's workspace, exactly like
+-- tickets. SELECT/DELETE gate on the milestone's project; INSERT/UPDATE's WITH
+-- CHECK re-validates project_id directly (so a milestone cannot be moved into
+-- another workspace's project). Role (Member+ writes) is enforced by the app.
+-- ---------------------------------------------------------------------------
+
+drop policy if exists milestones_select on milestones;
+create policy milestones_select on milestones
+  for select to authenticated
+  using (kantaq.project_in_my_workspaces(project_id));
+
+drop policy if exists milestones_insert on milestones;
+create policy milestones_insert on milestones
+  for insert to authenticated
+  with check (
+    exists (
+      select 1 from projects p
+      where p.id = project_id and kantaq.is_member(p.workspace_id)
+    )
+  );
+
+drop policy if exists milestones_update on milestones;
+create policy milestones_update on milestones
+  for update to authenticated
+  using (kantaq.project_in_my_workspaces(project_id))
+  with check (
+    exists (
+      select 1 from projects p
+      where p.id = project_id and kantaq.is_member(p.workspace_id)
+    )
+  );
+
+drop policy if exists milestones_delete on milestones;
+create policy milestones_delete on milestones
+  for delete to authenticated
+  using (kantaq.project_in_my_workspaces(project_id));
+
+-- ---------------------------------------------------------------------------
+-- ticket_milestones (E14-T2) — the ticket↔milestone junction, scoped through
+-- both endpoints' workspace. SELECT/DELETE gate on the ticket; INSERT requires
+-- BOTH the ticket AND the milestone to be in my workspaces (so a membership can
+-- never reach across the workspace boundary) AND the row written AS yourself.
+-- No UPDATE policy — a membership is immutable (re-targeted by delete + insert),
+-- the database half of the service's create/tombstone-only rule.
+-- ---------------------------------------------------------------------------
+
+drop policy if exists ticket_milestones_select on ticket_milestones;
+create policy ticket_milestones_select on ticket_milestones
+  for select to authenticated
+  using (kantaq.ticket_in_my_workspaces(ticket_id));
+
+drop policy if exists ticket_milestones_insert on ticket_milestones;
+create policy ticket_milestones_insert on ticket_milestones
+  for insert to authenticated
+  with check (
+    kantaq.ticket_in_my_workspaces(ticket_id)
+    and kantaq.milestone_in_my_workspaces(milestone_id)
+    and created_by in (select kantaq.member_ids())
+  );
+
+drop policy if exists ticket_milestones_delete on ticket_milestones;
+create policy ticket_milestones_delete on ticket_milestones
+  for delete to authenticated
+  using (kantaq.ticket_in_my_workspaces(ticket_id));
 
 -- ---------------------------------------------------------------------------
 -- agent_proposals — readable across the workspace; proposed AS yourself.

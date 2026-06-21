@@ -30,8 +30,10 @@ from kantaq_db import (
     Member,
     MemoryEntry,
     MemoryLink,
+    Milestone,
     Project,
     Ticket,
+    TicketMilestone,
     TicketRelationship,
     Workspace,
 )
@@ -56,6 +58,10 @@ DOMAIN_MODELS: dict[str, type[SQLModel]] = {
     "agent_proposals": AgentProposal,
     "memory_entries": MemoryEntry,
     "memory_links": MemoryLink,
+    # milestones (E14 v0.3): a milestone is patched (rename/re-date/status), a
+    # ticket↔milestone membership is created + tombstoned — both fold lww.
+    "milestones": Milestone,
+    "ticket_milestones": TicketMilestone,
 }
 
 # The trust roots (MOD-06): devices + the capability grants issued under them.

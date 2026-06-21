@@ -99,9 +99,14 @@ COLLECTION_META: dict[str, CollectionMeta] = {
     # replica anchors its own trail); architecture §2 has the backend hold
     # anchors, so it carries the full collection treatment (mirrored both stores).
     "audit_anchors": CollectionMeta("audit_anchors", "backend", "append_only", _DEFAULT_PRIVACY),
+    # E14 v0.3 (MOD-20): milestones + the ticket↔milestone junction. Both fold
+    # lww by commit order like the tracker collections — a milestone is patched
+    # (rename, re-date, status), a membership is created + tombstoned.
+    "milestones": CollectionMeta("milestones", "backend", "lww", _DEFAULT_PRIVACY),
+    "ticket_milestones": CollectionMeta("ticket_milestones", "backend", "lww", _DEFAULT_PRIVACY),
 }
 
 
 def collection_names() -> tuple[str, ...]:
-    """The declared collection names, in declaration order (17 in v0.2)."""
+    """The declared collection names, in declaration order (19 in v0.3)."""
     return tuple(COLLECTION_META)

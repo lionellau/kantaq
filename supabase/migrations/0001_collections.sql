@@ -216,6 +216,26 @@ CREATE TABLE devices (
 
 CREATE INDEX ix_devices_member_id ON devices (member_id);
 
+CREATE TABLE milestones (
+	id VARCHAR(26) NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	actor_seq INTEGER NOT NULL,
+	visibility VARCHAR(16) NOT NULL,
+	hosting_mode VARCHAR(16) NOT NULL,
+	retention_policy VARCHAR(16) NOT NULL,
+	project_id VARCHAR NOT NULL,
+	name VARCHAR NOT NULL,
+	description VARCHAR NOT NULL,
+	target_date TIMESTAMP WITHOUT TIME ZONE,
+	status VARCHAR(16) NOT NULL,
+	created_by VARCHAR,
+	PRIMARY KEY (id),
+	FOREIGN KEY(project_id) REFERENCES projects (id)
+);
+
+CREATE INDEX ix_milestones_project_id ON milestones (project_id);
+
 CREATE TABLE tickets (
 	id VARCHAR(26) NOT NULL,
 	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
@@ -350,6 +370,27 @@ CREATE TABLE memory_links (
 CREATE INDEX ix_memory_links_memory_id ON memory_links (memory_id);
 
 CREATE INDEX ix_memory_links_ticket_id ON memory_links (ticket_id);
+
+CREATE TABLE ticket_milestones (
+	id VARCHAR(26) NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+	actor_seq INTEGER NOT NULL,
+	visibility VARCHAR(16) NOT NULL,
+	hosting_mode VARCHAR(16) NOT NULL,
+	retention_policy VARCHAR(16) NOT NULL,
+	ticket_id VARCHAR NOT NULL,
+	milestone_id VARCHAR NOT NULL,
+	created_by VARCHAR,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_ticket_milestone UNIQUE (ticket_id, milestone_id),
+	FOREIGN KEY(ticket_id) REFERENCES tickets (id),
+	FOREIGN KEY(milestone_id) REFERENCES milestones (id)
+);
+
+CREATE INDEX ix_ticket_milestones_milestone_id ON ticket_milestones (milestone_id);
+
+CREATE INDEX ix_ticket_milestones_ticket_id ON ticket_milestones (ticket_id);
 
 CREATE TABLE ticket_relationships (
 	id VARCHAR(26) NOT NULL,

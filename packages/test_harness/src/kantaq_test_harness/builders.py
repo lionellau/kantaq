@@ -22,10 +22,12 @@ from kantaq_test_harness.models import (
     Member,
     MemoryEntry,
     MemoryLink,
+    Milestone,
     Project,
     SkillContainer,
     SkillMapping,
     Ticket,
+    TicketMilestone,
     TicketRelationship,
     Token,
     Workspace,
@@ -71,6 +73,18 @@ def build_ticket_relationship(
     base = TicketRelationship(
         id=r.ident("rel"), from_id=r.ident("tkt"), to_id=r.ident("tkt"), type="related"
     )
+    return replace(base, **overrides)
+
+
+def build_milestone(rng: SeededRandom | None = None, **overrides: Any) -> Milestone:
+    r = _rng(rng)
+    base = Milestone(id=r.ident("mst"), project_id=r.ident("prj"), name="v1.0 launch")
+    return replace(base, **overrides)
+
+
+def build_ticket_milestone(rng: SeededRandom | None = None, **overrides: Any) -> TicketMilestone:
+    r = _rng(rng)
+    base = TicketMilestone(id=r.ident("tms"), ticket_id=r.ident("tkt"), milestone_id=r.ident("mst"))
     return replace(base, **overrides)
 
 
