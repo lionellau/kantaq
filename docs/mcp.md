@@ -225,6 +225,8 @@ timestamps come back raw. The full machine contract is pinned in
 | `role_context_preview` | `memory.read` | `{ticket_id, role?}` | bundle + `excluded:[{memory_id, reason}]`, `missing:[scope]`, `rationale` |
 | `milestone_get` (v0.3) | `tickets.read` | `{milestone_id}` | `{milestone: {…, name*, description*, target_date, status, ticket_ids, ticket_count}}` |
 | `follow_up_search` (v0.3) | `tickets.read` | `{ticket_id?, due_before?, status?}` | `{follow_ups: [{id, ticket_id, title*, body*, status, due_at, …}], count}` — due soonest first |
+| `dependency_graph_get` (v0.3) | `tickets.read` | `{root_ticket_id?, depth?}` | `{nodes:[id], edges:[{blocks, blocked}], node_count, edge_count}` — the blocks sub-graph |
+| `dependency_path_find` (v0.3) | `tickets.read` | `{from_ticket_id, to_ticket_id}` | `{found, path:[id], cycle_detected, cycle:[id]}` — the blocking path, or a named cycle (D-27) |
 
 `role_context_*`: an **agent** session resolves only its own context role (a
 request for any other role is denied); a **human** session names the role to

@@ -23,7 +23,7 @@ from typing import Any, cast
 
 from sqlmodel import Session
 
-from kantaq_core import audit, context, memory_policy, proposals
+from kantaq_core import audit, context, graph, memory_policy, proposals
 from kantaq_core.memory.service import (
     MemoryNotFoundError,
     MemoryService,
@@ -575,6 +575,92 @@ def follow_up_search(
         raise ToolError("validation", str(exc)) from exc
 
     return {"follow_ups": [_follow_up_summary(f) for f in rows], "count": len(rows)}
+
+
+# ----------------------------------------------- v0.3 dependency graph (E15-T2)
+
+
+def dependency_graph_get(
+    session: Session,
+    *,
+    actor_id: str,
+    args: dict[str, Any],
+    now: Callable[[], datetime],
+    scope: ToolScope = UNSCOPED,
+) -> dict[str, Any]:
+    """The blocks dependency sub-graph (read). Reachable from a root, or the whole.
+
+    Folded on demand from ``ticket_relationships`` (the blocks family); nodes +
+    edges are ticket ids only (domain-produced, no human prose to fence).
+    """
+    root = args.get("root_ticket_id")
+    if root is not None and (not isinstance(root, str) or not root.strip()):
+        raise ToolError("validation", "root_ticket_id must be a string")
+    depth_raw = args.get("depth")
+    depth: int | None = None
+    if depth_raw is not None:
+        if not isinstance(depth_raw, int) or isinstance(depth_raw, bool) or depth_raw < 0:
+            raise ToolError("validation", "depth must be a non-negative integer")
+        depth = depth_raw
+
+    if root is not None:
+        service = TrackerService(session, actor_id=actor_id, source="mcp")
+        try:
+            service.get_ticket(root)
+        except TrackerNotFoundError as exc:
+            raise ToolError("not_found", str(exc)) from exc
+
+    result = graph.dependency_graph_get(session, root_ticket_id=root, depth=depth)
+    return {
+        "nodes": list(result.nodes),
+        "edges": [{"blocks": src, "blocked": dst} for src, dst in result.edges],
+        "node_count": len(result.nodes),
+        "edge_count": len(result.edges),
+    }
+
+
+def dependency_path_find(
+    session: Session,
+    *,
+    actor_id: str,
+    args: dict[str, Any],
+    now: Callable[[], datetime],
+    scope: ToolScope = UNSCOPED,
+) -> dict[str, Any]:
+    """The blocks path between two tickets, or a structured cycle_detected result.
+
+    Per D-27: the graph is acyclic by construction, but this guards defensively —
+    a cycle reachable from the source returns ``cycle_detected: true`` naming the
+    offending nodes, never a looped or partial path (read-only).
+    """
+    from_id = args.get("from_ticket_id")
+    to_id = args.get("to_ticket_id")
+    if not isinstance(from_id, str) or not from_id.strip():
+        raise ToolError("validation", "from_ticket_id (string) is required")
+    if not isinstance(to_id, str) or not to_id.strip():
+        raise ToolError("validation", "to_ticket_id (string) is required")
+
+    service = TrackerService(session, actor_id=actor_id, source="mcp")
+    try:
+        service.get_ticket(from_id)
+        service.get_ticket(to_id)
+    except TrackerNotFoundError as exc:
+        raise ToolError("not_found", str(exc)) from exc
+
+    result = graph.dependency_path_find(session, from_id, to_id)
+    if result.cycle is not None:
+        return {
+            "found": False,
+            "path": [],
+            "cycle_detected": True,
+            "cycle": list(result.cycle),
+        }
+    return {
+        "found": result.found,
+        "path": list(result.path),
+        "cycle_detected": False,
+        "cycle": [],
+    }
 
 
 # ---------------------------------------------------------- v0.1 read tools

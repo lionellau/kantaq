@@ -340,6 +340,49 @@ _FOLLOW_UP_SEARCH_OUTPUT_SCHEMA: dict[str, Any] = {
     "required": ["follow_ups", "count"],
 }
 
+# The dependency graph (E15-T2) — nodes + directed blocks edges, ids only.
+_DEPENDENCY_GRAPH_OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "nodes": {"type": "array", "items": {"type": "string"}},
+        "edges": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "blocks": {"type": "string"},
+                    "blocked": {"type": "string"},
+                },
+                "required": ["blocks", "blocked"],
+            },
+        },
+        "node_count": {"type": "integer"},
+        "edge_count": {"type": "integer"},
+    },
+    "required": ["nodes", "edges", "node_count", "edge_count"],
+}
+
+_DEPENDENCY_PATH_OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "found": {"type": "boolean"},
+        "path": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "The blocks chain from→to (each ticket blocks the next).",
+        },
+        "cycle_detected": {
+            "type": "boolean",
+            "description": (
+                "True when a cycle reachable from the source forced a fail-closed "
+                "result (D-27); 'cycle' then names the offending tickets."
+            ),
+        },
+        "cycle": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["found", "path", "cycle_detected", "cycle"],
+}
+
 
 @dataclass(frozen=True)
 class ToolSpec:
@@ -968,6 +1011,80 @@ CATALOG: tuple[ToolSpec, ...] = (
         read_ref=lambda args: (
             f"tickets/{args['ticket_id']}" if args.get("ticket_id") else "follow_ups"
         ),
+    ),
+    # ------------------------------------------- v0.3 dependency graph (E15-T2)
+    ToolSpec(
+        name="dependency_graph_get",
+        title="Read the dependency graph",
+        description=(
+            "Read the 'what blocks what' sub-graph (nodes + directed blocks edges) "
+            "derived from ticket relationships. Pass a root_ticket_id to scope it "
+            "to what that ticket reaches (bounded by depth); omit it for the whole "
+            "blocks graph. Returns ticket ids only."
+        ),
+        verb="read",
+        collections=("ticket_relationships", "tickets"),
+        required_action="tickets.read",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "root_ticket_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 26,
+                    "description": "Scope to the sub-graph reachable from this ticket (optional).",
+                },
+                "depth": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Max hops from the root (optional; omit for unbounded).",
+                },
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+        output_schema=_DEPENDENCY_GRAPH_OUTPUT_SCHEMA,
+        handler=tools.dependency_graph_get,
+        read_ref=lambda args: (
+            f"tickets/{args['root_ticket_id']}"
+            if args.get("root_ticket_id")
+            else "ticket_relationships"
+        ),
+    ),
+    ToolSpec(
+        name="dependency_path_find",
+        title="Find a blocking path",
+        description=(
+            "Find the blocks path between two tickets (each ticket blocks the next). "
+            "Returns {found, path}. If a cycle reachable from the source is detected "
+            "(legacy data), returns cycle_detected with the offending ticket ids "
+            "instead of a looped or partial path."
+        ),
+        verb="read",
+        collections=("ticket_relationships", "tickets"),
+        required_action="tickets.read",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "from_ticket_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 26,
+                    "description": "The ticket the path starts at (its ULID).",
+                },
+                "to_ticket_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 26,
+                    "description": "The ticket the path ends at (its ULID).",
+                },
+            },
+            "required": ["from_ticket_id", "to_ticket_id"],
+            "additionalProperties": False,
+        },
+        output_schema=_DEPENDENCY_PATH_OUTPUT_SCHEMA,
+        handler=tools.dependency_path_find,
+        read_ref=lambda args: f"tickets/{args.get('from_ticket_id', '?')}",
     ),
 )
 
