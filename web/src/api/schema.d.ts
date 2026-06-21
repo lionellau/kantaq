@@ -604,6 +604,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Notifications */
+        get: operations["get_notifications_v1_notifications_get"];
+        /** Set Notifications */
+        put: operations["set_notifications_v1_notifications_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects": {
         parameters: {
             query?: never;
@@ -1646,6 +1664,26 @@ export interface components {
         MilestoneTicketIn: {
             /** Ticket Id */
             ticket_id: string;
+        };
+        /** NotificationConfigIn */
+        NotificationConfigIn: {
+            /** Enabled */
+            enabled: boolean;
+            /** Sink Type */
+            sink_type: string;
+            /** Webhook Url */
+            webhook_url?: string | null;
+        };
+        /** NotificationOut */
+        NotificationOut: {
+            /** Configured */
+            configured: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Sink Host */
+            sink_host: string | null;
+            /** Sink Type */
+            sink_type: string;
         };
         /** ProjectIn */
         ProjectIn: {
@@ -3317,6 +3355,59 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_notifications_v1_notifications_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationOut"];
+                };
+            };
+        };
+    };
+    set_notifications_v1_notifications_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationConfigIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationOut"];
+                };
             };
             /** @description Validation Error */
             422: {

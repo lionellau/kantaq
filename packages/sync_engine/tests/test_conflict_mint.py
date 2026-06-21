@@ -84,3 +84,43 @@ def test_flush_mints_a_conflict_record_on_a_same_field_conflict() -> None:
     assert again.minted == 0
     with Session(db) as session:
         assert len(session.exec(select(ConflictRecord)).all()) == 1
+
+
+def test_mint_fires_the_on_conflict_minted_callback() -> None:
+    """E20-T8: the engine calls the (HTTP-free) hook per minted conflict with the
+    conflict id + the contended entity id — the seam the runtime turns into a
+    content-free ``conflict.minted`` notification."""
+    backend = FakeBackend()
+    backend.commit_events(
+        [_ev("evt_create00000000000001", PEER, 1, {"status": "todo", "title": "T"}, base_rev=None)]
+    )
+    backend.commit_events(
+        [_ev("evt_doing000000000000001", PEER, 2, {"status": "doing"}, base_rev=1)]
+    )
+
+    db = create_engine("sqlite://")
+    SQLModel.metadata.create_all(db)
+    with Session(db) as session:
+        session.add(Workspace(id=WORKSPACE_ID, name="W"))
+        insert_event(
+            session, _ev("evt_done0000000000000001", ME, 1, {"status": "done"}, base_rev=1)
+        )
+        session.commit()
+
+    fired: list[tuple[str, str]] = []
+    engine = SyncEngine(
+        db,
+        backend,
+        actor_id=ME,
+        workspace_id=WORKSPACE_ID,
+        on_conflict_minted=lambda cid, eid: fired.append((cid, eid)),
+    )
+    flush = engine.flush_outbox()
+    assert flush.minted == 1
+    with Session(db) as session:
+        rec = session.exec(select(ConflictRecord)).one()
+        assert fired == [(rec.id, TID)]
+
+    # Idempotent: a re-flush mints nothing and fires the hook no further.
+    engine.flush_outbox()
+    assert len(fired) == 1

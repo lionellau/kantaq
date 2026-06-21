@@ -1814,6 +1814,70 @@
         "title": "MilestoneTicketIn",
         "type": "object"
       },
+      "NotificationConfigIn": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "sink_type": {
+            "title": "Sink Type",
+            "type": "string"
+          },
+          "webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Url"
+          }
+        },
+        "required": [
+          "enabled",
+          "sink_type"
+        ],
+        "title": "NotificationConfigIn",
+        "type": "object"
+      },
+      "NotificationOut": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "sink_host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sink Host"
+          },
+          "sink_type": {
+            "title": "Sink Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "sink_type",
+          "sink_host",
+          "configured"
+        ],
+        "title": "NotificationOut",
+        "type": "object"
+      },
       "ProjectIn": {
         "properties": {
           "goal": {
@@ -4964,6 +5028,66 @@
         "summary": "Remove Ticket From Milestone",
         "tags": [
           "tracker"
+        ]
+      }
+    },
+    "/v1/notifications": {
+      "get": {
+        "operationId": "get_notifications_v1_notifications_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Notifications",
+        "tags": [
+          "notifications"
+        ]
+      },
+      "put": {
+        "operationId": "set_notifications_v1_notifications_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationConfigIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Notifications",
+        "tags": [
+          "notifications"
         ]
       }
     },
