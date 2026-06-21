@@ -110,7 +110,8 @@ Two complementary backstops (E25-T3 — guidance, not automated DR):
    blob backstop; for the filesystem store, snapshot the runtime's `blobs/` dir.
 
 2. **Portable (the export bundle, MOD-23) — the data-sovereignty backstop.**
-   `kantaq export` writes a signed, deterministic, self-verifying tarball
+   The runtime's `POST /v1/export` (Settings → **Export**) writes a signed,
+   deterministic, self-verifying tarball
    (event logs + snapshots + blobs + the trust roots). Re-importing it into a
    fresh runtime replays the signed history and re-content-addresses every blob,
    so the team can rebuild on any backend — the cross-replica + leave-any-backend

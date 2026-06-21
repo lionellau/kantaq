@@ -21,6 +21,8 @@ DOCS_WITH_COMMANDS = [
     REPO_ROOT / "README.md",
     REPO_ROOT / "docs" / "setup-supabase.md",
     REPO_ROOT / "docs" / "mcp.md",  # E29-T2: the gateway doc is drift-protected too
+    REPO_ROOT / "docs" / "setup-self-hosted.md",  # E29-T5: the self-host guide
+    REPO_ROOT / "docs" / "clients" / "compatibility.md",  # E29-T5: the matrix commands
 ]
 
 # Match EVERY fence (any language tag) so blocks pair correctly — a ```sql

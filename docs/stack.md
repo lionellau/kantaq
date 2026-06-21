@@ -103,6 +103,17 @@ repo dependency — it never enters `pyproject`/`uv.lock`, so the fresh-clone ga
 untouched. So: internal links → built-from-scratch hermetic gate (blocking);
 external links → lychee, opt-in, manual at release.
 
+**E29-T5 (v0.3 self-host docs, 2026-06-21):** no new capability category — the
+task adds `docs/setup-self-hosted.md` (the front-door walkthrough for the
+already-shipped self-host backend + stdio transport) and refreshes the
+compatibility matrix. Reuse re-affirmed: the same stdlib doc gates (internal
+link resolution + command drift) carry it — `setup-self-hosted.md` and
+`docs/clients/compatibility.md` were added to the command-drift `DOCS_WITH_COMMANDS`
+set so every `make`/`kantaq` command in them is pinned to the live parser, and a
+new `tests/docs/test_v03_docs.py` pins the guide's shape + the stdio env-var
+contract against `kantaq_mcp.stdio`. lychee for external-URL spot checks stays the
+opt-in `make linkcheck`, now relevant at the v0.3 launch (E29-T6, staged).
+
 ### E24 / MOD-05 Supabase backend
 
 | Need | Chosen | License | Notes |

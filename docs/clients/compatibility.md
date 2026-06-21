@@ -9,6 +9,13 @@ the next README.
 > **v0.2 refresh (2026-06-16).** Re-verified at the v0.2 close — the Tier-1
 > matrix below is current; no client regressed.
 
+> **v0.3 refresh (2026-06-21).** Re-verified for the v0.3 self-host + stdio
+> slice. **Tier-2 (Codex over stdio)** is scripted **6/6** in CI — the stdio
+> transport (E09-T4) landed, so the Tier-2 suite runs (see the status note
+> below); the real-Codex `0.130.0` pipe run is the one remaining manual step,
+> just like Tier-1's certified badge. **Tier-3** (a starter HTTP adapter + curl
+> proof) is deferred to **Sprint 10+**. Tier-1 is unchanged; no client regressed.
+
 > **The badge rule (FR-E11-4).** The README advertises a tier **only when that
 > tier's clients fully pass** — every required test, against the pinned version.
 > Until then the tier is aspirational and the README does not claim it. A row is
@@ -21,16 +28,17 @@ the next README.
 |---|---|---|
 | **Tier 1 — Reference** | The team uses this client daily; first-class config snippets; regressions are P0. | All 8 (T1–T8), HTTP transport |
 | **Tier 2 — Supported** | Verified, documented; regressions are P1. | 6 (S1–S6), stdio transport — v0.3 |
-| **Tier 3 — Adapter** | A starter HTTP adapter + curl proof. | 3 (H1–H3) — v0.3 |
+| **Tier 3 — Adapter** | A starter HTTP adapter + curl proof. | 3 (H1–H3) — Sprint 10+ |
 
 v0.1 supports **three HTTP clients — Claude Code, Cursor, and Codex** — each with
 a generated connection snippet (Settings → **My Agent**). Claude Code + Cursor
 are the named Tier-1 (Reference) clients; **Codex also connects over HTTP today**
 (streamable HTTP + bearer, verified end to end — see the real-agent layer) and
 gets the same first-class snippet, so all three are "bring your own agent"–ready.
-Codex's *stdio* Tier-2 surface (the 6 S-tests) and Tier-3 (custom HTTP, curl)
-remain v0.3; the PRD §8.11 row that lists Codex as stdio-only is refreshed for the
-as-built HTTP support (tracked as DEBT-22).
+Codex's *stdio* Tier-2 surface (the 6 S-tests) lands in **v0.3** (scripted 6/6
+below — the natural fit for self-hosting + launch-on-demand); Tier-3 (custom
+HTTP, curl) is deferred to **Sprint 10+**. The PRD §8.11 row that lists Codex as
+stdio-only is refreshed for the as-built HTTP support (tracked as DEBT-22).
 
 > **Tier-2 status (E11-T4 — scripted S1–S6 green; real-Codex run is the remaining manual step).**
 > E09-T4 (the stdio transport) landed, so the harness seam is wired and the
@@ -57,6 +65,13 @@ loopback gateway, with your token filled in client-side (no secret round-trips):
 | **Codex** | `~/.codex/config.toml` | `KANTAQ_AGENT_TOKEN` **env var** (never in the file) | `[mcp_servers.kantaq]` TOML, `bearer_token_env_var` |
 
 The full snippets are in [`docs/mcp.md`](../mcp.md#connecting).
+
+Codex can also connect over **stdio** — a launch-on-demand subprocess that binds
+no socket, with the bearer in the environment (`KANTAQ_MCP_TOKEN`). It is the
+natural fit for self-hosting, and the surface the **Tier-2** suite below covers
+(scripted 6/6; the real-Codex pipe run is the one manual step): see
+[the stdio transport](../mcp.md#stdio-transport-v03) and the
+[self-host guide](../setup-self-hosted.md#3-connect-an-agent-over-stdio).
 
 ## Two layers of evidence
 
