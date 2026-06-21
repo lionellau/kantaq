@@ -35,11 +35,14 @@ from sqlmodel import Session
 from kantaq_core import audit
 from kantaq_db.models import LocalSetting
 
-# The trigger set (PRD §16.10): a proposal decided, or a sync conflict minted.
-# NOT every sync event — the signal is for the propose→approve loop + conflicts.
+# The trigger set (PRD §16.10): a proposal decided, or a sync conflict minted,
+# plus the optional human "notify the approver" nudge on a still-pending proposal
+# (so an async teammate can flag work that needs a decision). NOT every sync
+# event — the signal is for the propose→approve loop + conflicts.
 NOTIFICATION_ACTIONS: tuple[str, ...] = (
     "proposal.approved",
     "proposal.rejected",
+    "proposal.pending",
     "conflict.minted",
 )
 
@@ -175,15 +178,20 @@ class NotificationService:
     ) -> NotificationConfig:
         """Validate + persist the sink config; writes an audit row (human write).
 
-        Enabling without a sink URL is rejected (fail closed — an enabled-but-
-        unconfigured sink would silently drop every signal).
+        Enabling without *any* sink URL — neither a new one nor a previously
+        stored one — is rejected (fail closed: an enabled-but-unconfigured sink
+        would silently drop every signal). A new URL is never required just to
+        toggle a configured sink back on; the UI never re-sends the stored URL
+        (it is not echoed back, so a secret never round-trips).
         """
         if sink_type not in SINK_TYPES:
             raise NotificationConfigError(
                 f"unknown sink type {sink_type!r}; expected one of {SINK_TYPES}"
             )
         url = _validate_webhook_url(webhook_url) if webhook_url else None
-        if enabled and url is None:
+        stored = self._get(NOTIFY_WEBHOOK_URL_KEY) or None
+        effective_url = url or stored
+        if enabled and effective_url is None:
             raise NotificationConfigError("cannot enable notifications without a sink URL")
 
         before = self.config()
@@ -205,7 +213,7 @@ class NotificationService:
                 "enabled": enabled,
                 "sink_type": sink_type,
                 # .hostname strips userinfo + port — never the secret path or creds.
-                "sink_host": urlsplit(url).hostname if url else None,
+                "sink_host": urlsplit(effective_url).hostname if effective_url else None,
             },
             now=ts,
         )

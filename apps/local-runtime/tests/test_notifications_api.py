@@ -257,3 +257,45 @@ def test_no_webhook_when_notifications_are_off(
     resp = client.post(f"/v1/proposals/{proposal_id}/approve", headers=_bearer(owner_token))
     assert resp.status_code == 200
     assert recorder.calls == []
+
+
+# --------------------------------------------------------- notify-approver (E20-T9)
+
+
+def test_notify_approver_fires_a_content_free_pending_signal(
+    client: TestClient,
+    engine: Engine,
+    owner_token: str,
+    agent: tuple[str, str],
+    recorder: _RecordingClient,
+) -> None:
+    _configure_sink(client, owner_token)
+    proposal_id = _seed_proposal(client, engine, owner_token, agent[0])
+
+    resp = client.post(f"/v1/proposals/{proposal_id}/notify", headers=_bearer(owner_token))
+    assert resp.status_code == 204
+
+    assert len(recorder.calls) == 1
+    body = recorder.calls[0]["json"]
+    assert set(body) == {"action", "ids", "actor", "deep_link"}
+    assert body["action"] == "proposal.pending"
+    assert SENTINEL not in str(body)
+
+
+def test_notify_approver_is_human_only(
+    client: TestClient, engine: Engine, owner_token: str, agent: tuple[str, str]
+) -> None:
+    # never widens permission: an agent proposes but can never nudge / trigger
+    # outbound traffic, even with its read scope.
+    proposal_id = _seed_proposal(client, engine, owner_token, agent[0])
+    resp = client.post(f"/v1/proposals/{proposal_id}/notify", headers=_bearer(agent[1]))
+    assert resp.status_code == 403
+
+
+def test_notify_a_decided_proposal_is_409(
+    client: TestClient, engine: Engine, owner_token: str, agent: tuple[str, str]
+) -> None:
+    proposal_id = _seed_proposal(client, engine, owner_token, agent[0])
+    client.post(f"/v1/proposals/{proposal_id}/approve", headers=_bearer(owner_token))
+    resp = client.post(f"/v1/proposals/{proposal_id}/notify", headers=_bearer(owner_token))
+    assert resp.status_code == 409

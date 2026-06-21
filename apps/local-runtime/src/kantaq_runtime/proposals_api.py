@@ -23,7 +23,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
@@ -52,6 +52,11 @@ ReaderActor = Annotated[VerifiedActor, Depends(require_action(Action.tickets_rea
 # proposes through the gateway but can never decide its own proposal, even with an
 # over-scoped token (DEBT-37 / D-33, the boundary half of the issuance clamp).
 WriterActor = Annotated[VerifiedActor, Depends(require_human_action(Action.tickets_write))]
+# The "notify the approver" nudge (E20-T9 / §16.10) is a human-only read action: a
+# teammate flags a pending proposal as needing a decision. An agent proposes but
+# never nudges — it has no business triggering outbound traffic (the dispatch
+# stays a human-initiated, content-free signal).
+NudgerActor = Annotated[VerifiedActor, Depends(require_human_action(Action.tickets_read))]
 # A decision (approve/reject) is a ticket write, so it carries the device signer
 # (E04-T4): the agent_proposals + tickets events are signed by the approver past
 # the cutover, the same as any other runtime write.
@@ -233,3 +238,40 @@ def reject_proposal(
         ),
     )
     return result
+
+
+@router.post("/{proposal_id}/notify", status_code=204)
+def notify_approver(
+    proposal_id: str,
+    actor: NudgerActor,
+    engine: EngineDep,
+    background_tasks: BackgroundTasks,
+    request: Request,
+) -> Response:
+    """Nudge the approver that a still-pending proposal needs a decision (E20-T9).
+
+    Fires the same content-free signal (``proposal.pending``) to the configured
+    sink — opt-in, no-op when notifications are off. Only a still-pending
+    proposal can be nudged (a decided one needs no decision).
+    """
+    with Session(engine) as session:
+        proposal = session.get(AgentProposal, proposal_id)
+        if proposal is None:
+            raise HTTPException(status_code=404, detail=f"no such proposal: {proposal_id}")
+        if proposal.status != "pending":
+            raise HTTPException(
+                status_code=409, detail=f"proposal is already {proposal.status}, not pending"
+            )
+        ticket_ref = proposal.ticket_id
+    _notify(
+        background_tasks,
+        request,
+        engine,
+        NotificationEvent(
+            action="proposal.pending",
+            ids=(proposal_id, ticket_ref),
+            actor_id=actor.member_id,
+            deep_link=f"/tickets/{ticket_ref}",
+        ),
+    )
+    return Response(status_code=204)

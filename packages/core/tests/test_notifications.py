@@ -129,3 +129,19 @@ def test_disable_keeps_the_url_but_stops_delivery(session: Session) -> None:
     session.commit()
     assert config.enabled is False
     assert config.deliverable is False  # off ⇒ nothing leaves, even with a URL set
+
+
+def test_re_enable_reuses_the_stored_url_without_re_sending_it(session: Session) -> None:
+    # E20-T9: the UI never re-sends the secret URL (it is not echoed back), so
+    # toggling a configured sink back on must succeed with webhook_url=None.
+    svc = NotificationService(session)
+    svc.set_config(
+        enabled=True, sink_type="slack", webhook_url="https://hooks.slack.com/x", actor_id=ACTOR
+    )
+    session.commit()
+    svc.set_config(enabled=False, sink_type="slack", webhook_url=None, actor_id=ACTOR)
+    session.commit()
+    config = svc.set_config(enabled=True, sink_type="slack", webhook_url=None, actor_id=ACTOR)
+    session.commit()
+    assert config.enabled is True and config.deliverable is True
+    assert config.webhook_url == "https://hooks.slack.com/x"
