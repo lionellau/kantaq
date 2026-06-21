@@ -17,6 +17,7 @@ from kantaq_core.tracker.events import (
     fold_entity,
 )
 from kantaq_core.tracker.service import (
+    MILESTONE_STATUSES,
     PROJECT_STATUSES,
     RELATIONSHIP_TYPES,
     TICKET_PRIORITIES,
@@ -29,6 +30,7 @@ from kantaq_core.tracker.service import (
 
 __all__ = [
     "MAX_ATTACHMENT_BYTES",
+    "MILESTONE_STATUSES",
     "PROJECT_STATUSES",
     "RELATIONSHIP_TYPES",
     "TICKET_PRIORITIES",

@@ -21,6 +21,10 @@ export type LinkedMemory = components["schemas"]["LinkedMemoryOut"];
 export type TelemetryView = components["schemas"]["TelemetryOut"];
 export type Relation = components["schemas"]["RelationOut"];
 export type RelationInput = components["schemas"]["RelationIn"];
+// E14 (MOD-20) — milestones + the ticket-membership input.
+export type Milestone = components["schemas"]["MilestoneOut"];
+export type MilestoneInput = components["schemas"]["MilestoneIn"];
+export type MilestonePatchInput = components["schemas"]["MilestonePatch"];
 export type Recommendation = components["schemas"]["RecommendationOut"];
 export type AgentSession = components["schemas"]["AgentSessionOut"];
 export type AuditCall = components["schemas"]["AuditEventOut"];
@@ -34,6 +38,9 @@ export type ActorUsage = components["schemas"]["ActorUsageOut"];
 
 // The resolve choices the conflict tab offers (mirrors the runtime's RESOLVE_CHOICES).
 export const RESOLVE_CHOICES = ["keep-A", "keep-B", "new-value"] as const;
+
+// E14 (MOD-20) milestone lifecycle; values validated server-side.
+export const MILESTONE_STATUSES = ["active", "complete", "archived"] as const;
 
 // Mirrors kantaq_core.skills.service (E17 / MOD-22); values validated server-side.
 export const SKILL_MAPPING_SCOPES = ["personal", "workspace"] as const;

@@ -17,7 +17,7 @@ from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
 from kantaq_core.identity import MintedToken
-from kantaq_core.tracker.service import _TICKET_PATCHABLE
+from kantaq_core.tracker.service import _TICKET_PATCHABLE, TrackerService
 from kantaq_db.models import AgentProposal, AuditEvent, EventLog, Ticket
 from kantaq_mcp.gateway import Gateway
 from kantaq_mcp.tools import PROPOSABLE_FIELDS, ToolError
@@ -72,6 +72,39 @@ def test_ticket_get_requires_a_ticket_id_even_without_schema_validation(
     with pytest.raises(ToolError) as err:
         _call(gateway, agent, "ticket_get", {})
     assert err.value.code == "validation"
+
+
+def test_milestone_get_fences_prose_and_returns_grouped_tickets(
+    gateway: Gateway, agent: MintedToken, owner: MintedToken, ticket: Ticket, engine: Engine
+) -> None:
+    """milestone_get goes through the eight checks (the agent's tickets.read
+    grant authorizes it) and fences the human-authored name/description."""
+    ticket_id = ticket.id
+    with Session(engine) as session:
+        service = TrackerService(session, actor_id=owner.member_id, source="app")
+        milestone = service.create_milestone(
+            project_id=ticket.project_id, name="v1.0 launch", description="ship it"
+        )
+        milestone_id = milestone.id
+        service.add_ticket_to_milestone(ticket_id, milestone_id)
+
+    result = _call(gateway, agent, "milestone_get", {"milestone_id": milestone_id})
+    body = result["milestone"]
+    assert body["name"] == '<untrusted source="milestone.name">v1.0 launch</untrusted>'
+    assert body["description"] == '<untrusted source="milestone.description">ship it</untrusted>'
+    # Domain enums + ids stay raw; the grouped ticket is returned for scope.
+    assert body["status"] == "active"
+    assert body["ticket_ids"] == [ticket.id]
+    assert body["ticket_count"] == 1
+
+
+def test_milestone_get_unknown_is_a_domain_error_not_a_denial(
+    gateway: Gateway, agent: MintedToken, ticket: Ticket, audit_rows: AuditProbe
+) -> None:
+    with pytest.raises(ToolError) as err:
+        _call(gateway, agent, "milestone_get", {"milestone_id": "01MILESTONEMISSING0000000"})
+    assert err.value.code == "not_found"
+    assert audit_rows("tool.deny") == []
 
 
 def test_propose_stores_a_pending_proposal_and_never_touches_the_ticket(

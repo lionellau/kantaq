@@ -98,6 +98,14 @@ def _ticket_id(args: dict[str, Any]) -> str:
     return ticket_id
 
 
+def _milestone_id(args: dict[str, Any]) -> str:
+    """Fail closed on a missing/garbage milestone_id (same discipline as _ticket_id)."""
+    milestone_id = args.get("milestone_id")
+    if not isinstance(milestone_id, str) or not milestone_id.strip():
+        raise ToolError("validation", "milestone_id (string) is required")
+    return milestone_id
+
+
 class ToolError(Exception):
     """A domain-level tool failure, returned to the agent as a structured error.
 
@@ -178,6 +186,44 @@ def ticket_get(
                 }
                 for ref in ticket.attachments
             ],
+        }
+    }
+
+
+def milestone_get(
+    session: Session,
+    *,
+    actor_id: str,
+    args: dict[str, Any],
+    now: Callable[[], datetime],
+    scope: ToolScope = UNSCOPED,
+) -> dict[str, Any]:
+    """Read one milestone by id; its name + description come back fenced untrusted.
+
+    The milestone's grouped ticket ids are included so an agent can pull a
+    milestone's scope in one read. Read-only (verb ``read``); the gateway's
+    eight checks have already authorized ``tickets.read`` before dispatch.
+    """
+    service = TrackerService(session, actor_id=actor_id, source="mcp")
+    try:
+        milestone = service.get_milestone(_milestone_id(args))
+        ticket_ids = [t.id for t in service.tickets_for_milestone(milestone.id)]
+    except TrackerNotFoundError as exc:
+        raise ToolError("not_found", str(exc)) from exc
+
+    return {
+        "milestone": {
+            "id": milestone.id,
+            "project_id": milestone.project_id,
+            "name": tag_untrusted(milestone.name, "milestone.name"),
+            "description": tag_untrusted(milestone.description, "milestone.description"),
+            "target_date": _iso(milestone.target_date),
+            "status": milestone.status,
+            "created_by": milestone.created_by,
+            "created_at": milestone.created_at.isoformat(),
+            "updated_at": milestone.updated_at.isoformat(),
+            "ticket_ids": ticket_ids,
+            "ticket_count": len(ticket_ids),
         }
     }
 
