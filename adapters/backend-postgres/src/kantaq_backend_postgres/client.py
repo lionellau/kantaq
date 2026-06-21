@@ -87,6 +87,21 @@ class SyncServerBackend:
         )
         return SessionInit(int(body["sync_version"]), int(body["schema_version"]))
 
+    def whoami(self) -> dict[str, str]:
+        """The member this token authenticates as on the sync-server (DEBT-42).
+
+        ``kantaq sync login`` (postgres) uses this to adopt the seeded member as
+        the runtime's local identity; the sync cycle uses it to confirm the local
+        actor matches the token's member before pushing — a clear error instead
+        of the server's per-event ``actor is not the authenticated member``."""
+        body = self._get("/v1/me", {})
+        return {
+            "member_id": str(body["member_id"]),
+            "workspace_id": str(body["workspace_id"]),
+            "workspace_name": str(body.get("workspace_name") or ""),
+            "email": str(body.get("email") or ""),
+        }
+
     def commit_events(
         self, events: Iterable[Event], *, require_signature: bool = True, cas: bool = False
     ) -> list[CommitResult]:

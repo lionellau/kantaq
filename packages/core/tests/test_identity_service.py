@@ -14,7 +14,7 @@ from kantaq_core.identity import (
     Role,
     TokenVerifier,
 )
-from kantaq_db.models import Member, Token
+from kantaq_db.models import Member, Token, Workspace
 
 
 @pytest.fixture
@@ -38,6 +38,64 @@ def test_bootstrap_is_idempotent(engine: Engine) -> None:
     with Session(engine) as session:
         assert IdentityService(session).bootstrap_owner() is None  # second boot: no-op
         assert len(IdentityService(session).list_members()) == 1
+
+
+def test_adopt_owner_becomes_the_seeded_member(engine: Engine) -> None:
+    """DEBT-42: a fresh runtime joins a self-hosted backend by becoming the
+    seeded member — the local Owner + Workspace get the backend's ids, so the
+    runtime authors events AS that member and clears the caller-binding wall."""
+    member_id = "mbr_seed00".ljust(26, "0")
+    workspace_id = "wsp_seed00".ljust(26, "0")
+    with Session(engine) as session:
+        minted = IdentityService(session).adopt_owner(
+            member_id=member_id,
+            workspace_id=workspace_id,
+            email="me@team.dev",
+            workspace_name="Acme",
+        )
+    assert minted is not None and minted.member_id == member_id
+    actor = TokenVerifier(engine).verify(minted.plaintext)
+    assert actor is not None and actor.member_id == member_id and actor.role == "Owner"
+    with Session(engine) as session:
+        member = session.get(Member, member_id)
+        assert member is not None and member.workspace_id == workspace_id
+        assert member.status == "active"
+        workspace = session.get(Workspace, workspace_id)
+        assert workspace is not None and workspace.name == "Acme"
+
+
+def test_adopt_owner_is_idempotent_on_re_login(engine: Engine) -> None:
+    member_id = "mbr_seed00".ljust(26, "0")
+    workspace_id = "wsp_seed00".ljust(26, "0")
+    with Session(engine) as session:
+        assert (
+            IdentityService(session).adopt_owner(
+                member_id=member_id, workspace_id=workspace_id, email="me@team.dev"
+            )
+            is not None
+        )
+    with Session(engine) as session:
+        # Same identity → no-op: no second member or token is minted.
+        assert (
+            IdentityService(session).adopt_owner(
+                member_id=member_id, workspace_id=workspace_id, email="me@team.dev"
+            )
+            is None
+        )
+        assert len(IdentityService(session).list_members()) == 1
+
+
+def test_adopt_owner_refuses_to_rehome_a_different_identity(engine: Engine) -> None:
+    """SEC: a runtime that already minted its own Owner can't silently re-home
+    onto someone else's member — it must join from a fresh data dir."""
+    with Session(engine) as session:
+        IdentityService(session).bootstrap_owner()  # the local Owner L
+    with Session(engine) as session, pytest.raises(IdentityError, match="fresh data dir"):
+        IdentityService(session).adopt_owner(
+            member_id="mbr_other00".ljust(26, "0"),
+            workspace_id="wsp_other00".ljust(26, "0"),
+            email="x@team.dev",
+        )
 
 
 def test_invite_creates_invited_member_with_working_token(engine: Engine) -> None:

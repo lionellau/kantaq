@@ -97,6 +97,64 @@ class IdentityService:
         self._session.commit()
         return minted
 
+    def adopt_owner(
+        self,
+        *,
+        member_id: str,
+        workspace_id: str,
+        email: str,
+        workspace_name: str | None = None,
+    ) -> MintedToken | None:
+        """Join a self-hosted backend by becoming the seeded member (DEBT-42).
+
+        The self-hosted backend's ``seed`` mints a member with a server-generated
+        id; for the runtime's pushes to clear the server's caller-binding wall
+        (an event's ``actor_id`` must equal the token's member), the local Owner
+        must **be** that member. This creates the local Workspace + Owner with the
+        **backend's** ids, so every event the runtime authors is attributable to
+        the seeded member and syncs cleanly. Returns the runtime token (shown
+        once), or ``None`` when the runtime already holds exactly this identity
+        (idempotent re-login).
+
+        Refuses (``IdentityError``) if the runtime already has a **different**
+        member: a runtime that has minted its own Owner/history cannot silently
+        re-home onto someone else's identity — join from a fresh data dir
+        (``LOCAL_DB_PATH``). This is also the SEC guard: adoption only ever sets
+        the local identity to the member the **token** already authenticates as
+        (the caller resolved ``member_id`` from the server's ``/v1/me``), so it
+        grants nothing the token did not already hold.
+        """
+        existing = list(self._session.exec(select(Member).limit(2)).all())
+        if existing:
+            if len(existing) == 1 and existing[0].id == member_id:
+                return None  # already this identity — idempotent re-login
+            have = sorted(m.id for m in existing)
+            raise IdentityError(
+                f"this runtime already has a local identity ({have}); to join a "
+                f"self-hosted backend as member {member_id}, start from a fresh data "
+                "dir (set LOCAL_DB_PATH to a new path, or remove the existing replica)"
+            )
+        if self._session.get(Workspace, workspace_id) is None:
+            self._session.add(
+                Workspace(
+                    id=workspace_id,
+                    name=workspace_name or DEFAULT_WORKSPACE_NAME,
+                    visibility="local",
+                )
+            )
+            self._session.flush()
+        member = Member(
+            id=member_id,
+            workspace_id=workspace_id,
+            email=email,
+            role=Role.owner.value,
+            status="active",
+        )
+        self._session.add(member)
+        minted = self._mint_for(member)
+        self._session.commit()
+        return minted
+
     def invite(self, *, email: str, role: Role, scopes: list[str] | None = None) -> MintedToken:
         """Create a member in ``invited`` status and mint their one-time token.
 

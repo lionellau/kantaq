@@ -34,12 +34,19 @@ HUB_URL=http://your-server-host:8889    # or https://your-domain behind Caddy
 HUB_TOKEN=kq_<member token>            # a normal kantaq member token
 ```
 
-Then verify and sync:
+Then **join** the backend (adopts the token's member as this runtime's
+identity — required before the first sync, on a fresh runtime), verify, and sync:
 
 ```bash
+kantaq sync login      # join: this runtime becomes the token's member
 kantaq sync status     # prints the hub + negotiated protocol versions
 kantaq sync once       # one push + pull cycle through the self-hosted server
 ```
+
+The mint-a-token step is `docker compose exec sync-server uv run python -m
+kantaq_backend_postgres.seed --email you@team.dev --workspace "Acme"` (run on the
+server host); the user-facing walkthrough is
+[`docs/setup-self-hosted.md`](../../docs/setup-self-hosted.md).
 
 ## How it stays honest (one validator core, two backends)
 

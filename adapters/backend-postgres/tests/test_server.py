@@ -77,6 +77,23 @@ def test_invalid_token_is_rejected(client: TestClient) -> None:
     assert r.status_code == 401
 
 
+def test_whoami_needs_a_token(client: TestClient) -> None:
+    assert client.get("/v1/me").status_code == 401
+
+
+def test_whoami_returns_only_the_callers_own_member(client: TestClient, token: str) -> None:
+    """DEBT-42: the self-host identity probe — a runtime adopts this member as its
+    local Owner. Token-gated, self-scoped (its own member only), no secret out."""
+    me = client.get("/v1/me", headers={"authorization": f"Bearer {token}"})
+    assert me.status_code == 200
+    assert me.json() == {
+        "member_id": MEMBER,
+        "workspace_id": WORKSPACE_ID,
+        "workspace_name": "Acme",
+        "email": "srv@acme.dev",
+    }
+
+
 def test_commit_pull_snapshot_round_trip_over_http(client: TestClient, token: str) -> None:
     auth = {"authorization": f"Bearer {token}"}
 

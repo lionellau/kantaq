@@ -521,6 +521,13 @@ def cmd_sync(args: argparse.Namespace) -> int:
     auth = SupabaseAuth(url, anon_key)
     try:
         if args.sync_command == "login":
+            if not args.email:
+                print(
+                    "kantaq sync login (supabase): --email is required (the postgres "
+                    "self-host backend reads it from the token instead)",
+                    file=sys.stderr,
+                )
+                return 1
             return _sync_login(auth, keychain, args.email)
         return _sync_once(url, anon_key, auth, keychain)
     except (AuthError, SyncBackendError) as exc:
@@ -691,21 +698,63 @@ def _postgres_sync(args: argparse.Namespace, settings: Settings) -> int:
     """
     from kantaq_backend_postgres import SyncBackendError
 
-    if args.sync_command == "login":
-        print(
-            "postgres mode authenticates with HUB_TOKEN (no login step). Set HUB_MODE, "
-            "HUB_URL and HUB_TOKEN in .env; see docker/self-hosted-backend/README.md.",
-            file=sys.stderr,
-        )
-        return 0
     if not settings.hub_url or not settings.hub_token:
         print("HUB_URL and HUB_TOKEN are required for HUB_MODE=postgres", file=sys.stderr)
         return 1
     try:
+        if args.sync_command == "login":
+            return _postgres_join(settings)
         return _postgres_sync_once(settings)
     except SyncBackendError as exc:
-        print(f"kantaq sync once: {exc}", file=sys.stderr)
+        print(f"kantaq sync {args.sync_command}: {exc}", file=sys.stderr)
         return 1
+
+
+def _postgres_join(settings: Settings) -> int:
+    """Join a self-hosted backend: adopt its seeded member as the local identity.
+
+    The postgres analog of ``kantaq sync login`` (DEBT-42). Self-host ``seed``
+    mints a member with a server-generated id, and the sync-server binds
+    ``actor == the token's member`` — so the runtime's pushes only clear that
+    wall if the **local Owner is that member**. This resolves who ``HUB_TOKEN``
+    authenticates as (``GET /v1/me``) and creates the local Owner with the
+    backend's member + workspace ids. Run it on a fresh runtime **before**
+    ``kantaq dev``; idempotent on re-login, and it refuses to re-home a runtime
+    that already has a different identity (use a fresh ``LOCAL_DB_PATH``).
+    """
+    from sqlmodel import Session
+
+    from kantaq_backend_postgres import SyncServerBackend
+    from kantaq_core.identity import IdentityError, IdentityService
+    from kantaq_db.session import get_engine
+    from kantaq_runtime.auth import RUNTIME_TOKEN_KEY, keychain_for
+
+    assert settings.hub_url and settings.hub_token  # checked by the caller
+    me = SyncServerBackend(settings.hub_url, settings.hub_token).whoami()
+    db = get_engine(_db_url())
+    keychain = keychain_for(settings)
+    with Session(db) as session:
+        try:
+            minted = IdentityService(session).adopt_owner(
+                member_id=me["member_id"],
+                workspace_id=me["workspace_id"],
+                email=me["email"],
+                workspace_name=me["workspace_name"],
+            )
+        except IdentityError as exc:
+            print(f"kantaq sync login: {exc}", file=sys.stderr)
+            return 1
+    if minted is not None:
+        keychain.set(RUNTIME_TOKEN_KEY, minted.plaintext)
+        print(
+            f"joined as {me['email']} (member {me['member_id']}); the local runtime "
+            "token is now this member — run `kantaq dev` to serve, `kantaq token show` "
+            "to read it",
+            file=sys.stderr,
+        )
+    else:
+        print(f"already joined as {me['email']} (member {me['member_id']})", file=sys.stderr)
+    return 0
 
 
 def _notify_conflicts(db: object, *, actor_id: str, conflicts: list[tuple[str, str]]) -> None:
@@ -779,6 +828,20 @@ def _postgres_sync_once(settings: Settings) -> int:
     # Connection-verify up front: a wrong URL/token fails here with a clear error
     # rather than mid-drain (the §B7 handshake also negotiates the sync version).
     hub.session_init(sync_version=SYNC_VERSION, schema_version=EXPECTED_SCHEMA_VERSION)
+
+    # DEBT-42: the sync-server binds actor == the token's member, so a runtime can
+    # only push events it authored as that member. Confirm the local identity IS
+    # the token's member up front, turning the server's per-event "actor is not the
+    # authenticated member" rejection into one clear instruction before any drain.
+    who = hub.whoami()
+    if me.id != who["member_id"]:
+        print(
+            f"kantaq sync once: this runtime is member {me.id}, but HUB_TOKEN "
+            f"authenticates as {who['member_id']}. Run `kantaq sync login` to join the "
+            "self-hosted backend as that member (a fresh runtime), or fix HUB_TOKEN.",
+            file=sys.stderr,
+        )
+        return 1
 
     backend = _verifying_backend(
         hub, db=db, actor_id=me.id, workspace_id=workspace.id, settings=settings
@@ -1103,8 +1166,14 @@ def build_parser() -> argparse.ArgumentParser:
     sync = sub.add_parser("sync", help="online sync with the team backend (E24)")
     sync.set_defaults(func=cmd_sync)
     sync_sub = sync.add_subparsers(dest="sync_command", required=True)
-    sync_login = sync_sub.add_parser("login", help="sign in with an emailed one-time code")
-    sync_login.add_argument("--email", required=True, help="your invited member email")
+    sync_login = sync_sub.add_parser(
+        "login", help="sign in (Supabase code; or join a self-host backend)"
+    )
+    sync_login.add_argument(
+        "--email",
+        default=None,
+        help="your invited member email (Supabase mode; postgres mode reads it from the backend)",
+    )
     sync_sub.add_parser("once", help="run one push + pull cycle")
     sync_sub.add_parser("status", help="local sync state (no network)")
 
