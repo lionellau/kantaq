@@ -163,9 +163,9 @@ export default function ProposalCard({
               style={ui.button}
               disabled={busy}
               onClick={onNotify}
-              title="Send a content-free 'needs a decision' nudge to the workspace sink"
+              title="Notify the approver — a content-free 'needs a decision' nudge to the workspace sink"
             >
-              Notify approver
+              Request a decision
             </button>
           )}
         </div>

@@ -83,7 +83,7 @@ describe("ProposalCard follow-up rendering", () => {
 describe("ProposalCard notify-approver affordance (E20-T9)", () => {
   it("shows no Notify button when onNotify is absent", () => {
     renderCard(buildProposal());
-    expect(screen.queryByRole("button", { name: "Notify approver" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Request a decision" })).toBeNull();
   });
 
   it("renders the Notify button and calls onNotify when provided", () => {
@@ -101,7 +101,7 @@ describe("ProposalCard notify-approver affordance (E20-T9)", () => {
         />
       </MemoryRouter>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Notify approver" }));
+    fireEvent.click(screen.getByRole("button", { name: "Request a decision" }));
     expect(onNotify).toHaveBeenCalledTimes(1);
   });
 });
