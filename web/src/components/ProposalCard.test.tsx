@@ -4,9 +4,9 @@
  * detects it and shows what would be created/edited/completed.
  */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Member, Proposal } from "../api/types";
 import type { MemberDirectory } from "../lib/members";
 import { buildProposal } from "../test/builders";
@@ -77,5 +77,31 @@ describe("ProposalCard follow-up rendering", () => {
   it("still renders a ticket field diff for a normal proposal", () => {
     renderCard(buildProposal());
     expect(screen.getByText("doing")).toBeTruthy();
+  });
+});
+
+describe("ProposalCard notify-approver affordance (E20-T9)", () => {
+  it("shows no Notify button when onNotify is absent", () => {
+    renderCard(buildProposal());
+    expect(screen.queryByRole("button", { name: "Notify approver" })).toBeNull();
+  });
+
+  it("renders the Notify button and calls onNotify when provided", () => {
+    const onNotify = vi.fn();
+    render(
+      <MemoryRouter>
+        <ProposalCard
+          proposal={buildProposal()}
+          ticket={null}
+          citedMemory={[]}
+          directory={directory}
+          busy={false}
+          onDecide={() => {}}
+          onNotify={onNotify}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Notify approver" }));
+    expect(onNotify).toHaveBeenCalledTimes(1);
   });
 });

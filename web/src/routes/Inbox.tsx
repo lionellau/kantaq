@@ -173,6 +173,28 @@ export default function Inbox() {
     void refresh();
   }
 
+  // E20-T9: nudge the approver that a pending proposal needs a decision — a
+  // content-free signal to the workspace sink (no-op if none is configured).
+  async function notify(proposal: Proposal) {
+    setBusy(proposal.id);
+    setNotice(null);
+    const { response, error: apiError } = await api.POST("/v1/proposals/{proposal_id}/notify", {
+      params: { path: { proposal_id: proposal.id } },
+    });
+    setBusy(null);
+    if (apiError !== undefined) {
+      setNotice(
+        response?.status === 409
+          ? "that proposal was already decided"
+          : response?.status === 403
+            ? "only a workspace member may notify the approver"
+            : "could not send the nudge (is a notification sink configured?)",
+      );
+    } else {
+      setNotice("Nudge sent — the approver's sink was pinged (if one is configured).");
+    }
+  }
+
   // Undo a just-approved proposal: revert the changed fields to their captured
   // pre-approve values through the one ticket write path (audited like any edit).
   async function undo(record: ApprovedUndo) {
@@ -341,6 +363,7 @@ export default function Inbox() {
                   directory={directory}
                   busy={busy === proposal.id}
                   onDecide={(decision, reason) => void decide(proposal, decision, reason)}
+                  onNotify={() => void notify(proposal)}
                 />
               ))}
             </ul>

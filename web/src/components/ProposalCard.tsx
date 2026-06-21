@@ -81,6 +81,7 @@ export default function ProposalCard({
   directory,
   busy,
   onDecide,
+  onNotify,
 }: {
   proposal: Proposal;
   ticket: Ticket | null;
@@ -88,6 +89,9 @@ export default function ProposalCard({
   directory: MemberDirectory;
   busy: boolean;
   onDecide: (decision: "approve" | "reject", reason?: string) => void;
+  // E20-T9: the optional "notify the approver" nudge — fires a content-free
+  // proposal.pending signal so an async teammate flags work that needs a decision.
+  onNotify?: () => void;
 }) {
   const changes = proposedChanges(proposal);
   const note = proposalNote(proposal);
@@ -153,6 +157,17 @@ export default function ProposalCard({
           >
             Reject
           </button>
+          {onNotify !== undefined && (
+            <button
+              type="button"
+              style={ui.button}
+              disabled={busy}
+              onClick={onNotify}
+              title="Send a content-free 'needs a decision' nudge to the workspace sink"
+            >
+              Notify approver
+            </button>
+          )}
         </div>
       </div>
 
