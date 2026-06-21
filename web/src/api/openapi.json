@@ -244,6 +244,11 @@
           "text": {
             "title": "Text",
             "type": "string"
+          },
+          "transport": {
+            "default": "http",
+            "title": "Transport",
+            "type": "string"
           }
         },
         "required": [

@@ -133,56 +133,69 @@ def test_live_gateway_yields_the_loopback_snippet(
     assert server["headers"]["Authorization"] == f"Bearer {TOKEN_PLACEHOLDER}"
 
 
-def test_live_gateway_offers_all_three_clients(
+def test_live_gateway_offers_both_transports_for_every_client(
     client: TestClient, owner_token: str, db_dir: Path
 ) -> None:
-    """E11: a live runtime hands out Claude Code, Cursor, *and* Codex snippets."""
+    """E09-T5: a live runtime hands out HTTP *and* stdio configs for Claude Code,
+    Cursor, and Codex — six entries, two transports per client."""
     url = "http://127.0.0.1:54321/v1/mcp"
     _write_discovery(db_dir, url=url, pid=os.getpid())
 
     body = client.get("/v1/me/agent-snippet", headers=_bearer(owner_token)).json()
-    by_client = {c["client"]: c for c in body["clients"]}
-    assert set(by_client) == {"claude_code", "cursor", "codex"}
+    by_key = {(c["client"], c["transport"]): c for c in body["clients"]}
+    assert set(by_key) == {
+        ("claude_code", "http"),
+        ("cursor", "http"),
+        ("codex", "http"),
+        ("claude_code", "stdio"),
+        ("cursor", "stdio"),
+        ("codex", "stdio"),
+    }
 
-    # Back-compat: the bare ``snippet`` is still the Claude Code config.
-    assert body["snippet"] == by_client["claude_code"]["config"]
+    # Back-compat: the bare ``snippet`` is still the HTTP Claude Code config, and
+    # it is the FIRST entry (consumers reading clients[0] keep working).
+    http_claude = by_key[("claude_code", "http")]
+    assert body["snippet"] == http_claude["config"]
+    assert body["clients"][0] == http_claude
 
-    claude = by_client["claude_code"]
-    assert claude["save_as"] == ".mcp.json"
-    assert claude["format"] == "mcp_json"
-    assert claude["setup"] is None
-    claude_server = claude["config"]["mcpServers"]["kantaq"]
-    assert claude_server["type"] == "http"  # Claude Code names the transport
+    # --- HTTP variants point at the live URL ---
+    claude_server = http_claude["config"]["mcpServers"]["kantaq"]
+    assert claude_server["type"] == "http"
     assert claude_server["url"] == url
     assert claude_server["headers"]["Authorization"] == f"Bearer {TOKEN_PLACEHOLDER}"
-    assert '"type": "http"' in claude["text"]  # the exact paste string
 
-    cursor = by_client["cursor"]
-    assert cursor["save_as"] == ".cursor/mcp.json"
-    cursor_server = cursor["config"]["mcpServers"]["kantaq"]
+    cursor_server = by_key[("cursor", "http")]["config"]["mcpServers"]["kantaq"]
     assert "type" not in cursor_server  # Cursor takes a bare url for a remote server
     assert cursor_server["url"] == url
-    assert cursor_server["headers"]["Authorization"] == f"Bearer {TOKEN_PLACEHOLDER}"
 
-    # Codex: a TOML config.toml table; the bearer rides an env var, never the file.
-    codex = by_client["codex"]
-    assert codex["save_as"] == "~/.codex/config.toml"
-    assert codex["format"] == "toml"
-    codex_server = codex["config"]["mcp_servers"]["kantaq"]
-    assert codex_server["url"] == url
-    assert codex_server["bearer_token_env_var"] == "KANTAQ_AGENT_TOKEN"
-    assert "[mcp_servers.kantaq]" in codex["text"]
-    assert f'url = "{url}"' in codex["text"]
-    assert TOKEN_PLACEHOLDER not in codex["text"]  # the token is never in the file
-    assert codex["setup"] == f"export KANTAQ_AGENT_TOKEN={TOKEN_PLACEHOLDER}"
+    codex_http = by_key[("codex", "http")]
+    assert codex_http["config"]["mcp_servers"]["kantaq"]["url"] == url
+    assert codex_http["setup"] == f"export KANTAQ_AGENT_TOKEN={TOKEN_PLACEHOLDER}"
+
+    # --- stdio variants launch `kantaq mcp stdio`; the token rides an env var ---
+    stdio_claude = by_key[("claude_code", "stdio")]["config"]["mcpServers"]["kantaq"]
+    assert stdio_claude["command"] == "kantaq"
+    assert stdio_claude["args"] == ["mcp", "stdio"]
+    assert stdio_claude["env"]["KANTAQ_MCP_TOKEN"] == TOKEN_PLACEHOLDER
+    assert "url" not in stdio_claude  # no HTTP URL on the stdio config
+
+    codex_stdio = by_key[("codex", "stdio")]
+    assert codex_stdio["format"] == "toml"
+    codex_stdio_server = codex_stdio["config"]["mcp_servers"]["kantaq"]
+    assert codex_stdio_server["command"] == "kantaq"
+    assert codex_stdio_server["env"]["KANTAQ_MCP_TOKEN"] == TOKEN_PLACEHOLDER
+    assert 'command = "kantaq"' in codex_stdio["text"]
 
 
-def test_gateway_down_offers_no_client_snippets(client: TestClient, owner_token: str) -> None:
-    """No gateway → no snippet for any client (the start-the-gateway state)."""
+def test_gateway_down_still_offers_stdio_clients(client: TestClient, owner_token: str) -> None:
+    """E09-T5: stdio needs no live HTTP gateway (the client spawns the gateway
+    itself), so the stdio configs are offered even when the gateway is down; only
+    the HTTP variants require the discovered URL."""
     body = client.get("/v1/me/agent-snippet", headers=_bearer(owner_token)).json()
     assert body["gateway_live"] is False
     assert body["snippet"] is None
-    assert body["clients"] == []
+    assert {c["transport"] for c in body["clients"]} == {"stdio"}
+    assert {c["client"] for c in body["clients"]} == {"claude_code", "cursor", "codex"}
 
 
 def test_the_response_never_carries_the_token(
