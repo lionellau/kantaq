@@ -68,3 +68,42 @@ def test_supabase_unreachable_fails() -> None:
     result = verify_connection(settings, client=client)
     assert not result.ok
     assert "cannot reach" in result.message
+
+
+def test_postgres_missing_credentials_fails_fast() -> None:
+    settings = Settings(_env_file=None, hub_mode="postgres")
+    result = verify_connection(settings)
+    assert not result.ok
+    assert "HUB_URL and HUB_TOKEN are required" in result.message
+
+
+def test_postgres_reachable_ok() -> None:
+    """Self-host `kantaq dev` boots in postgres mode (regression — verify used to
+    reject postgres with 'not supported until v0.3')."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/healthz"
+        return httpx.Response(200, json={"status": "ok"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    settings = Settings(
+        _env_file=None,
+        hub_mode="postgres",
+        hub_url="http://hub:8889",
+        hub_token="kq_token",
+    )
+    result = verify_connection(settings, client=client)
+    assert result.ok and "reachable" in result.message
+
+
+def test_postgres_unreachable_fails() -> None:
+    def boom(_req: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("no route to host")
+
+    client = httpx.Client(transport=httpx.MockTransport(boom))
+    settings = Settings(
+        _env_file=None, hub_mode="postgres", hub_url="http://hub:8889", hub_token="kq_token"
+    )
+    result = verify_connection(settings, client=client)
+    assert not result.ok
+    assert "cannot reach" in result.message
