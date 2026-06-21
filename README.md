@@ -2,7 +2,7 @@
 
 **A local-first, agent-native issue tracker for small teams (2–10) who already run a local AI agent** — Claude Code, Cursor, or Codex.
 
-Your tracker runs on your own machine. Solo, it needs **zero backend**. As a team, every member runs their own local copy and points it at one shared sync backend (Supabase today, self-hosted Postgres next) that only validates and stores committed team state. Your AI agent connects to your own private loopback gateway, reads tickets with the right context, and **proposes** changes — you approve them from an Inbox diff. Every change is signed and verified before it syncs.
+Your tracker runs on your own machine. Solo, it needs **zero backend**. As a team, every member runs their own local copy and points it at one shared sync backend (Supabase, or self-hosted Postgres you run yourself) that only validates and stores committed team state. Your AI agent connects to your own private loopback gateway, reads tickets with the right context, and **proposes** changes — you approve them from an Inbox diff. Every change is signed and verified before it syncs.
 
 > No shared app instance, no server to operate, no per-seat bill. The only shared thing is the sync backend. Export your whole workspace to a single file and re-import it anywhere, byte-for-byte. **Your data is yours.**
 
@@ -56,6 +56,7 @@ kantaq speaks HTTP MCP, so it works with **Claude Code**, **Cursor**, and **Code
 |---|---|
 | [QUICKSTART.md](QUICKSTART.md) | clone to running in ~10 min; solo + team; the full loop |
 | [docs/setup-supabase.md](docs/setup-supabase.md) | team backend setup — one maintainer, once |
+| [docs/setup-self-hosted.md](docs/setup-self-hosted.md) | run the whole backend yourself — `docker compose up`, no Supabase |
 | [docs/mcp.md](docs/mcp.md) | the agent gateway, its checks, the tool catalog, connection snippets |
 | [docs/security.md](docs/security.md) | the trust model and how the boundary holds |
 | [docs/sync.md](docs/sync.md) | offline reconcile, conflict review, retention |
@@ -79,7 +80,7 @@ src/kantaq/          the `kantaq` CLI + version
 apps/local-runtime/  FastAPI runtime: REST API + serves the UI
 packages/            protocol, sync engine, tracker core, MCP gateway, db models
 web/                 React + Vite single-page app
-adapters/            sync backends (Supabase; self-hosted Postgres next)
+adapters/            sync backends (Supabase or self-hosted Postgres)
 docs/                protocol, security, MCP, portability, compatibility
 ```
 
