@@ -327,3 +327,33 @@ def test_safe_watermark_rev_reads_the_lowest_live_ack() -> None:
 def test_safe_watermark_rev_holds_when_no_live_replica() -> None:
     backend = _backend(lambda _request: httpx.Response(200, json=[]))
     assert backend.safe_watermark_rev() is None  # no live ack → report "hold", not a blind floor
+
+
+# --- DEBT-40: head_rev null-safe on a duplicate, and parity with self-host ---
+
+_DUP_ROW: dict[str, Any] = {
+    "event_id": "evt" + "0" * 23,
+    "status": "duplicate",
+    "revision": 7,
+    "base_rev": None,
+    "head_rev": None,  # the RPC returns null for a duplicate (idempotent re-push)
+    "stale_base_rev": None,
+    "conflicts": [],
+}
+
+
+def test_debt40_duplicate_row_maps_head_rev_null_safe() -> None:
+    """The RPC returns head_rev=null for a `duplicate`; the mapping must not
+    int(None). Null-safe to 0 (DEBT-40)."""
+    result = SupabaseSyncBackend._row_to_commit_result(_DUP_ROW)
+    assert result.status == "duplicate"
+    assert result.revision == 7
+    assert result.head_rev == 0
+
+
+def test_debt40_both_adapters_map_a_duplicate_identically() -> None:
+    """No drift: the Supabase and self-host adapters map the same raw duplicate
+    row to the same typed CommitResult (the parity the DEBT-40 fix restores)."""
+    from kantaq_backend_postgres.commit import to_commit_result
+
+    assert SupabaseSyncBackend._row_to_commit_result(_DUP_ROW) == to_commit_result(_DUP_ROW)

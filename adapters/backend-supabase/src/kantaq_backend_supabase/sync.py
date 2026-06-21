@@ -406,12 +406,16 @@ class SupabaseSyncBackend:
     def _row_to_commit_result(row: dict[str, Any]) -> CommitResult:
         stale = row.get("stale_base_rev")
         base = row.get("base_rev")
+        head = row.get("head_rev")
         return CommitResult(
             event_id=row["event_id"],
             status=row["status"],
             revision=int(row["revision"]),
             base_rev=int(base) if base is not None else None,
-            head_rev=int(row["head_rev"]),
+            # DEBT-40: the RPC returns head_rev=null for a `duplicate` result;
+            # `int(None)` raised. Null-safe to 0, matching the self-host
+            # to_commit_result so the two adapters map identically (no drift).
+            head_rev=int(head) if head is not None else 0,
             stale_base_rev=int(stale) if stale is not None else None,
             # The RPC's rich per-field conflicts[] (E05-T2 / MOD-26 §B4) — the raw
             # tuple the committing client mints a conflict_record from. MUST be

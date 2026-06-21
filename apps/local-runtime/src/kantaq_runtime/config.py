@@ -61,6 +61,19 @@ class Settings(BaseSettings):
     # DEBT-14). Both come from `.env` (see docker/self-hosted-backend/.env.self-hosted.example).
     hub_url: str | None = None
     hub_token: str | None = None
+    # Object storage for attachments (E25-T3 / FR-E25-3). `blob_store` selects
+    # the BlobStore backend: "filesystem" (default, D-32 — bytes next to the
+    # local db) or "s3" (a shared S3-compatible bucket so a self-hosting team
+    # sees attachments across replicas without an export round-trip). The s3_*
+    # fields configure the bucket; credentials fall through to boto3's default
+    # provider chain when unset. Needs the `s3` extra (boto3) when set to "s3".
+    blob_store: str = "filesystem"
+    s3_bucket: str | None = None
+    s3_endpoint_url: str | None = None
+    s3_region: str | None = None
+    s3_access_key_id: str | None = None
+    s3_secret_access_key: str | None = None
+    s3_prefix: str = "blobs/"
     # The signing cutover switch (E04-T4 / FR-E04-6). Off until a workspace
     # deliberately cuts over to signed sync; the cutover is a recorded,
     # one-way decision (dev-planning D-15) because pre-cutover events stay

@@ -27,7 +27,7 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from kantaq_core.identity import IdentityService, ensure_device, ensure_member_grant
 from kantaq_core.identity.devices import device_private_key
-from kantaq_core.tracker import LocalBlobStore, TrackerService
+from kantaq_core.tracker import LocalBlobStore, S3BlobStore, TrackerService
 from kantaq_db.models import Member
 from kantaq_runtime.export import build_bundle
 from kantaq_runtime.import_bundle import BundleImportError, import_bundle
@@ -129,6 +129,57 @@ def test_export_import_reexport_is_byte_identical(tmp_path: Path) -> None:
     for blob_id, ref in src_blob_manifest.items():
         assert ref["sha256"] == blob_id
         assert hashlib.sha256(dst_files[f"blobs/data/{blob_id}"]).hexdigest() == blob_id
+
+
+class _FakeS3:
+    """A minimal in-memory S3 client (the slice S3BlobStore uses) for the
+    restore smoke — no network, no boto3."""
+
+    def __init__(self) -> None:
+        self.objects: dict[tuple[str, str], bytes] = {}
+
+    def put_object(self, *, Bucket: str, Key: str, Body: bytes, ContentType: str) -> dict[str, str]:
+        self.objects[(Bucket, Key)] = Body
+        return {}
+
+    def get_object(self, *, Bucket: str, Key: str) -> dict[str, object]:
+        data = self.objects[(Bucket, Key)]
+
+        class _Body:
+            def read(self) -> bytes:
+                return data
+
+        return {"Body": _Body()}
+
+    def head_object(self, *, Bucket: str, Key: str) -> dict[str, int]:
+        return {"ContentLength": len(self.objects[(Bucket, Key)])}
+
+
+def test_restore_from_backup_into_s3_object_storage_re_syncs_cleanly(tmp_path: Path) -> None:
+    """E25-T3: a backup bundle restores into a fresh runtime whose blob store is
+    the S3 object-storage adapter — the blob lands content-addressed in the
+    bucket, verifies against its hash, and a re-export is byte-identical (the
+    "restore re-syncs cleanly" acceptance, proven through the new adapter)."""
+    source = _source_bundle(tmp_path)
+
+    dst_engine = _fresh_engine()
+    dst_blobs = S3BlobStore(_FakeS3(), "kantaq-blobs")
+    with Session(dst_engine) as session:
+        result = import_bundle(source, session=session, blob_store=dst_blobs)
+        session.commit()
+    assert result.events >= 4
+    assert result.blobs == 1
+
+    src_blob_manifest = json.loads(_members(source)["blobs/manifest.json"])
+    blob_id = next(iter(src_blob_manifest))
+    # The restored blob is in the S3 store, content-addressed + hash-verified.
+    assert dst_blobs.exists(blob_id)
+    assert hashlib.sha256(dst_blobs.open(blob_id)).hexdigest() == blob_id
+
+    # Re-export from the S3-backed runtime is byte-identical for the blob set.
+    with Session(dst_engine) as session:
+        reexport = build_bundle(session, blob_store=dst_blobs, now=FIXED_NOW, device_key=None)
+    assert json.loads(_members(reexport)["blobs/manifest.json"]) == src_blob_manifest
 
 
 def test_import_refuses_a_corrupted_file(tmp_path: Path) -> None:

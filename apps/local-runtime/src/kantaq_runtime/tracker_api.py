@@ -30,7 +30,9 @@ from kantaq_core.telemetry import TelemetryService
 from kantaq_core.tracker import (
     MAX_ATTACHMENT_BYTES,
     BlobNotFoundError,
+    BlobStore,
     LocalBlobStore,
+    S3BlobStore,
     TrackerNotFoundError,
     TrackerService,
     TrackerValidationError,
@@ -69,8 +71,25 @@ WriterActor = Annotated[VerifiedActor, Depends(require_human_action(Action.ticke
 SignerDep = Annotated[EventSigner | None, Depends(get_event_signer)]
 
 
-def blob_store_for(settings: Settings) -> LocalBlobStore:
-    """The attachment blob store: ``<db dir>/blobs`` in solo mode (D-13)."""
+def blob_store_for(settings: Settings) -> BlobStore:
+    """The attachment blob store (E25-T3 / FR-E25-3).
+
+    ``filesystem`` (default, D-13/D-32) keeps bytes in ``<db dir>/blobs``;
+    ``s3`` points a shared S3-compatible bucket so a self-hosting team sees
+    attachments across replicas. The bucket is required when ``blob_store=s3``;
+    boto3 (the ``s3`` extra) is imported on demand by ``S3BlobStore``.
+    """
+    if settings.blob_store == "s3":
+        if not settings.s3_bucket:
+            raise RuntimeError("KANTAQ_BLOB_STORE=s3 requires KANTAQ_S3_BUCKET to be set")
+        return S3BlobStore.from_config(
+            bucket=settings.s3_bucket,
+            endpoint_url=settings.s3_endpoint_url,
+            region=settings.s3_region,
+            access_key_id=settings.s3_access_key_id,
+            secret_access_key=settings.s3_secret_access_key,
+            prefix=settings.s3_prefix,
+        )
     return LocalBlobStore(Path(settings.local_db_path).parent / "blobs")
 
 
@@ -86,7 +105,7 @@ def _service(
     return TrackerService(session, actor_id=actor.member_id, source="app", sink=sink)
 
 
-def _store(request: Request) -> LocalBlobStore:
+def _store(request: Request) -> BlobStore:
     settings: Settings = request.app.state.settings
     return blob_store_for(settings)
 
