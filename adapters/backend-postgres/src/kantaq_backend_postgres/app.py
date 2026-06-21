@@ -45,7 +45,7 @@ from sqlmodel import Session
 
 from kantaq_backend_postgres.backend import PostgresSyncBackend
 from kantaq_core.identity.tokens import TokenVerifier, VerifiedActor
-from kantaq_db.models import Member
+from kantaq_db.models import Member, Workspace
 from kantaq_sync_engine.events import Event, RebaseRequired
 from kantaq_sync_engine.verify import POLICY_DENIED, EventRejected, EventVerification
 
@@ -187,6 +187,30 @@ def create_app(
             sync_version=body.sync_version, schema_version=body.schema_version
         )
         return {"sync_version": init.sync_version, "schema_version": init.schema_version}
+
+    @app.get("/v1/me")
+    def whoami(actor: Annotated[VerifiedActor, Depends(require_actor)]) -> dict[str, str]:
+        """The member this token authenticates as — the self-host identity probe.
+
+        A self-hosting runtime adopts the seeded member as its **local** identity
+        (``kantaq sync login``) so the events it authors clear the caller-binding
+        wall on ``/v1/events`` (``actor_id`` must equal the authenticated member —
+        DEBT-42). The token is the sole authority here: this only ever returns the
+        caller's **own** member (it cannot enumerate or impersonate a peer), and
+        nothing key-shaped goes out — the token came in, only the member /
+        workspace ids + email go back.
+        """
+        with Session(engine) as session:
+            member = session.get(Member, actor.member_id)
+            if member is None:
+                raise HTTPException(403, "member not found")
+            workspace = session.get(Workspace, member.workspace_id)
+            return {
+                "member_id": member.id,
+                "workspace_id": member.workspace_id,
+                "workspace_name": workspace.name if workspace is not None else "",
+                "email": member.email,
+            }
 
     @app.post("/v1/events")
     def commit(

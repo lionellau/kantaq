@@ -57,17 +57,22 @@ Caddy obtains and renews a Let's Encrypt certificate automatically and adds HSTS
 The full TLS and secret-hygiene posture is in the
 [operator reference](../docker/self-hosted-backend/README.md#tls--secret-hygiene-hardening-e25-t4).
 
-## 2. Mint a token and point your runtime at it
+## 2. Mint a token and join from your runtime
 
 The backend authenticates every write with a normal kantaq **member token** (no
-JWT, no RLS — the validator core authorizes each write). Mint a founding one on
-the backend host:
+JWT, no RLS — the validator core authorizes each write). Mint a founding member
+**inside the running container** (it already holds the database connection):
 
 ```bash
-python -m kantaq_backend_postgres.seed --email you@team.dev --workspace "Acme"
+docker compose exec sync-server \
+  uv run python -m kantaq_backend_postgres.seed --email you@team.dev --workspace "Acme"
 ```
 
-Then, in the **runtime's** `.env` (the machine running `kantaq`):
+It prints a `member:` id and a `kq_…` **token** — copy the token.
+
+Now point a **fresh** runtime at the backend. Set these in the **runtime's**
+`.env` — the one at the kantaq repo root, *not* the
+`docker/self-hosted-backend/.env` you edited in Step 1:
 
 ```
 HUB_MODE=postgres
@@ -75,12 +80,19 @@ HUB_URL=http://your-host:8889          # or https://your-domain behind Caddy
 HUB_TOKEN=kq_...                       # the token the seed command printed
 ```
 
-Verify the connection and run one cycle:
+Then **join** the backend, verify, and sync:
 
 ```bash
+kantaq sync login      # join: your runtime adopts the seeded member as its identity
 kantaq sync status     # prints the hub + the negotiated protocol versions
 kantaq sync once       # one push + pull through your self-hosted server
 ```
+
+> **Run `kantaq sync login` on a fresh runtime, before `kantaq dev`.** The server
+> only accepts events you authored *as the member your token belongs to*, so
+> `login` establishes your local identity **as** that member. If a runtime
+> already has its own identity, join from a fresh `LOCAL_DB_PATH` instead (the
+> command will say so).
 
 ## 3. Connect an agent over stdio
 

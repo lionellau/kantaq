@@ -170,6 +170,88 @@ def test_status_reports_locally_without_network(
     assert "pending  = 0 event(s)" in out
 
 
+# -------------------------------------------------- postgres join (DEBT-42)
+
+_SEEDED = "mbr_seed00".ljust(26, "0")
+_SEEDED_WS = "wsp_seed00".ljust(26, "0")
+
+
+class _FakeHub:
+    """Stands in for ``SyncServerBackend``: ``whoami`` returns the seeded member."""
+
+    def __init__(self, *a: object, **k: object) -> None: ...
+
+    def whoami(self) -> dict[str, str]:
+        return {
+            "member_id": _SEEDED,
+            "workspace_id": _SEEDED_WS,
+            "workspace_name": "Acme",
+            "email": "founder@acme.dev",
+        }
+
+    def session_init(self, **k: object) -> None:
+        return None
+
+
+def _postgres_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """A migrated local replica wired up for HUB_MODE=postgres, away from any .env."""
+    import kantaq.cli as cli
+    import kantaq_backend_postgres as pg_mod
+
+    db_path = tmp_path / "data" / "local.sqlite"
+    db_path.parent.mkdir(parents=True)
+    SQLModel.metadata.create_all(create_engine(f"sqlite:///{db_path}"))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "_db_url", lambda: f"sqlite:///{db_path}")
+    monkeypatch.setattr(pg_mod, "SyncServerBackend", _FakeHub)
+    monkeypatch.setenv("HUB_MODE", "postgres")
+    monkeypatch.setenv("HUB_URL", "http://hub:8889")
+    monkeypatch.setenv("HUB_TOKEN", "kq_seedtoken")
+    monkeypatch.setenv("LOCAL_DB_PATH", str(db_path))
+    monkeypatch.setenv("KANTAQ_DB_URL", f"sqlite:///{db_path}")
+    return db_path
+
+
+def test_postgres_login_adopts_the_seeded_member(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """DEBT-42: `kantaq sync login` (postgres) creates the local Owner AS the
+    member the token authenticates as, so the runtime can then push as that id."""
+    from sqlmodel import Session, select
+
+    from kantaq_db import Member
+
+    db_path = _postgres_runtime(monkeypatch, tmp_path)
+
+    assert main(["sync", "login"]) == 0
+    err = capsys.readouterr().err
+    assert "joined as founder@acme.dev" in err and _SEEDED in err
+
+    with Session(create_engine(f"sqlite:///{db_path}")) as session:
+        owner = session.exec(select(Member)).one()
+    assert owner.id == _SEEDED and owner.workspace_id == _SEEDED_WS
+
+
+def test_postgres_once_guards_a_not_yet_joined_runtime(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The guard turns the server's per-event caller-binding rejection into one
+    clear instruction: a runtime whose Owner isn't the token's member is told to
+    `kantaq sync login` before any push is attempted."""
+    from sqlmodel import Session
+
+    from kantaq_core.identity import IdentityService
+
+    db_path = _postgres_runtime(monkeypatch, tmp_path)
+    # A local Owner L (≠ the seeded member the token authenticates as).
+    with Session(create_engine(f"sqlite:///{db_path}")) as session:
+        IdentityService(session).bootstrap_owner()
+
+    assert main(["sync", "once"]) == 1
+    err = capsys.readouterr().err
+    assert "kantaq sync login" in err and _SEEDED in err
+
+
 # ----------------------------------------------------------------- retention
 
 
