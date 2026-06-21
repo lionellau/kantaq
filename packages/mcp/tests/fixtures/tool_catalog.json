@@ -178,6 +178,138 @@
     "title": "Propose a ticket change",
     "verb": "propose"
   },
+  "dependency_graph_get": {
+    "collections": [
+      "ticket_relationships",
+      "tickets"
+    ],
+    "description": "Read the 'what blocks what' sub-graph (nodes + directed blocks edges) derived from ticket relationships. Pass a root_ticket_id to scope it to what that ticket reaches (bounded by depth); omit it for the whole blocks graph. Returns ticket ids only.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "depth": {
+          "description": "Max hops from the root (optional; omit for unbounded).",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "root_ticket_id": {
+          "description": "Scope to the sub-graph reachable from this ticket (optional).",
+          "maxLength": 26,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "output_schema": {
+      "properties": {
+        "edge_count": {
+          "type": "integer"
+        },
+        "edges": {
+          "items": {
+            "properties": {
+              "blocked": {
+                "type": "string"
+              },
+              "blocks": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "blocks",
+              "blocked"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "node_count": {
+          "type": "integer"
+        },
+        "nodes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "nodes",
+        "edges",
+        "node_count",
+        "edge_count"
+      ],
+      "type": "object"
+    },
+    "required_action": "tickets.read",
+    "title": "Read the dependency graph",
+    "verb": "read"
+  },
+  "dependency_path_find": {
+    "collections": [
+      "ticket_relationships",
+      "tickets"
+    ],
+    "description": "Find the blocks path between two tickets (each ticket blocks the next). Returns {found, path}. If a cycle reachable from the source is detected (legacy data), returns cycle_detected with the offending ticket ids instead of a looped or partial path.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "from_ticket_id": {
+          "description": "The ticket the path starts at (its ULID).",
+          "maxLength": 26,
+          "minLength": 1,
+          "type": "string"
+        },
+        "to_ticket_id": {
+          "description": "The ticket the path ends at (its ULID).",
+          "maxLength": 26,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "from_ticket_id",
+        "to_ticket_id"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "properties": {
+        "cycle": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cycle_detected": {
+          "description": "True when a cycle reachable from the source forced a fail-closed result (D-27); 'cycle' then names the offending tickets.",
+          "type": "boolean"
+        },
+        "found": {
+          "type": "boolean"
+        },
+        "path": {
+          "description": "The blocks chain from\u2192to (each ticket blocks the next).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "found",
+        "path",
+        "cycle_detected",
+        "cycle"
+      ],
+      "type": "object"
+    },
+    "required_action": "tickets.read",
+    "title": "Find a blocking path",
+    "verb": "read"
+  },
   "follow_up_complete": {
     "collections": [
       "agent_proposals",
