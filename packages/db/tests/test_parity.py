@@ -30,8 +30,9 @@ def test_both_dialects_render_every_table() -> None:
     # the E12 ticket_relationships + the E17 skill registry pair + the E05-T2
     # conflict_records + the E07-T5 audit_anchors + the E14 milestone pair + the
     # E15 follow_ups) + the local infrastructure: schema_version (E02), event_log
-    # + sync_cursors (E04), telemetry_events + local_settings (E28).
-    assert len(sqlite_ddl) == 25
+    # + sync_cursors (E04), telemetry_events + local_settings (E28), and the E20-T8
+    # notification_deadletter.
+    assert len(sqlite_ddl) == 26
     assert all(ddl.strip().upper().startswith("CREATE TABLE") for ddl in postgres_ddl.values())
 
 

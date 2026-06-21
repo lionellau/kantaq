@@ -558,6 +558,29 @@ class TelemetryEvent(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_utcnow)
 
 
+class NotificationDeadLetter(SQLModel, table=True):
+    """A notification dispatch that failed every retry (E20-T8 / MOD-12).
+
+    Local infrastructure like ``telemetry_events``: deliberately **not** a
+    syncable collection (absent from ``COLLECTION_META``/``COLLECTION_MODELS``),
+    so a failed outbound signal never leaves the machine via sync. ``payload`` is
+    the **content-free** ``{action, ids, actor, deep_link}`` that was attempted —
+    it has no ticket/memory body by construction (``kantaq_core.notifications``).
+    A row here is an operator signal ("your sink is down"), inspectable +
+    replayable, not a record of fact.
+    """
+
+    __tablename__ = "notification_deadletter"
+
+    id: str = Field(default_factory=lambda: new_id(), primary_key=True, max_length=26)
+    action: str = Field(max_length=32)
+    sink_type: str = Field(max_length=16)
+    payload: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    attempts: int = Field(default=0)
+    last_error: str = Field(default="", max_length=512)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
 class LocalSetting(SQLModel, table=True):
     """Per-machine key/value settings (first user: the telemetry opt-in flag).
 
