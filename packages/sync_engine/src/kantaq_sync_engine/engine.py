@@ -136,6 +136,7 @@ class SyncEngine:
         actor_id: str,
         workspace_id: str | None = None,
         signer: EventSigner | None = None,
+        on_conflict_minted: Callable[[str, str], None] | None = None,
     ) -> None:
         self._db = db_engine
         self._backend = backend
@@ -146,6 +147,11 @@ class SyncEngine:
         # sync loop (no workspace_id) skips minting.
         self._workspace_id = workspace_id
         self._signer = signer
+        # E20-T8: an optional, HTTP-free hook fired per minted conflict with
+        # ``(conflict_id, entity_id)`` — the runtime collects these and dispatches
+        # a content-free ``conflict.minted`` notification AFTER the sync commits
+        # (the engine never does I/O of its own). Default None = no notification.
+        self._on_conflict_minted = on_conflict_minted
         # The §B7 handshake result, memoized for the session (one negotiation,
         # not one-per-call). Reset to None to re-negotiate (e.g. after reconnect).
         self._session: SessionInit | None = None
@@ -552,6 +558,9 @@ class SyncEngine:
                     event_log.insert_event(session, cr_event, committed_rev=committed_cr.revision)
                 refold_entity(session, "conflict_records", cr_id)
             minted += 1
+            if self._on_conflict_minted is not None:
+                # Notify the runtime of a new conflict (ids only — content-free).
+                self._on_conflict_minted(cr_id, contended.entity_id)
         return minted
 
     # ------------------------------------------------------------- resolve
