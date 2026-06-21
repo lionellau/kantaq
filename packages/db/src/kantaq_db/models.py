@@ -392,6 +392,48 @@ class AuditAnchorRow(CollectionBase, table=True):
     external_pin: str | None = Field(default=None)  # optional out-of-band attestation
 
 
+class Milestone(CollectionBase, table=True):
+    """A target-dated grouping of tickets within a project (MOD-20 v0.3 / FR-E14-3).
+
+    **Flat** (not nestable, v0.3 — nestable deferred to Sprint 10+, E14-T2
+    decision): a milestone belongs to one project and gathers that project's
+    tickets through the ``ticket_milestones`` junction. ``status`` ∈
+    active | complete | archived (VARCHAR for dialect parity, like every other
+    enum-like field; the vocabulary is enforced in ``kantaq_core.tracker``).
+    ``target_date`` is the optional due date the backlog badge and the
+    milestones view order by. Milestones sync ``lww`` like any collection.
+    """
+
+    __tablename__ = "milestones"
+
+    project_id: str = Field(foreign_key="projects.id", index=True)
+    name: str
+    description: str = ""
+    target_date: datetime | None = Field(default=None)
+    # status ∈ active | complete | archived (enforced in the service).
+    status: str = Field(default="active", max_length=16)
+    created_by: str | None = Field(default=None)
+
+
+class TicketMilestone(CollectionBase, table=True):
+    """A ticket↔milestone membership (MOD-20 v0.3 / FR-E14-3).
+
+    The junction backing "group tickets under a milestone." The ``UNIQUE``
+    backs the no-duplicate-membership rule at the database for the exact pair;
+    the service enforces that both endpoints live in the same project (a ticket
+    only joins a milestone of its own project) and that the milestone exists.
+    Like ``ticket_relationships`` an edge is created and tombstoned, never
+    patched, so it converges ``lww`` like any backend collection.
+    """
+
+    __tablename__ = "ticket_milestones"
+    __table_args__ = (UniqueConstraint("ticket_id", "milestone_id", name="uq_ticket_milestone"),)
+
+    ticket_id: str = Field(foreign_key="tickets.id", index=True)
+    milestone_id: str = Field(foreign_key="milestones.id", index=True)
+    created_by: str | None = Field(default=None)
+
+
 class SchemaVersion(SQLModel, table=True):
     """Single-row table guarding boot (FR-E02-4).
 
@@ -508,7 +550,7 @@ def new_id() -> str:
     return new_ulid()
 
 
-# The 17 collection table classes, in the canonical order (matches meta.py).
+# The 19 collection table classes, in the canonical order (matches meta.py).
 COLLECTION_MODELS: tuple[type[CollectionBase], ...] = (
     Workspace,
     Project,
@@ -527,4 +569,7 @@ COLLECTION_MODELS: tuple[type[CollectionBase], ...] = (
     SkillMappingRow,
     ConflictRecord,
     AuditAnchorRow,
+    # E14 v0.3 (MOD-20): milestones + the ticket↔milestone junction.
+    Milestone,
+    TicketMilestone,
 )

@@ -40,8 +40,10 @@ from kantaq_db.models import (
     AuditEvent,
     Comment,
     EventLog,
+    Milestone,
     Project,
     Ticket,
+    TicketMilestone,
     TicketRelationship,
     Workspace,
 )
@@ -166,6 +168,9 @@ class TicketOut(BaseModel):
     subticket_count: int
     relationship_count: int
     blocked: bool
+    # E14 (MOD-20): how many milestones this ticket belongs to — the backlog
+    # milestone badge, computed in the same batched pass (no N+1).
+    milestone_count: int
 
     @classmethod
     def from_row(
@@ -178,6 +183,7 @@ class TicketOut(BaseModel):
         subticket_count: int = 0,
         relationship_count: int = 0,
         blocked: bool = False,
+        milestone_count: int = 0,
     ) -> TicketOut:
         return cls.model_validate(
             {
@@ -188,6 +194,7 @@ class TicketOut(BaseModel):
                 "subticket_count": subticket_count,
                 "relationship_count": relationship_count,
                 "blocked": blocked,
+                "milestone_count": milestone_count,
             }
         )
 
@@ -291,6 +298,30 @@ def _blocked_ids(session: Session, ticket_ids: list[str]) -> set[str]:
     return {blocked for blocked, blocker in pairs if statuses.get(blocker) != "done"}
 
 
+def _milestone_counts(session: Session, ticket_ids: list[str]) -> dict[str, int]:
+    """Milestone-membership counts per ticket (the E14 badge), one query."""
+    if not ticket_ids:
+        return {}
+    statement = (
+        select(TicketMilestone.ticket_id, func.count())
+        .where(col(TicketMilestone.ticket_id).in_(ticket_ids))
+        .group_by(col(TicketMilestone.ticket_id))
+    )
+    return dict(session.exec(statement).all())
+
+
+def _milestone_ticket_counts(session: Session, milestone_ids: list[str]) -> dict[str, int]:
+    """Ticket counts per milestone (the milestones-view badge), one query."""
+    if not milestone_ids:
+        return {}
+    statement = (
+        select(TicketMilestone.milestone_id, func.count())
+        .where(col(TicketMilestone.milestone_id).in_(milestone_ids))
+        .group_by(col(TicketMilestone.milestone_id))
+    )
+    return dict(session.exec(statement).all())
+
+
 def _recommended_next(row: Ticket, open_parents: set[str]) -> list[str]:
     if not lifecycle.is_stage(row.lifecycle_stage):
         return []  # legacy row predating the locked taxonomy (fail-soft, MOD-20)
@@ -310,6 +341,7 @@ def tickets_out(session: Session, rows: list[Ticket]) -> list[TicketOut]:
     subtickets = _subticket_counts(session, ids)
     relationships = _relationship_counts(session, ids)
     blocked = _blocked_ids(session, ids)
+    milestones = _milestone_counts(session, ids)
     return [
         TicketOut.from_row(
             row,
@@ -319,6 +351,7 @@ def tickets_out(session: Session, rows: list[Ticket]) -> list[TicketOut]:
             subticket_count=subtickets.get(row.id, 0),
             relationship_count=relationships.get(row.id, 0),
             blocked=row.id in blocked,
+            milestone_count=milestones.get(row.id, 0),
         )
         for row in rows
     ]
@@ -433,6 +466,47 @@ class RelationOut(BaseModel):
 class RelationIn(BaseModel):
     to_id: str
     type: str
+
+
+# ---------------------------------------------------------- milestones (MOD-20)
+
+
+class MilestoneOut(BaseModel):
+    id: str
+    project_id: str
+    name: str
+    description: str
+    target_date: datetime | None
+    status: str
+    created_by: str | None
+    created_at: datetime
+    updated_at: datetime
+    # How many tickets are grouped under this milestone — batched for the list,
+    # so the milestones view never N+1s.
+    ticket_count: int
+
+    @classmethod
+    def from_row(cls, row: Milestone, *, ticket_count: int = 0) -> MilestoneOut:
+        return cls.model_validate({**row.model_dump(), "ticket_count": ticket_count})
+
+
+class MilestoneIn(BaseModel):
+    project_id: str
+    name: str = Field(min_length=1, max_length=500)
+    description: str = ""
+    target_date: datetime | None = None
+    status: str = "active"
+
+
+class MilestonePatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=500)
+    description: str | None = None
+    target_date: datetime | None = None
+    status: str | None = None
+
+
+class MilestoneTicketIn(BaseModel):
+    ticket_id: str
 
 
 # ------------------------------------------------------------- error mapping
@@ -742,6 +816,118 @@ def delete_relation(
             if not any(r.id == relationship_id for r in service.relations_for(ticket_id)):
                 raise TrackerNotFoundError("ticket_relationships", relationship_id)
             service.remove_relation(relationship_id)
+        except TrackerNotFoundError as exc:
+            raise _domain(exc) from exc
+
+
+# ---------------------------------------------------------- milestones (MOD-20)
+
+
+@router.get("/milestones", response_model=list[MilestoneOut])
+def list_milestones(
+    actor: ReaderActor,
+    engine: EngineDep,
+    project_id: str | None = None,
+    include_archived: bool = True,
+) -> list[MilestoneOut]:
+    """Milestones, optionally scoped to a project; each with its ticket count
+    (batched, no N+1)."""
+    with Session(engine) as session:
+        rows = _service(session, actor).list_milestones(
+            project_id=project_id, include_archived=include_archived
+        )
+        counts = _milestone_ticket_counts(session, [m.id for m in rows])
+        return [MilestoneOut.from_row(m, ticket_count=counts.get(m.id, 0)) for m in rows]
+
+
+@router.post("/milestones", response_model=MilestoneOut, status_code=201)
+def create_milestone(
+    body: MilestoneIn, actor: WriterActor, engine: EngineDep, signer: SignerDep
+) -> MilestoneOut:
+    with Session(engine) as session:
+        try:
+            row = _service(session, actor, signer).create_milestone(
+                project_id=body.project_id,
+                name=body.name,
+                description=body.description,
+                target_date=body.target_date,
+                status=body.status,
+            )
+        except (TrackerNotFoundError, TrackerValidationError) as exc:
+            raise _domain(exc) from exc
+        return MilestoneOut.from_row(row)
+
+
+@router.get("/milestones/{milestone_id}", response_model=MilestoneOut)
+def get_milestone(milestone_id: str, actor: ReaderActor, engine: EngineDep) -> MilestoneOut:
+    with Session(engine) as session:
+        try:
+            row = _service(session, actor).get_milestone(milestone_id)
+        except TrackerNotFoundError as exc:
+            raise _domain(exc) from exc
+        counts = _milestone_ticket_counts(session, [row.id])
+        return MilestoneOut.from_row(row, ticket_count=counts.get(row.id, 0))
+
+
+@router.patch("/milestones/{milestone_id}", response_model=MilestoneOut)
+def update_milestone(
+    milestone_id: str,
+    body: MilestonePatch,
+    actor: WriterActor,
+    engine: EngineDep,
+    signer: SignerDep,
+) -> MilestoneOut:
+    with Session(engine) as session:
+        try:
+            row = _service(session, actor, signer).update_milestone(
+                milestone_id, body.model_dump(exclude_unset=True)
+            )
+        except (TrackerNotFoundError, TrackerValidationError) as exc:
+            raise _domain(exc) from exc
+        counts = _milestone_ticket_counts(session, [row.id])
+        return MilestoneOut.from_row(row, ticket_count=counts.get(row.id, 0))
+
+
+@router.delete("/milestones/{milestone_id}", status_code=204)
+def delete_milestone(
+    milestone_id: str, actor: WriterActor, engine: EngineDep, signer: SignerDep
+) -> None:
+    with Session(engine) as session:
+        try:
+            _service(session, actor, signer).delete_milestone(milestone_id)
+        except TrackerNotFoundError as exc:
+            raise _domain(exc) from exc
+
+
+@router.post("/milestones/{milestone_id}/tickets", status_code=204)
+def add_ticket_to_milestone(
+    milestone_id: str,
+    body: MilestoneTicketIn,
+    actor: WriterActor,
+    engine: EngineDep,
+    signer: SignerDep,
+) -> None:
+    """Group a ticket under a milestone (a ticket of the milestone's project)."""
+    with Session(engine) as session:
+        try:
+            _service(session, actor, signer).add_ticket_to_milestone(body.ticket_id, milestone_id)
+        except (TrackerNotFoundError, TrackerValidationError) as exc:
+            raise _domain(exc) from exc
+
+
+@router.delete("/milestones/{milestone_id}/tickets/{ticket_id}", status_code=204)
+def remove_ticket_from_milestone(
+    milestone_id: str,
+    ticket_id: str,
+    actor: WriterActor,
+    engine: EngineDep,
+    signer: SignerDep,
+) -> None:
+    with Session(engine) as session:
+        try:
+            _service(session, actor, signer).remove_ticket_from_milestone_by_pair(
+                ticket_id, milestone_id
+            )
         except TrackerNotFoundError as exc:
             raise _domain(exc) from exc
 

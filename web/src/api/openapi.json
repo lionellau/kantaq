@@ -1626,6 +1626,189 @@
         "title": "MemoryPatch",
         "type": "object"
       },
+      "MilestoneIn": {
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "active",
+            "title": "Status",
+            "type": "string"
+          },
+          "target_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Date"
+          }
+        },
+        "required": [
+          "project_id",
+          "name"
+        ],
+        "title": "MilestoneIn",
+        "type": "object"
+      },
+      "MilestoneOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Date"
+          },
+          "ticket_count": {
+            "title": "Ticket Count",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "name",
+          "description",
+          "target_date",
+          "status",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "ticket_count"
+        ],
+        "title": "MilestoneOut",
+        "type": "object"
+      },
+      "MilestonePatch": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "target_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Date"
+          }
+        },
+        "title": "MilestonePatch",
+        "type": "object"
+      },
+      "MilestoneTicketIn": {
+        "properties": {
+          "ticket_id": {
+            "title": "Ticket Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket_id"
+        ],
+        "title": "MilestoneTicketIn",
+        "type": "object"
+      },
       "ProjectIn": {
         "properties": {
           "goal": {
@@ -2790,6 +2973,10 @@
             "title": "Lifecycle Stage",
             "type": "string"
           },
+          "milestone_count": {
+            "title": "Milestone Count",
+            "type": "integer"
+          },
           "parent_id": {
             "anyOf": [
               {
@@ -2868,7 +3055,8 @@
           "recommended_next_stages",
           "subticket_count",
           "relationship_count",
-          "blocked"
+          "blocked",
+          "milestone_count"
         ],
         "title": "TicketOut",
         "type": "object"
@@ -4453,6 +4641,324 @@
         "summary": "Metrics Summary",
         "tags": [
           "metrics"
+        ]
+      }
+    },
+    "/v1/milestones": {
+      "get": {
+        "description": "Milestones, optionally scoped to a project; each with its ticket count\n(batched, no N+1).",
+        "operationId": "list_milestones_v1_milestones_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MilestoneOut"
+                  },
+                  "title": "Response List Milestones V1 Milestones Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Milestones",
+        "tags": [
+          "tracker"
+        ]
+      },
+      "post": {
+        "operationId": "create_milestone_v1_milestones_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MilestoneIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MilestoneOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Milestone",
+        "tags": [
+          "tracker"
+        ]
+      }
+    },
+    "/v1/milestones/{milestone_id}": {
+      "delete": {
+        "operationId": "delete_milestone_v1_milestones__milestone_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "milestone_id",
+            "required": true,
+            "schema": {
+              "title": "Milestone Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Milestone",
+        "tags": [
+          "tracker"
+        ]
+      },
+      "get": {
+        "operationId": "get_milestone_v1_milestones__milestone_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "milestone_id",
+            "required": true,
+            "schema": {
+              "title": "Milestone Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MilestoneOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Milestone",
+        "tags": [
+          "tracker"
+        ]
+      },
+      "patch": {
+        "operationId": "update_milestone_v1_milestones__milestone_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "milestone_id",
+            "required": true,
+            "schema": {
+              "title": "Milestone Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MilestonePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MilestoneOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Milestone",
+        "tags": [
+          "tracker"
+        ]
+      }
+    },
+    "/v1/milestones/{milestone_id}/tickets": {
+      "post": {
+        "description": "Group a ticket under a milestone (a ticket of the milestone's project).",
+        "operationId": "add_ticket_to_milestone_v1_milestones__milestone_id__tickets_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "milestone_id",
+            "required": true,
+            "schema": {
+              "title": "Milestone Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MilestoneTicketIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Ticket To Milestone",
+        "tags": [
+          "tracker"
+        ]
+      }
+    },
+    "/v1/milestones/{milestone_id}/tickets/{ticket_id}": {
+      "delete": {
+        "operationId": "remove_ticket_from_milestone_v1_milestones__milestone_id__tickets__ticket_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "milestone_id",
+            "required": true,
+            "schema": {
+              "title": "Milestone Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Ticket From Milestone",
+        "tags": [
+          "tracker"
         ]
       }
     },

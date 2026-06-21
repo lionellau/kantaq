@@ -73,6 +73,8 @@ VERB_GATED = (
     "memory_entries",
     "memory_links",
     "conflict_records",
+    "milestones",
+    "ticket_milestones",
 )
 _TRUST_ROOTS = ("devices", "capability_grants")
 

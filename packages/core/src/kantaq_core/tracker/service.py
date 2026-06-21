@@ -33,8 +33,10 @@ from kantaq_db.models import (
     AuditEvent,
     Comment,
     Member,
+    Milestone,
     Project,
     Ticket,
+    TicketMilestone,
     TicketRelationship,
     Workspace,
 )
@@ -43,6 +45,9 @@ from kantaq_db.models import (
 TICKET_STATUSES: tuple[str, ...] = ("todo", "doing", "done")
 TICKET_PRIORITIES: tuple[str, ...] = ("low", "medium", "high", "urgent")
 PROJECT_STATUSES: tuple[str, ...] = ("active", "paused", "done")
+# Milestone lifecycle (MOD-20 v0.3 / FR-E14-3). Flat (not nestable); a milestone
+# moves active → complete, and archived retires it from the default views.
+MILESTONE_STATUSES: tuple[str, ...] = ("active", "complete", "archived")
 
 # Typed ticket relationships (MOD-03 v0.1 / FR-E12-3). Five types, two of them
 # symmetric (``related``/``duplicate``: an edge means the same fact from either
@@ -87,10 +92,11 @@ _TICKET_PATCHABLE = frozenset(
     }
 )
 _PROJECT_PATCHABLE = frozenset({"name", "goal", "scope", "owner", "target_date", "status"})
+_MILESTONE_PATCHABLE = frozenset({"name", "description", "target_date", "status"})
 
 
 # Rows _apply_patch can update in place (audit + emit share the same flow).
-_TRow = TypeVar("_TRow", "Project", "Ticket")
+_TRow = TypeVar("_TRow", "Project", "Ticket", "Milestone")
 
 
 def _default_now() -> datetime:
@@ -607,6 +613,249 @@ class TrackerService:
             collection="tickets",
             action="ticket.attach",
         )
+
+    # -------------------------------------------------------------- milestones
+
+    def create_milestone(
+        self,
+        *,
+        project_id: str,
+        name: str,
+        description: str = "",
+        target_date: datetime | None = None,
+        status: str = "active",
+    ) -> Milestone:
+        """Create a flat milestone in a project (FR-E14-3).
+
+        Fail-closed before any write: a non-empty name within the title bound, a
+        known status, and an existing project. Like a project create, the audit
+        row + the lww event land together.
+        """
+        name = name.strip()
+        if not name:
+            raise TrackerValidationError("a milestone needs a non-empty name")
+        if len(name) > _TITLE_MAX:
+            raise TrackerValidationError(f"milestone name exceeds {_TITLE_MAX} characters")
+        if status not in MILESTONE_STATUSES:
+            raise TrackerValidationError(
+                f"unknown milestone status {status!r}; expected one of {MILESTONE_STATUSES}"
+            )
+        if self._session.get(Project, project_id) is None:
+            raise TrackerNotFoundError("projects", project_id)
+
+        ts = self._now()
+        milestone = Milestone(
+            project_id=project_id,
+            name=name,
+            description=description,
+            target_date=_naive_utc(target_date) if target_date is not None else None,
+            status=status,
+            created_by=self._actor_id,
+            created_at=ts,
+            updated_at=ts,
+        )
+        self._session.add(milestone)
+        self._session.flush()
+        audit.write(
+            self._session,
+            actor_id=self._actor_id,
+            action="milestone.create",
+            source=self._source,
+            object_ref=f"milestones/{milestone.id}",
+            after=audit.snapshot(milestone),
+            now=ts,
+        )
+        self._emit("milestones", milestone.id, "patch", audit.snapshot(milestone))
+        self._session.commit()
+        self._session.refresh(milestone)
+        return milestone
+
+    def update_milestone(self, milestone_id: str, changes: dict[str, Any]) -> Milestone:
+        milestone = self.get_milestone(milestone_id)
+        unknown = set(changes) - _MILESTONE_PATCHABLE
+        if unknown:
+            raise TrackerValidationError(f"unknown milestone fields: {sorted(unknown)}")
+        if "name" in changes:
+            changes["name"] = str(changes["name"]).strip()
+            if not changes["name"]:
+                raise TrackerValidationError("a milestone needs a non-empty name")
+            if len(changes["name"]) > _TITLE_MAX:
+                raise TrackerValidationError(f"milestone name exceeds {_TITLE_MAX} characters")
+        if "status" in changes and changes["status"] not in MILESTONE_STATUSES:
+            raise TrackerValidationError(
+                f"unknown milestone status {changes['status']!r}; "
+                f"expected one of {MILESTONE_STATUSES}"
+            )
+        if changes.get("target_date") is not None:
+            changes["target_date"] = _naive_utc(changes["target_date"])
+        return self._apply_patch(
+            milestone, changes, collection="milestones", action="milestone.update"
+        )
+
+    def get_milestone(self, milestone_id: str) -> Milestone:
+        milestone = self._session.get(Milestone, milestone_id)
+        if milestone is None:
+            raise TrackerNotFoundError("milestones", milestone_id)
+        return milestone
+
+    def list_milestones(
+        self, *, project_id: str | None = None, include_archived: bool = True
+    ) -> list[Milestone]:
+        """Milestones, dated ones first by target_date then undated, id-stable.
+
+        The ordering rule (E14-T2 decision): a milestone with a ``target_date``
+        sorts ahead of one without, earliest date first; ties + undated break by
+        id so the order is deterministic across replicas.
+        """
+        statement = select(Milestone)
+        if project_id is not None:
+            statement = statement.where(Milestone.project_id == project_id)
+        if not include_archived:
+            statement = statement.where(Milestone.status != "archived")
+        rows = self._session.exec(statement).all()
+        return sorted(
+            rows,
+            key=lambda m: (m.target_date is None, m.target_date or datetime.max, m.id),
+        )
+
+    def delete_milestone(self, milestone_id: str) -> None:
+        """Delete a milestone, tombstoning its ticket memberships first.
+
+        A membership FK-references the milestone, so the junction rows are
+        removed (each its own tombstone event) before the milestone itself — no
+        orphaned membership, no dangling FK.
+        """
+        milestone = self.get_milestone(milestone_id)
+        ts = self._now()
+        for membership in self._memberships_for_milestone(milestone_id):
+            self._tombstone_membership(membership, now=ts)
+        audit.write(
+            self._session,
+            actor_id=self._actor_id,
+            action="milestone.delete",
+            source=self._source,
+            object_ref=f"milestones/{milestone.id}",
+            before=audit.snapshot(milestone),
+            now=ts,
+        )
+        self._emit("milestones", milestone.id, "tombstone", {})
+        self._session.delete(milestone)
+        self._session.commit()
+
+    def add_ticket_to_milestone(self, ticket_id: str, milestone_id: str) -> TicketMilestone:
+        """Group a ticket under a milestone (FR-E14-3).
+
+        Integrity, fail-closed: the ticket and milestone both exist, share a
+        project (a ticket only joins a milestone of its own project), and the
+        membership is not a duplicate. The activity row lands on the ticket.
+        """
+        ticket = self.get_ticket(ticket_id)
+        milestone = self.get_milestone(milestone_id)
+        if ticket.project_id != milestone.project_id:
+            raise TrackerValidationError("a ticket can only join a milestone in its own project")
+        existing = self._session.exec(
+            select(TicketMilestone).where(
+                TicketMilestone.ticket_id == ticket_id,
+                TicketMilestone.milestone_id == milestone_id,
+            )
+        ).first()
+        if existing is not None:
+            raise TrackerValidationError("this ticket is already in that milestone")
+
+        ts = self._now()
+        membership = TicketMilestone(
+            ticket_id=ticket_id,
+            milestone_id=milestone_id,
+            created_by=self._actor_id,
+            created_at=ts,
+            updated_at=ts,
+        )
+        self._session.add(membership)
+        self._session.flush()
+        audit.write(
+            self._session,
+            actor_id=self._actor_id,
+            action="milestone.add_ticket",
+            source=self._source,
+            object_ref=f"tickets/{ticket_id}",
+            after=audit.snapshot(membership),
+            now=ts,
+        )
+        self._emit("ticket_milestones", membership.id, "patch", audit.snapshot(membership))
+        self._session.commit()
+        self._session.refresh(membership)
+        return membership
+
+    def remove_ticket_from_milestone(self, membership_id: str) -> None:
+        """Remove a ticket↔milestone membership — its only mutation."""
+        membership = self._session.get(TicketMilestone, membership_id)
+        if membership is None:
+            raise TrackerNotFoundError("ticket_milestones", membership_id)
+        self._tombstone_membership(membership, now=self._now())
+        self._session.commit()
+
+    def remove_ticket_from_milestone_by_pair(self, ticket_id: str, milestone_id: str) -> None:
+        """Remove a membership identified by its (ticket, milestone) pair.
+
+        The RESTful surface deletes ``/milestones/{m}/tickets/{t}``; a missing
+        pair is a 404, never a silent no-op.
+        """
+        membership = self._session.exec(
+            select(TicketMilestone).where(
+                TicketMilestone.ticket_id == ticket_id,
+                TicketMilestone.milestone_id == milestone_id,
+            )
+        ).first()
+        if membership is None:
+            raise TrackerNotFoundError("ticket_milestones", f"{ticket_id}/{milestone_id}")
+        self._tombstone_membership(membership, now=self._now())
+        self._session.commit()
+
+    def milestones_for_ticket(self, ticket_id: str) -> list[Milestone]:
+        """The milestones a ticket belongs to, id-stable."""
+        self.get_ticket(ticket_id)
+        milestone_ids = [
+            m.milestone_id
+            for m in self._session.exec(
+                select(TicketMilestone).where(TicketMilestone.ticket_id == ticket_id)
+            ).all()
+        ]
+        if not milestone_ids:
+            return []
+        rows = self._session.exec(
+            select(Milestone).where(col(Milestone.id).in_(milestone_ids))
+        ).all()
+        return sorted(rows, key=lambda m: m.id)
+
+    def tickets_for_milestone(self, milestone_id: str) -> list[Ticket]:
+        """The tickets grouped under a milestone, id-stable."""
+        self.get_milestone(milestone_id)
+        ticket_ids = [m.ticket_id for m in self._memberships_for_milestone(milestone_id)]
+        if not ticket_ids:
+            return []
+        rows = self._session.exec(select(Ticket).where(col(Ticket.id).in_(ticket_ids))).all()
+        return sorted(rows, key=lambda t: t.id)
+
+    def _memberships_for_milestone(self, milestone_id: str) -> list[TicketMilestone]:
+        return list(
+            self._session.exec(
+                select(TicketMilestone).where(TicketMilestone.milestone_id == milestone_id)
+            ).all()
+        )
+
+    def _tombstone_membership(self, membership: TicketMilestone, *, now: datetime) -> None:
+        """Audit + emit a membership removal and delete the row (no commit)."""
+        audit.write(
+            self._session,
+            actor_id=self._actor_id,
+            action="milestone.remove_ticket",
+            source=self._source,
+            object_ref=f"tickets/{membership.ticket_id}",
+            before=audit.snapshot(membership),
+            now=now,
+        )
+        self._emit("ticket_milestones", membership.id, "tombstone", {})
+        self._session.delete(membership)
 
     # ----------------------------------------------------------------- helpers
 

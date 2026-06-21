@@ -26,12 +26,12 @@ def test_both_dialects_render_every_table() -> None:
     sqlite_ddl = compile_create("sqlite")
     postgres_ddl = compile_create("postgresql")
     assert set(sqlite_ddl) == set(postgres_ddl)
-    # 17 collections (8 v0.0.5 + the E13 memory pair + the E06 identity pair +
+    # 19 collections (8 v0.0.5 + the E13 memory pair + the E06 identity pair +
     # the E12 ticket_relationships + the E17 skill registry pair + the E05-T2
-    # conflict_records + the E07-T5 audit_anchors) + the local infrastructure:
-    # schema_version (E02), event_log + sync_cursors (E04), telemetry_events +
-    # local_settings (E28).
-    assert len(sqlite_ddl) == 22
+    # conflict_records + the E07-T5 audit_anchors + the E14 milestone pair) + the
+    # local infrastructure: schema_version (E02), event_log + sync_cursors (E04),
+    # telemetry_events + local_settings (E28).
+    assert len(sqlite_ddl) == 24
     assert all(ddl.strip().upper().startswith("CREATE TABLE") for ddl in postgres_ddl.values())
 
 

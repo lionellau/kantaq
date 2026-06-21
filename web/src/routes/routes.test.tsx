@@ -11,6 +11,7 @@ function renderAt(path: string) {
 describe("app shell routes", () => {
   it.each([
     ["/", "Backlog"],
+    ["/milestones", "Milestones"],
     ["/memory", "Memory"],
     ["/inbox", "Inbox"],
     ["/agents", "Agents"],
@@ -20,12 +21,12 @@ describe("app shell routes", () => {
     expect(screen.getByRole("heading", { level: 1, name: heading })).toBeDefined();
   });
 
-  it("renders the 5 primary nav links on every page", () => {
+  it("renders the primary nav links on every page", () => {
     renderAt("/");
     const nav = screen.getByRole("navigation", { name: "Primary" });
     expect(nav).toBeDefined();
     // Scoped to the nav: pages may carry their own "Settings" links in prose.
-    for (const label of ["Backlog", "Memory", "Inbox", "Agents", "Settings"]) {
+    for (const label of ["Backlog", "Milestones", "Memory", "Inbox", "Agents", "Settings"]) {
       expect(within(nav).getByRole("link", { name: label })).toBeDefined();
     }
   });

@@ -3,6 +3,7 @@ import { palette } from "../lib/ui";
 
 const NAV = [
   { to: "/", label: "Backlog", end: true },
+  { to: "/milestones", label: "Milestones", end: false },
   { to: "/memory", label: "Memory", end: false },
   { to: "/inbox", label: "Inbox", end: false },
   { to: "/agents", label: "Agents", end: false },

@@ -19,6 +19,7 @@ import type {
   Member,
   MemoryEntry,
   MemoryLink,
+  Milestone,
   Project,
   Proposal,
   Recommendation,
@@ -72,6 +73,23 @@ export function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
     subticket_count: 0,
     relationship_count: 0,
     blocked: false,
+    milestone_count: 0,
+    ...overrides,
+  };
+}
+
+export function buildMilestone(overrides: Partial<Milestone> = {}): Milestone {
+  return {
+    id: "mile-1",
+    project_id: "proj-1",
+    name: "v1.0 launch",
+    description: "",
+    target_date: null,
+    status: "active",
+    created_by: "member-1",
+    created_at: T0,
+    updated_at: T0,
+    ticket_count: 0,
     ...overrides,
   };
 }

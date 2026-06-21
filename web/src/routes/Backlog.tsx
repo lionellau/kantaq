@@ -18,6 +18,7 @@ import {
   TICKET_STATUSES,
   type Ticket,
 } from "../api/types";
+import MilestoneChip from "../components/MilestoneChip";
 import ProposalChip from "../components/ProposalChip";
 import SyncBadge, { type SyncState } from "../components/SyncBadge";
 import TokenShowHint from "../components/TokenShowHint";
@@ -208,7 +209,8 @@ export default function Backlog() {
                 <td style={ui.td}>{fmtDateTime(ticket.updated_at)}</td>
                 <td style={{ ...ui.td, whiteSpace: "nowrap" }}>
                   <SyncBadge state={ticket.sync_state as SyncState} />{" "}
-                  <ProposalChip count={ticket.pending_proposals} />
+                  <ProposalChip count={ticket.pending_proposals} />{" "}
+                  <MilestoneChip count={ticket.milestone_count} />
                 </td>
               </tr>
             ))}

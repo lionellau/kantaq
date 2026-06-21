@@ -79,6 +79,10 @@ _COLLECTION_WRITE_VERBS: dict[str, frozenset[str]] = {
     "memory_entries": frozenset({"memory.write"}),
     "memory_links": frozenset({"memory.write"}),
     "conflict_records": frozenset({"conflict_records.write"}),
+    # E14 (MOD-20): milestones are tracker domain like ticket_relationships —
+    # the same tickets.write authority governs grouping work, no new grant verb.
+    "milestones": frozenset({"tickets.write"}),
+    "ticket_milestones": frozenset({"tickets.write"}),
 }
 
 

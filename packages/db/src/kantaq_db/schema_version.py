@@ -19,14 +19,14 @@ from typing import Literal
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
-# Bump this whenever a migration changes the version row. Version 15 widens
-# capability_grants.issued_at/expires_at from 32-bit INTEGER to BIGINT (DEBT-26
-# closed) — removing the Year-2038 grant-window ceiling the v0.2 lifted human
-# TTLs (E06-T7) push toward. No collection/allowlist change (17 / 12 hold).
-EXPECTED_SCHEMA_VERSION = 15
+# Bump this whenever a migration changes the version row. Version 16 adds the
+# E14 v0.3 milestone slice (MOD-20): the ``milestones`` entity + the
+# ``ticket_milestones`` junction — two new syncable collections (19 declared /
+# 14 on the backend sync allowlist now).
+EXPECTED_SCHEMA_VERSION = 16
 # The Alembic head revision that defines the expected schema. Kept in sync with
 # the migration filename in ``migrations/versions``.
-HEAD_REVISION = "0015"
+HEAD_REVISION = "0016"
 
 Status = Literal["ok", "uninitialized", "mismatch"]
 
