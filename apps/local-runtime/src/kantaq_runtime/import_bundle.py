@@ -35,7 +35,7 @@ from typing import Any
 
 from sqlmodel import Session, select
 
-from kantaq_core.tracker import LocalBlobStore
+from kantaq_core.tracker import BlobStore
 from kantaq_db.models import EventLog, Workspace
 from kantaq_protocol import (
     CapabilityGrant,
@@ -139,7 +139,7 @@ def _verify_manifest_signature(manifest: dict[str, Any], roots: dict[str, str]) 
     return True
 
 
-def import_bundle(bundle: bytes, *, session: Session, blob_store: LocalBlobStore) -> ImportResult:
+def import_bundle(bundle: bytes, *, session: Session, blob_store: BlobStore) -> ImportResult:
     """Reconstruct ``bundle`` into the fresh runtime behind ``session`` and
     ``blob_store``. The caller owns the transaction commit."""
     files = _untar(bundle)

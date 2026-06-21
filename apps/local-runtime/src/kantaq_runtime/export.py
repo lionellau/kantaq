@@ -41,7 +41,7 @@ from sqlmodel import Session, select
 
 from kantaq_core import audit
 from kantaq_core.identity import local_grant_index
-from kantaq_core.tracker import LocalBlobStore
+from kantaq_core.tracker import BlobStore
 from kantaq_db.models import AuditEvent, Device, Member, Ticket, Workspace
 from kantaq_protocol import canonicalize, encode_canonical, encode_canonical_grant, sign_bytes
 from kantaq_sync_engine import SYNCABLE_MODELS, collection_rows, compose_snapshot, row_to_event
@@ -116,7 +116,7 @@ def _collection_events(session: Session, collection: str, since: int | None) -> 
     return ("\n".join(lines) + ("\n" if lines else "")).encode("utf-8"), high
 
 
-def _blobs(session: Session, blob_store: LocalBlobStore) -> tuple[bytes, dict[str, bytes]]:
+def _blobs(session: Session, blob_store: BlobStore) -> tuple[bytes, dict[str, bytes]]:
     """The attachments referenced by exported tickets: a BlobRef manifest plus
     the raw bytes (each verified against its content address on read)."""
     refs: dict[str, dict[str, Any]] = {}
@@ -190,7 +190,7 @@ def _targz(files: dict[str, bytes]) -> bytes:
 def build_bundle(
     session: Session,
     *,
-    blob_store: LocalBlobStore,
+    blob_store: BlobStore,
     now: datetime,
     device_key: str | None = None,
     since: int | None = None,
