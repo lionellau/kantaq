@@ -627,7 +627,16 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
         workspace_id=me.workspace_id,
         settings=get_settings(),
     )
-    engine = SyncEngine(db, backend, actor_id=me.id, workspace_id=me.workspace_id)
+    # E20-T8: collect conflicts minted during the flush → a content-free
+    # conflict.minted notification after the cycle (opt-in; no I/O in the engine).
+    minted_conflicts: list[tuple[str, str]] = []
+    engine = SyncEngine(
+        db,
+        backend,
+        actor_id=me.id,
+        workspace_id=me.workspace_id,
+        on_conflict_minted=lambda cid, eid: minted_conflicts.append((cid, eid)),
+    )
     # DEBT-25 cutover: commit every write through the atomic RPC (flush_outbox →
     # commit_events), never the raw push path. flush_outbox first reconciles any
     # dropped ack, then drains the durable outbox with offline-aware backoff;
@@ -638,6 +647,8 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
         proposal_stale_policy=get_settings().agent_proposal_stale_policy.value
     )
     pulled = engine.apply_inbox()
+    if minted_conflicts:
+        _notify_conflicts(db, actor_id=me.id, conflicts=minted_conflicts)
     # E07-T4: report this replica's acked pull position so the backend retention
     # compaction (kantaq.compact_sync_events) computes a safe watermark and never
     # prunes below what a live replica still needs; read the watermark back for
@@ -697,6 +708,44 @@ def _postgres_sync(args: argparse.Namespace, settings: Settings) -> int:
         return 1
 
 
+def _notify_conflicts(db: object, *, actor_id: str, conflicts: list[tuple[str, str]]) -> None:
+    """Fire a content-free ``conflict.minted`` notification per minted conflict.
+
+    E20-T8, best-effort: a no-op unless a sink is configured + enabled (the
+    dispatch reads the per-machine config). Swallows everything — a webhook must
+    never break the sync cycle. ``conflicts`` is the (conflict_id, entity_id)
+    pairs the engine's ``on_conflict_minted`` hook collected.
+    """
+    try:
+        import httpx
+        from sqlalchemy.engine import Engine
+        from sqlmodel import Session as _Session
+
+        from kantaq_core.notifications import NotificationEvent
+        from kantaq_runtime.notifications import dispatch_notification
+
+        assert isinstance(db, Engine)
+        with _Session(db) as session, httpx.Client() as client:
+            for conflict_id, entity_id in conflicts:
+                dispatch_notification(
+                    session,
+                    NotificationEvent(
+                        action="conflict.minted",
+                        ids=(conflict_id, entity_id),
+                        actor_id=actor_id,
+                        deep_link="/conflicts",
+                    ),
+                    client=client,
+                    # This dispatch is INLINE in `kantaq sync` (no BackgroundTasks
+                    # off a web response), so fail fast: a dead sink dead-letters
+                    # on the first miss rather than delaying the sync cycle (SEC
+                    # review LOW). The dead-letter is the durability backstop.
+                    max_attempts=1,
+                )
+    except Exception:  # noqa: BLE001 - best-effort; a sink failure never breaks sync
+        pass
+
+
 def _postgres_sync_once(settings: Settings) -> int:
     """One push + pull cycle through the self-hosted sync-server.
 
@@ -734,9 +783,21 @@ def _postgres_sync_once(settings: Settings) -> int:
     backend = _verifying_backend(
         hub, db=db, actor_id=me.id, workspace_id=workspace.id, settings=settings
     )
-    engine = SyncEngine(db, backend, actor_id=me.id, workspace_id=workspace.id)
+    # E20-T8: collect any conflicts minted during the flush so we can fire a
+    # content-free `conflict.minted` notification AFTER the sync (opt-in; the
+    # engine itself never does I/O — it only hands us the ids).
+    minted_conflicts: list[tuple[str, str]] = []
+    engine = SyncEngine(
+        db,
+        backend,
+        actor_id=me.id,
+        workspace_id=workspace.id,
+        on_conflict_minted=lambda cid, eid: minted_conflicts.append((cid, eid)),
+    )
     flushed = engine.flush_outbox(proposal_stale_policy=settings.agent_proposal_stale_policy.value)
     pulled = engine.apply_inbox()
+    if minted_conflicts:
+        _notify_conflicts(db, actor_id=me.id, conflicts=minted_conflicts)
     # Report this replica's acked pull position so the server's retention
     # compaction never prunes below what a live replica still needs (E07-T4).
     try:

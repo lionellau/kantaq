@@ -23,13 +23,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
 from kantaq_core import proposals
 from kantaq_core.identity import Action, VerifiedActor
+from kantaq_core.notifications import NotificationEvent
 from kantaq_core.telemetry import TelemetryService
 from kantaq_core.tracker import TrackerService
 from kantaq_db.models import AgentProposal, Ticket
@@ -39,6 +40,7 @@ from kantaq_runtime.auth import (
     require_action,
     require_human_action,
 )
+from kantaq_runtime.notifications import notify_in_background
 from kantaq_runtime.tracker_api import TicketOut
 from kantaq_sync_engine import EventSigner
 
@@ -135,9 +137,27 @@ def list_proposals(
         ]
 
 
+def _notify(
+    background_tasks: BackgroundTasks, request: Request, engine: Engine, event: NotificationEvent
+) -> None:
+    """Queue a content-free notification to fire AFTER the response (E20-T8).
+
+    Post-response + post-commit, so a slow/dead sink never blocks the decision.
+    A test may inject ``app.state.notification_client_factory`` to capture the
+    POST; production leaves it unset (the dispatcher uses a real httpx client).
+    """
+    factory = getattr(request.app.state, "notification_client_factory", None)
+    background_tasks.add_task(notify_in_background, engine, event, client_factory=factory)
+
+
 @router.post("/{proposal_id}/approve", response_model=ApproveOut)
 def approve_proposal(
-    proposal_id: str, actor: WriterActor, engine: EngineDep, signer: SignerDep
+    proposal_id: str,
+    actor: WriterActor,
+    engine: EngineDep,
+    signer: SignerDep,
+    background_tasks: BackgroundTasks,
+    request: Request,
 ) -> ApproveOut:
     with Session(engine) as session:
         try:
@@ -149,12 +169,25 @@ def approve_proposal(
         except proposals.ProposalError as exc:
             raise _http(exc) from exc
         service = TrackerService(session, actor_id=actor.member_id, source="app")
-        return ApproveOut(
+        result = ApproveOut(
             proposal=ProposalOut.from_row(proposal, ticket_title=ticket.title),
             ticket=TicketOut.from_row(
                 ticket, recommended_next_stages=service.recommended_next(ticket)
             ),
         )
+        proposal_ref, ticket_ref = proposal.id, ticket.id
+    _notify(
+        background_tasks,
+        request,
+        engine,
+        NotificationEvent(
+            action="proposal.approved",
+            ids=(proposal_ref, ticket_ref),
+            actor_id=actor.member_id,
+            deep_link=f"/tickets/{ticket_ref}",
+        ),
+    )
+    return result
 
 
 @router.post("/{proposal_id}/reject", response_model=ProposalOut)
@@ -163,6 +196,8 @@ def reject_proposal(
     actor: WriterActor,
     engine: EngineDep,
     signer: SignerDep,
+    background_tasks: BackgroundTasks,
+    request: Request,
     body: RejectIn | None = None,
 ) -> ProposalOut:
     # An empty or whitespace-only reason is "no reason" — keep the audit clean.
@@ -180,6 +215,21 @@ def reject_proposal(
             )
         except proposals.ProposalError as exc:
             raise _http(exc) from exc
-        return ProposalOut.from_row(
+        result = ProposalOut.from_row(
             proposal, ticket_title=_ticket_title(session, proposal.ticket_id)
         )
+        proposal_ref, ticket_ref = proposal.id, proposal.ticket_id
+    # The reason rides the audit trail (E20-T6), NOT the notification — the
+    # signal stays content-free (ids + action + actor + deep-link only).
+    _notify(
+        background_tasks,
+        request,
+        engine,
+        NotificationEvent(
+            action="proposal.rejected",
+            ids=(proposal_ref, ticket_ref),
+            actor_id=actor.member_id,
+            deep_link=f"/tickets/{ticket_ref}",
+        ),
+    )
+    return result
