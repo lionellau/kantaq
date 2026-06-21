@@ -28,7 +28,9 @@ from typing import Any
 from mcp.types import CallToolResult
 from starlette.applications import Starlette
 
-from kantaq_test_harness.mcp import DEFAULT_MCP_URL, FakeMCPClient
+from kantaq_mcp.gateway import Gateway
+from kantaq_mcp.stdio import STDIO_SESSION_ID, StdioCredentials, build_stdio_server
+from kantaq_test_harness.mcp import DEFAULT_MCP_URL, FakeMCPClient, FakeStdioMCPClient
 
 # The headers a Tier-1 agent sends to bind a capability grant (kantaq_mcp.server).
 GRANT_HEADER = "mcp-grant-id"
@@ -132,6 +134,57 @@ class FakeAgent:
 
     def tool_names(self) -> set[str]:
         """The tools this session's allowlist exposes (tools/list over the wire)."""
+        return {tool.name for tool in self._client.list_tools().tools}
+
+    def call(self, name: str, arguments: dict[str, Any] | None = None) -> ToolCall:
+        """Call one tool and decode the structured result."""
+        return _decode(self._client.call_tool(name, arguments or {}))
+
+
+class FakeStdioAgent:
+    """The scripted **Tier-2** MCP agent — the stdio analog of :class:`FakeAgent`.
+
+    Same uniform :class:`ToolCall` interface and the same real SDK client half;
+    only the wire is stdio (the SDK's in-memory client↔server streams against the
+    shared ``build_stdio_server``, the same wiring ``kantaq mcp stdio`` runs) and
+    the grant binding rides :class:`StdioCredentials` (the env-var contract
+    ``KANTAQ_MCP_TOKEN`` / ``KANTAQ_MCP_GRANT_ID`` / ``KANTAQ_MCP_AGENT_ROLE``,
+    E09-T4) instead of HTTP headers. A denial over stdio is byte-for-byte the
+    decision it is over HTTP because it is the same ``Gateway.handle_call``.
+
+    Unlike HTTP, the token is re-verified by the per-call resolver (no connect-time
+    middleware), so a bad/absent token does **not** raise on ``__enter__`` — it
+    surfaces as an empty ``tool_names()`` and an ``identity`` deny per call (the
+    T5 rotation path adapted to the pipe). ``session_id`` keys the one stdio
+    session; pass distinct ids when a single test opens more than one.
+    """
+
+    def __init__(
+        self,
+        gateway: Gateway,
+        *,
+        token: str | None,
+        grant_id: str | None = None,
+        agent_role: str | None = None,
+        session_id: str = STDIO_SESSION_ID,
+    ) -> None:
+        creds = StdioCredentials(token=token, grant_id=grant_id, agent_role=agent_role)
+        self._client = FakeStdioMCPClient(build_stdio_server(gateway, creds, session_id=session_id))
+
+    def __enter__(self) -> FakeStdioAgent:
+        self._client.__enter__()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self._client.__exit__(exc_type, exc, tb)
+
+    def tool_names(self) -> set[str]:
+        """The tools this session's allowlist exposes (tools/list over the pipe)."""
         return {tool.name for tool in self._client.list_tools().tools}
 
     def call(self, name: str, arguments: dict[str, Any] | None = None) -> ToolCall:

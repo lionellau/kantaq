@@ -1,30 +1,36 @@
-"""Stdio transport seam for the compatibility harness (E11-T4; sequences after E09-T4).
+"""Stdio transport seam for the compatibility harness (E11-T4; sequences after E09-T4 — landed).
 
 Tier-1 drives the **official MCP SDK client** over in-process ASGI (HTTP) —
 ``FakeMCPClient`` / ``FakeAgent`` in ``mcp.py`` / ``compat.py``. Tier-2 reuses the
-*same* client over the SDK's **stdio** transport once the gateway's stdio
-entrypoint (E09-T4) lands. stdio has no request headers, so the capability-grant
-binding a Tier-1 agent sends as ``mcp-grant-id`` / ``mcp-agent-role`` rides
-**environment variables** to the spawned gateway process instead — that env-var
-contract is the one interface to align with E09-T4 when it lands.
+*same* client over the SDK's **stdio** transport: the SDK's in-memory
+client↔server streams against the shared ``kantaq_mcp.stdio.build_stdio_server``
+(the same wiring ``kantaq mcp stdio`` runs), with the capability-grant binding
+riding :class:`~kantaq_mcp.stdio.StdioCredentials` — the env-var contract
+``KANTAQ_MCP_TOKEN`` / ``KANTAQ_MCP_GRANT_ID`` / ``KANTAQ_MCP_AGENT_ROLE`` (stdio
+has no request headers). A denial over stdio is byte-for-byte the HTTP decision
+because it is the same ``Gateway.handle_call``.
 
-Until then ``stdio_transport_ready()`` is False and the Tier-2 suite
-(``tests/compat/test_tier2.py``) skips — the S1–S6 structure + the matrix row are
-prepped so the suite flips on the moment the transport and this seam are wired.
+E09-T4 (the stdio transport) and this seam are both wired, so the Tier-2 suite
+(``tests/compat/test_tier2.py``) **runs** — no longer gated/skipped. The real
+Codex run (pinned 0.130.0) over the actual stdin/stdout pipe is the manual
+release step recorded in ``docs/clients/compatibility.md``, like Tier-1.
 
-Imported per-test (it will pull the MCP SDK once implemented), never on the
-pytest plugin path — the MOD-30 coverage rule.
+``connect_stdio`` is imported per-test (it pulls the MCP SDK through
+``FakeStdioAgent``), never on the pytest plugin path — the MOD-30 coverage rule.
+``stdio_transport_ready`` stays import-light so the suite's skip-guard is cheap.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 
-# Flip to True only when BOTH the gateway stdio transport (E09-T4) and the stdio
-# client below are wired. A single flag keeps Tier-2 from breaking CI in the
-# window where the transport exists but the harness does not (or vice-versa):
-# the suite runs exactly when the whole path is real.
-_HARNESS_STDIO_WIRED = False
+if TYPE_CHECKING:
+    from kantaq_mcp.gateway import Gateway
+    from kantaq_test_harness.compat import FakeStdioAgent
+
+# Both the gateway stdio transport (E09-T4) and the FakeStdioMCPClient /
+# FakeStdioAgent harness are wired, so the Tier-2 path is runnable end to end.
+_HARNESS_STDIO_WIRED = True
 
 
 def stdio_transport_ready() -> bool:
@@ -32,19 +38,25 @@ def stdio_transport_ready() -> bool:
     return _HARNESS_STDIO_WIRED
 
 
-def connect_stdio(*args: Any, **kwargs: Any) -> Any:
-    """Drive a real agent over the SDK stdio transport — the Tier-2 analog of a
-    ``FakeAgent`` over ``FakeMCPClient``.
+def connect_stdio(
+    gateway: Gateway,
+    *,
+    token: str | None,
+    grant_id: str | None = None,
+    agent_role: str | None = None,
+    session_id: str | None = None,
+) -> FakeStdioAgent:
+    """A Tier-2 agent over the SDK stdio transport — the analog of ``FakeAgent``
+    over ``FakeMCPClient``. The grant binds via :class:`StdioCredentials` (the
+    env-var contract), not headers. ``session_id`` keys the one stdio session;
+    pass distinct ids when a single test opens more than one."""
+    from kantaq_mcp.stdio import STDIO_SESSION_ID
+    from kantaq_test_harness.compat import FakeStdioAgent
 
-    Wire against E09-T4: spawn the gateway's stdio server as a child process, run
-    the MCP SDK ``stdio_client`` over its stdin/stdout, and bind the capability
-    grant via env vars (``mcp-grant-id`` / ``mcp-agent-role`` have no header over a
-    pipe). Decode ``CallToolResult`` to the same uniform ``ToolCall`` the Tier-1
-    ``FakeAgent`` returns, so the S1–S6 assertions are byte-for-byte the T1–T6
-    ones with only the transport swapped.
-    """
-    raise NotImplementedError(
-        "Tier-2 stdio harness lands with E09-T4 — implement the SDK stdio "
-        "transport + env-var grant binding here (mirror FakeMCPClient/FakeAgent), "
-        "then set _HARNESS_STDIO_WIRED = True."
+    return FakeStdioAgent(
+        gateway,
+        token=token,
+        grant_id=grant_id,
+        agent_role=agent_role,
+        session_id=session_id or STDIO_SESSION_ID,
     )
