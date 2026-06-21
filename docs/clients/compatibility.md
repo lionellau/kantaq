@@ -32,15 +32,18 @@ Codex's *stdio* Tier-2 surface (the 6 S-tests) and Tier-3 (custom HTTP, curl)
 remain v0.3; the PRD §8.11 row that lists Codex as stdio-only is refreshed for the
 as-built HTTP support (tracked as DEBT-22).
 
-> **Tier-2 status (E11-T4, prepped — gated on E09-T4).** The S1–S6 acceptance
-> suite (`tests/compat/test_tier2.py`, the stdio versions of T1–T6: connect,
-> role-read, propose+approve, deny, rotation, untrusted-tagging) and the stdio
-> harness seam (`kantaq_test_harness.stdio` — the SDK stdio transport + env-var
-> grant binding) are **in place and skipped** until the gateway's stdio transport
-> (E09-T4) lands. The suite flips on the moment the transport + the seam are
-> wired; the real Codex run (pinned **0.130.0**) is then the manual release step,
-> and this matrix earns the Tier-2 badge only when all of S1–S6 pass. (The
-> exhaustive deny-matrix + audit-completeness over stdio is E09-T4's, not E11-T4's.)
+> **Tier-2 status (E11-T4 — scripted S1–S6 green; real-Codex run is the remaining manual step).**
+> E09-T4 (the stdio transport) landed, so the harness seam is wired and the
+> suite runs: `tests/compat/test_tier2.py` (the stdio versions of T1–T6 —
+> connect, role-read, propose+approve, deny, rotation, untrusted-tagging) drives
+> the official MCP SDK client over `FakeStdioAgent` (`kantaq_test_harness.stdio`
+> → `build_stdio_server`, the same wiring `kantaq mcp stdio` runs; grant binding
+> via the env-var contract). **Scripted Tier-2 is 6/6, green in CI.** Like Tier-1,
+> the README advertises the Tier-2 badge as *certified* only once the **real
+> Codex** run (pinned **0.130.0**) over the actual stdin/stdout pipe is recorded
+> below with a date — that's the one remaining manual step. (The exhaustive
+> deny-matrix + audit-completeness over stdio is E09-T4's `test_stdio.py`, not this
+> client-compat subset.)
 
 ## Connect (the three snippets)
 
@@ -87,6 +90,12 @@ see the status note below.
 | Client surface | Transport | Last verified | Version | Pass rate | Notes |
 |---|---|---|---|---|---|
 | **MCP SDK client** (`FakeAgent`) | HTTP (streamable) | 2026-06-14 | `mcp` 1.27.2 (Python SDK) | **8 / 8** | The CI gate (`tests/compat`); the library real Tier-1 clients embed. |
+
+### Scripted Tier-2 acceptance (CI — the server side of S1–S6, over stdio)
+
+| Client surface | Transport | Last verified | Version | Pass rate | Notes |
+|---|---|---|---|---|---|
+| **MCP SDK client** (`FakeStdioAgent`) | stdio (in-memory streams) | 2026-06-21 | `mcp` 1.27.2 (Python SDK) | **6 / 6** | The CI gate (`tests/compat/test_tier2.py`); S1–S6 = stdio T1–T6 against `build_stdio_server` (the `kantaq mcp stdio` wiring). Real Codex `0.130.0` stdio run pending (manual). |
 
 ### Real-agent connection smoke (opt-in — T1–T3 core, real model)
 
