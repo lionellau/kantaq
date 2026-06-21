@@ -692,6 +692,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/proposals/{proposal_id}/notify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Notify Approver
+         * @description Nudge the approver that a still-pending proposal needs a decision (E20-T9).
+         *
+         *     Fires the same content-free signal (``proposal.pending``) to the configured
+         *     sink — opt-in, no-op when notifications are off. Only a still-pending
+         *     proposal can be nudged (a decided one needs no decision).
+         */
+        post: operations["notify_approver_v1_proposals__proposal_id__notify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/proposals/{proposal_id}/reject": {
         parameters: {
             query?: never;
@@ -3601,6 +3625,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApproveOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    notify_approver_v1_proposals__proposal_id__notify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -27,6 +27,11 @@ const TREE: TreeNode[] = [
     children: [
       { to: "/settings/members", label: "Members", hint: "invite, revoke, rotate tokens" },
       { to: "/settings/telemetry", label: "Telemetry", hint: "opt-in usage metrics" },
+      {
+        to: "/settings/notifications",
+        label: "Notifications",
+        hint: "opt-in approve/reject webhook",
+      },
     ],
   },
   {

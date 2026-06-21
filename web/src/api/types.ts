@@ -19,6 +19,8 @@ export type MemoryEntry = components["schemas"]["MemoryOut"];
 export type MemoryLink = components["schemas"]["MemoryLinkOut"];
 export type LinkedMemory = components["schemas"]["LinkedMemoryOut"];
 export type TelemetryView = components["schemas"]["TelemetryOut"];
+// E20-T9 (MOD-12) — the notification sink config (host-only, never the secret URL).
+export type NotificationConfig = components["schemas"]["NotificationOut"];
 export type Relation = components["schemas"]["RelationOut"];
 export type RelationInput = components["schemas"]["RelationIn"];
 // E14 (MOD-20) — milestones + the ticket-membership input.

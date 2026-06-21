@@ -13,6 +13,7 @@ import Export from "./routes/settings/Export";
 import Identity from "./routes/settings/Identity";
 import Members from "./routes/settings/Members";
 import MyAgent from "./routes/settings/MyAgent";
+import Notifications from "./routes/settings/Notifications";
 import SkillMappings from "./routes/settings/SkillMappings";
 import Sync from "./routes/settings/Sync";
 import Telemetry from "./routes/settings/Telemetry";
@@ -42,6 +43,7 @@ export const routes: RouteObject[] = [
       { path: "settings/my-agent", element: <MyAgent /> },
       { path: "settings/skill-mappings", element: <SkillMappings /> },
       { path: "settings/telemetry", element: <Telemetry /> },
+      { path: "settings/notifications", element: <Notifications /> },
     ],
   },
 ];

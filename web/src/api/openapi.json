@@ -5386,6 +5386,42 @@
         ]
       }
     },
+    "/v1/proposals/{proposal_id}/notify": {
+      "post": {
+        "description": "Nudge the approver that a still-pending proposal needs a decision (E20-T9).\n\nFires the same content-free signal (``proposal.pending``) to the configured\nsink \u2014 opt-in, no-op when notifications are off. Only a still-pending\nproposal can be nudged (a decided one needs no decision).",
+        "operationId": "notify_approver_v1_proposals__proposal_id__notify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Notify Approver",
+        "tags": [
+          "proposals"
+        ]
+      }
+    },
     "/v1/proposals/{proposal_id}/reject": {
       "post": {
         "operationId": "reject_proposal_v1_proposals__proposal_id__reject_post",
