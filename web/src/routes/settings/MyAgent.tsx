@@ -120,8 +120,13 @@ export default function MyAgent() {
   );
 }
 
+/** A unique key per (client, transport) — two transports share one client name. */
+const snippetKey = (c: { client: string; transport: string }) => `${c.client}:${c.transport}`;
+
 function SnippetPanel({ snippet }: { snippet: AgentSnippet }) {
-  const [clientId, setClientId] = useState<string>(snippet.clients[0]?.client ?? "claude_code");
+  const [selectedKey, setSelectedKey] = useState<string>(
+    snippet.clients[0] !== undefined ? snippetKey(snippet.clients[0]) : "",
+  );
   // The default identity is a scoped Agent token (minted on demand); the owner
   // token is an explicit, labelled opt-in (it keeps existing setups working).
   const [agent, setAgent] = useState<ScopedAgent | null>(null);
@@ -148,13 +153,10 @@ function SnippetPanel({ snippet }: { snippet: AgentSnippet }) {
     setAgent({ email: data.member.email, token: data.token });
   }
 
-  // Gateway down: tell the member to start it; we auto-detect (poll) — no Reload.
-  if (
-    !snippet.gateway_live ||
-    snippet.gateway_url === null ||
-    snippet.snippet === null ||
-    snippet.clients.length === 0
-  ) {
+  // No transport offered at all → tell the member to start the gateway; we
+  // auto-detect (poll) — no Reload. (stdio alone needs no live gateway, so this
+  // only fires when there is genuinely nothing to connect with.)
+  if (snippet.clients.length === 0) {
     return (
       <div style={ui.card}>
         <p style={{ marginTop: 0 }}>
@@ -166,7 +168,9 @@ function SnippetPanel({ snippet }: { snippet: AgentSnippet }) {
     );
   }
 
-  if (!isLoopback(snippet.gateway_url)) {
+  // The HTTP variants need a loopback URL; stdio does not. When a URL is present
+  // it must be loopback (an agent connects only to this machine).
+  if (snippet.gateway_url !== null && !isLoopback(snippet.gateway_url)) {
     return (
       <p role="alert" style={ui.errorText}>
         Refusing to render: the gateway URL {snippet.gateway_url} is not loopback. Your agent must
@@ -175,7 +179,10 @@ function SnippetPanel({ snippet }: { snippet: AgentSnippet }) {
     );
   }
 
-  const selected = snippet.clients.find((c) => c.client === clientId) ?? snippet.clients[0];
+  // Live HTTP gateway? If not, only the stdio configs are offered (they launch
+  // `kantaq mcp stdio` themselves — no HTTP endpoint needed).
+  const httpLive = snippet.gateway_live && snippet.gateway_url !== null;
+  const selected = snippet.clients.find((c) => snippetKey(c) === selectedKey) ?? snippet.clients[0];
   // The token to embed: the scoped Agent token by default (null until minted, so
   // the snippet shows the placeholder, never the owner token); the owner token
   // only on explicit opt-in.
@@ -205,19 +212,26 @@ function SnippetPanel({ snippet }: { snippet: AgentSnippet }) {
         onToggleOwner={(v) => setUseOwnerToken(v)}
       />
 
+      {!httpLive && (
+        <p style={{ ...ui.muted, marginBottom: 0 }}>
+          The HTTP gateway isn't running, so only the <strong>stdio</strong> configs are shown —
+          they launch <code>kantaq mcp stdio</code> themselves and need no gateway. Run{" "}
+          <code>kantaq mcp dev</code> for the HTTP option.
+        </p>
+      )}
       <div
         role="tablist"
         aria-label="Coding agent"
-        style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }}
+        style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}
       >
         {snippet.clients.map((client) => (
           <button
-            key={client.client}
+            key={snippetKey(client)}
             type="button"
             role="tab"
-            aria-selected={client.client === selected.client}
-            style={client.client === selected.client ? ui.primaryButton : ui.button}
-            onClick={() => setClientId(client.client)}
+            aria-selected={snippetKey(client) === snippetKey(selected)}
+            style={snippetKey(client) === snippetKey(selected) ? ui.primaryButton : ui.button}
+            onClick={() => setSelectedKey(snippetKey(client))}
           >
             {client.label}
           </button>
@@ -239,12 +253,20 @@ function SnippetPanel({ snippet }: { snippet: AgentSnippet }) {
         {rendered}
       </pre>
       <p style={ui.muted}>
-        Gateway: <code>{snippet.gateway_url}</code> (your machine only).{" "}
+        {selected.transport === "stdio" ? (
+          <>Transport: stdio (your agent launches the gateway on this machine). </>
+        ) : (
+          <>
+            Gateway: <code>{snippet.gateway_url}</code> (your machine only).{" "}
+          </>
+        )}
         {token === null
           ? "Create a scoped agent above to fill in the token."
-          : setup !== null
-            ? "The config file carries no token — your token rides the KANTAQ_AGENT_TOKEN env var above; treat it like a credential."
-            : "Treat the file like a credential. Rotate it from Members if it leaks."}
+          : selected.transport === "stdio"
+            ? "Your token rides the KANTAQ_MCP_TOKEN env var in the config; treat it like a credential."
+            : setup !== null
+              ? "The config file carries no token — your token rides the KANTAQ_AGENT_TOKEN env var above; treat it like a credential."
+              : "Treat the file like a credential. Rotate it from Members if it leaks."}
       </p>
       <CopySnippet
         text={setup !== null ? `${setup}\n\n${rendered}` : rendered}
