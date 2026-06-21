@@ -158,3 +158,14 @@ def test_client_cannot_relax_the_server_signature_floor(pg_engine: Engine, token
     assert r.json()["detail"]["code"] == "unsigned"
     # nothing committed: the floor held
     assert strict.get("/v1/events", headers=auth).json() == []
+
+
+def test_an_auth_failure_never_echoes_the_presented_token(client: TestClient) -> None:
+    """Secret hygiene (E25-T4): a rejected token must not appear in the response —
+    not in the body, not in any header — so a proxy log or error page can't leak
+    it. The verifier caches a SHA-256 digest, never the plaintext (tokens.py)."""
+    secret = "kq_tok_srv00.SUPERSECRETPLAINTEXTVALUE999"
+    r = client.get("/v1/events", headers={"authorization": f"Bearer {secret}"})
+    assert r.status_code == 401
+    assert "SUPERSECRETPLAINTEXTVALUE999" not in r.text
+    assert all("SUPERSECRETPLAINTEXTVALUE999" not in value for value in r.headers.values())

@@ -277,10 +277,10 @@ def to_commit_result(row: dict[str, Any]) -> CommitResult:
     """Map a raw RPC result row to the typed ``CommitResult`` (BackendPort view).
 
     Mirrors ``SupabaseSyncBackend._row_to_commit_result`` so the two backends'
-    typed results are identical — but null-safe on ``head_rev`` so a duplicate
-    (``head_rev`` null) maps cleanly to ``head_rev=0`` rather than crashing the
-    ``int(None)`` the Supabase adapter would hit on that latent path (noted as a
-    drift to fix in MOD-05; harmless because a duplicate's head is not used).
+    typed results are identical, including null-safe ``head_rev`` (a duplicate
+    has ``head_rev`` null → ``head_rev=0``). The Supabase adapter adopted the
+    same guard at E25-T4 (DEBT-40 closed), so the two map a duplicate row
+    identically — pinned by ``test_debt40_both_adapters_map_a_duplicate``.
     """
     stale = row.get("stale_base_rev")
     base = row.get("base_rev")

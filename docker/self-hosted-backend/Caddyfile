@@ -1,7 +1,17 @@
-# Optional HTTPS termination for the self-hosted sync-server (MOD-28).
+# Optional HTTPS termination for the self-hosted sync-server (MOD-28 / E25-T4).
 # Enabled by `docker compose --profile tls up`; set CADDY_DOMAIN in .env to a
 # public hostname Caddy can solve an ACME (Let's Encrypt) challenge for. Caddy
-# reverse-proxies to the sync-server on the compose network.
+# obtains + auto-renews the cert and reverse-proxies to the sync-server on the
+# compose network. The header block is the hardening pass: HSTS (the deployment
+# is HTTPS-only once Caddy fronts it), nosniff, and dropping Caddy's Server
+# banner so the proxy advertises nothing about itself.
 {$CADDY_DOMAIN} {
+	encode gzip zstd
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
 	reverse_proxy sync-server:8889
 }
