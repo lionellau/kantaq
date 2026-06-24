@@ -55,13 +55,13 @@ export default function ConflictCard({
       <div style={{ display: "grid", gap: 6, margin: "0.5rem 0" }}>
         <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
           <span style={{ ...ui.label, textTransform: "none" }}>A — current (kept)</span>
-          <span style={{ fontFamily: "monospace", fontWeight: 600 }} data-testid="conflict-keep-a">
+          <span style={{ fontFamily: ui.font.mono, fontWeight: 600 }} data-testid="conflict-keep-a">
             {displayValue(keepA)}
           </span>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
           <span style={{ ...ui.label, textTransform: "none" }}>B — incoming</span>
-          <span style={{ fontFamily: "monospace", fontWeight: 600 }} data-testid="conflict-keep-b">
+          <span style={{ fontFamily: ui.font.mono, fontWeight: 600 }} data-testid="conflict-keep-b">
             {displayValue(keepB)}
           </span>
         </div>

@@ -24,7 +24,7 @@ export default function TokenShowHint() {
 
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-      <code style={{ ...ui.chip, fontFamily: "monospace", padding: "0.25rem 0.5rem" }}>
+      <code style={{ ...ui.chip, fontFamily: ui.font.mono, padding: "0.25rem 0.5rem" }}>
         {COMMAND}
       </code>
       <button type="button" style={ui.button} onClick={() => void copy()}>

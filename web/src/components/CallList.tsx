@@ -43,18 +43,9 @@ export default function CallList({
             data-denied={denied}
           >
             <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-              <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{targetLabel(call)}</span>
+              <span style={{ fontFamily: ui.font.mono, fontWeight: 600 }}>{targetLabel(call)}</span>
               {denied ? (
-                <span
-                  style={{
-                    ...ui.chip,
-                    background: "#fde2e1",
-                    color: ui.palette.danger,
-                    borderColor: "#fde2e1",
-                  }}
-                >
-                  denied: {call.reason}
-                </span>
+                <span style={ui.statusChip("danger")}>denied: {call.reason}</span>
               ) : (
                 <span style={ui.chip}>{call.action}</span>
               )}

@@ -51,25 +51,9 @@ export default function SessionCard({
             </span>
             <span style={ui.chip}>{session.owner_role ?? "subject unknown"}</span>
             {session.active ? (
-              <span
-                style={{
-                  ...ui.chip,
-                  background: "#dcfce7",
-                  color: "#166534",
-                  borderColor: "#dcfce7",
-                }}
-              >
-                active
-              </span>
+              <span style={ui.statusChip("success")}>active</span>
             ) : (
-              <span
-                style={{
-                  ...ui.chip,
-                  background: "#fde2e1",
-                  color: ui.palette.danger,
-                  borderColor: "#fde2e1",
-                }}
-              >
+              <span style={ui.statusChip("danger")}>
                 {session.reason === "revoked" ? "revoked" : `inactive: ${session.reason}`}
               </span>
             )}

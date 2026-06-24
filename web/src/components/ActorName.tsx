@@ -8,6 +8,7 @@
  */
 
 import type { MemberDirectory } from "../lib/members";
+import { font } from "../lib/ui";
 
 export default function ActorName({
   id,
@@ -19,7 +20,7 @@ export default function ActorName({
   const member = directory.get(id);
   if (member === undefined) {
     return (
-      <span title={id} style={{ fontFamily: "monospace", fontSize: "0.85em" }}>
+      <span title={id} style={{ fontFamily: font.mono, fontSize: "0.85em" }}>
         {id}
       </span>
     );

@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>kantaq</title>
+    <!--
+      Apply a stored light/dark choice before first paint so a returning user
+      never flashes the wrong theme. No stored choice → the attribute stays off
+      and the tokens follow the OS via `color-scheme: light dark` (see index.css).
+      Kept inline + tiny on purpose; lib/theme.ts is the React-side counterpart.
+    -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("kantaq-theme");
+          if (t === "light" || t === "dark") {
+            document.documentElement.setAttribute("data-theme", t);
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

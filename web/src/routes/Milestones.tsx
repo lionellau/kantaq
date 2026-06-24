@@ -21,7 +21,7 @@ function StatusChip({ status }: { status: string }) {
   const done = status === "complete";
   const archived = status === "archived";
   const style = done
-    ? { ...ui.chip, background: "#dcfce7", color: "#166534" }
+    ? ui.statusChip("success")
     : archived
       ? { ...ui.chip, color: ui.palette.muted }
       : ui.chip;
