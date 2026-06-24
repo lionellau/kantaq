@@ -15,9 +15,7 @@
  */
 
 import { fmtRelative, isRecent } from "../lib/format";
-
-const NEUTRAL = { background: "#e8e8e8", color: "#444444" };
-const GREEN = { background: "#d9f2e3", color: "#1b6e3c" };
+import { statusChip } from "../lib/ui";
 
 export default function ConnectionBadge({
   gatewayLive,
@@ -29,13 +27,13 @@ export default function ConnectionBadge({
   lastCallAt: string | null;
 }) {
   let label: string;
-  let tone = NEUTRAL;
+  let active = false;
 
   if (gatewayLive === false) {
     label = "Gateway offline";
   } else if (lastCallAt !== null && isRecent(lastCallAt)) {
     label = `Active · last call ${fmtRelative(lastCallAt)}`;
-    tone = GREEN;
+    active = true;
   } else if (lastCallAt !== null) {
     label = `Idle · last call ${fmtRelative(lastCallAt)}`;
   } else {
@@ -45,15 +43,8 @@ export default function ConnectionBadge({
   return (
     <output
       aria-label={`agent connection: ${label}`}
-      data-tone={tone === GREEN ? "active" : "neutral"}
-      style={{
-        display: "inline-block",
-        padding: "0.1rem 0.5rem",
-        borderRadius: "999px",
-        fontSize: "0.75rem",
-        fontWeight: 600,
-        ...tone,
-      }}
+      data-tone={active ? "active" : "neutral"}
+      style={statusChip(active ? "success" : "neutral")}
     >
       {label}
     </output>

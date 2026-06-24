@@ -102,14 +102,14 @@ function StepRail({ current }: { current: Step }) {
               alignItems: "center",
               gap: 6,
               padding: "0.25rem 0.7rem",
-              borderRadius: 999,
-              fontSize: "0.8rem",
+              borderRadius: ui.radius.pill,
+              fontSize: ui.text.xs,
               fontWeight: 600,
               border: `1px solid ${state === "ahead" ? ui.palette.border : ui.palette.accent}`,
-              background: state === "current" ? ui.palette.accent : "white",
+              background: state === "current" ? ui.palette.accent : ui.palette.raised,
               color:
                 state === "current"
-                  ? "white"
+                  ? ui.palette.onAccent
                   : state === "ahead"
                     ? ui.palette.muted
                     : ui.palette.accent,

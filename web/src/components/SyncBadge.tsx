@@ -7,36 +7,31 @@
  * - `committed` — accepted by the backend and visible to the team
  *
  * A primitive on purpose: the backlog rows (E19) and the Inbox (E20) place it;
- * nothing here fetches. Colors are inline (the shell has no CSS framework) and
- * the state is also exposed via `data-state` + an accessible label.
+ * nothing here fetches. The tone comes from the shared semantic `status` tokens
+ * (one success/warning/neutral set that re-themes in dark mode) via `statusChip`,
+ * so no color is hardcoded; the state is also exposed via `data-state` + a label.
  */
+
+import { type StatusKind, statusChip } from "../lib/ui";
 
 export type SyncState = "draft" | "proposed" | "committed";
 
-const STYLES: Record<SyncState, { label: string; background: string; color: string }> = {
-  draft: { label: "Draft", background: "#e8e8e8", color: "#444444" },
-  proposed: { label: "Proposed", background: "#fff3cd", color: "#7a5c00" },
-  committed: { label: "Committed", background: "#d9f2e3", color: "#1b6e3c" },
+const STATE: Record<SyncState, { label: string; kind: StatusKind }> = {
+  draft: { label: "Draft", kind: "neutral" },
+  proposed: { label: "Proposed", kind: "warning" },
+  committed: { label: "Committed", kind: "success" },
 };
 
 export default function SyncBadge({ state }: { state: SyncState }) {
-  const style = STYLES[state];
+  const { label, kind } = STATE[state];
   return (
     // <output> carries the implicit "status" ARIA role.
     <output
-      aria-label={`sync state: ${style.label.toLowerCase()}`}
+      aria-label={`sync state: ${label.toLowerCase()}`}
       data-state={state}
-      style={{
-        display: "inline-block",
-        padding: "0.1rem 0.5rem",
-        borderRadius: "999px",
-        fontSize: "0.75rem",
-        fontWeight: 600,
-        background: style.background,
-        color: style.color,
-      }}
+      style={statusChip(kind)}
     >
-      {style.label}
+      {label}
     </output>
   );
 }

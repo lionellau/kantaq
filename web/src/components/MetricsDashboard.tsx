@@ -29,8 +29,8 @@ const banner = (bg: string, fg: string) => ({
   background: bg,
   color: fg,
   padding: "0.5rem 0.75rem",
-  borderRadius: 6,
-  fontSize: "0.875rem",
+  borderRadius: ui.radius.sm,
+  fontSize: ui.text.sm,
   margin: "0.5rem 0",
 });
 
@@ -60,7 +60,7 @@ export default function MetricsDashboard({ metrics }: { metrics: WorkspaceMetric
           <div
             style={{
               height: 10,
-              borderRadius: 999,
+              borderRadius: ui.radius.pill,
               background: ui.palette.surface,
               border: `1px solid ${ui.palette.border}`,
               overflow: "hidden",

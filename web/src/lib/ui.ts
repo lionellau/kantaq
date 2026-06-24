@@ -1,72 +1,122 @@
 /**
- * The shared style vocabulary for the v0.0.5 screens (MOD-11/12/13).
+ * The shared style vocabulary for the app shell (MOD-11/12/13).
  *
- * The shell deliberately has no CSS framework (RISK-08: keep it minimal), so
- * consistency comes from one place instead of per-page improvisation: a small
- * gray-on-white palette that matches the Layout chrome and SyncBadge, one
- * type scale, and one control shape. Pages compose these objects inline.
+ * The shell deliberately has no CSS framework (RISK-08): consistency comes from
+ * ONE token source (`src/index.css` CSS variables) referenced here. No value is
+ * hardcoded — every color, radius, shadow, and font reads a `var(--…)`, so the
+ * whole UI re-themes (light/dark) from `index.css` alone. Pages compose these
+ * objects inline; status surfaces use the `status` tokens / `statusChip` helper
+ * instead of per-component hex.
  */
 
 import type { CSSProperties } from "react";
 
 export const palette = {
-  text: "#111827",
-  muted: "#6b7280",
-  border: "#e5e7eb",
-  surface: "#f9fafb",
-  accent: "#1d4ed8",
-  danger: "#b91c1c",
-  warnBg: "#fff3cd",
-  warnText: "#7a5c00",
+  bg: "var(--color-bg)",
+  raised: "var(--color-raised)",
+  surface: "var(--color-surface)",
+  text: "var(--color-text)",
+  muted: "var(--color-text-muted)",
+  subtle: "var(--color-text-subtle)",
+  border: "var(--color-border)",
+  borderStrong: "var(--color-border-strong)",
+  accent: "var(--color-accent)",
+  accentHover: "var(--color-accent-hover)",
+  accentSoft: "var(--color-accent-soft)",
+  onAccent: "var(--color-on-accent)",
+  danger: "var(--color-danger-text)",
+  dangerBorder: "var(--color-danger-border)",
+  warnBg: "var(--color-warning-bg)",
+  warnText: "var(--color-warning-text)",
 } as const;
+
+export const radius = {
+  sm: "var(--radius-sm)",
+  md: "var(--radius-md)",
+  pill: "var(--radius-pill)",
+} as const;
+
+export const shadow = {
+  sm: "var(--shadow-sm)",
+  md: "var(--shadow-md)",
+} as const;
+
+export const font = {
+  sans: "var(--font-sans)",
+  mono: "var(--font-mono)",
+} as const;
+
+export const text = {
+  xs: "var(--text-xs)",
+  sm: "var(--text-sm)",
+  base: "var(--text-base)",
+  lg: "var(--text-lg)",
+  xl: "var(--text-xl)",
+} as const;
+
+/**
+ * Semantic status tokens — one success/warning/danger/neutral set, used by every
+ * badge/card so a "committed" green is the SAME green everywhere (no more
+ * green-vs-green drift across components) and re-themes in dark mode.
+ */
+export type StatusKind = "success" | "warning" | "danger" | "neutral";
+
+export const status: Record<StatusKind, { bg: string; text: string }> = {
+  success: { bg: "var(--color-success-bg)", text: "var(--color-success-text)" },
+  warning: { bg: "var(--color-warning-bg)", text: "var(--color-warning-text)" },
+  danger: { bg: "var(--color-danger-bg)", text: "var(--color-danger-text)" },
+  neutral: { bg: "var(--color-neutral-bg)", text: "var(--color-neutral-text)" },
+};
 
 export const table: CSSProperties = {
   width: "100%",
   borderCollapse: "collapse",
-  fontSize: "0.875rem",
+  fontSize: text.sm,
 };
 
 export const th: CSSProperties = {
   textAlign: "left",
-  padding: "0.5rem 0.6rem",
-  borderBottom: `2px solid ${palette.border}`,
+  padding: "var(--space-2) var(--space-3)",
+  borderBottom: `1px solid ${palette.borderStrong}`,
   color: palette.muted,
   fontWeight: 600,
-  fontSize: "0.75rem",
+  fontSize: text.xs,
   textTransform: "uppercase",
-  letterSpacing: "0.03em",
+  letterSpacing: "0.04em",
 };
 
 export const td: CSSProperties = {
-  padding: "0.5rem 0.6rem",
+  padding: "var(--space-2) var(--space-3)",
   borderBottom: `1px solid ${palette.border}`,
   verticalAlign: "top",
 };
 
 export const input: CSSProperties = {
-  padding: "0.35rem 0.5rem",
+  padding: "0.4rem 0.6rem",
   border: `1px solid ${palette.border}`,
-  borderRadius: 6,
-  fontSize: "0.875rem",
+  borderRadius: radius.sm,
+  fontSize: text.sm,
   fontFamily: "inherit",
+  background: palette.raised,
+  color: palette.text,
 };
 
 export const label: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 2,
-  fontSize: "0.75rem",
+  gap: "var(--space-1)",
+  fontSize: text.xs,
   color: palette.muted,
   fontWeight: 600,
 };
 
 export const button: CSSProperties = {
-  padding: "0.35rem 0.8rem",
+  padding: "0.4rem 0.85rem",
   border: `1px solid ${palette.border}`,
-  borderRadius: 6,
-  background: "white",
+  borderRadius: radius.sm,
+  background: palette.raised,
   color: palette.text,
-  fontSize: "0.875rem",
+  fontSize: text.sm,
   fontWeight: 600,
   cursor: "pointer",
 };
@@ -74,14 +124,16 @@ export const button: CSSProperties = {
 export const primaryButton: CSSProperties = {
   ...button,
   background: palette.accent,
-  borderColor: palette.accent,
-  color: "white",
+  // Full `border` shorthand (not `borderColor`) so toggling button↔primaryButton
+  // never mixes shorthand + longhand on one element (a React rerender warning).
+  border: `1px solid ${palette.accent}`,
+  color: palette.onAccent,
 };
 
 export const dangerButton: CSSProperties = {
   ...button,
   color: palette.danger,
-  borderColor: "#fecaca",
+  border: `1px solid ${palette.dangerBorder}`,
 };
 
 // A button that reads as an inline link (for low-emphasis affordances inside a
@@ -99,33 +151,44 @@ export const linkButton: CSSProperties = {
 
 export const card: CSSProperties = {
   border: `1px solid ${palette.border}`,
-  borderRadius: 8,
-  padding: "1rem",
-  background: "white",
+  borderRadius: radius.md,
+  padding: "var(--space-4)",
+  background: palette.raised,
+  boxShadow: shadow.sm,
 };
 
 export const muted: CSSProperties = {
   color: palette.muted,
-  fontSize: "0.875rem",
+  fontSize: text.sm,
 };
 
 export const errorText: CSSProperties = {
   color: palette.danger,
-  fontSize: "0.875rem",
+  fontSize: text.sm,
 };
 
 export const sectionHeading: CSSProperties = {
-  fontSize: "1rem",
-  margin: "1.5rem 0 0.5rem",
+  fontSize: text.lg,
+  margin: "var(--space-5) 0 var(--space-2)",
 };
 
 export const chip: CSSProperties = {
   display: "inline-block",
   padding: "0.1rem 0.5rem",
-  borderRadius: "999px",
-  fontSize: "0.75rem",
+  borderRadius: radius.pill,
+  fontSize: text.xs,
   fontWeight: 600,
   background: palette.surface,
   border: `1px solid ${palette.border}`,
   color: palette.text,
 };
+
+/** A pill tinted to a semantic status (success/warning/danger/neutral). */
+export function statusChip(kind: StatusKind): CSSProperties {
+  return {
+    ...chip,
+    background: status[kind].bg,
+    color: status[kind].text,
+    border: "1px solid transparent",
+  };
+}

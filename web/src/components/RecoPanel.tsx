@@ -25,8 +25,8 @@ const CONFIDENCE_LABEL: Record<string, string> = {
 };
 
 const RISK_COLOR: Record<string, { bg: string; text: string }> = {
-  high: { bg: "#fde2e1", text: ui.palette.danger },
-  medium: { bg: ui.palette.warnBg, text: ui.palette.warnText },
+  high: ui.status.danger,
+  medium: ui.status.warning,
   low: { bg: ui.palette.surface, text: ui.palette.muted },
 };
 
@@ -81,7 +81,7 @@ function RecoCard({ rec }: { rec: Recommendation }) {
           style={{
             ...ui.chip,
             background: ui.palette.accent,
-            color: "white",
+            color: ui.palette.onAccent,
             borderColor: ui.palette.accent,
           }}
         >

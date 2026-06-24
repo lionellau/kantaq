@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { palette } from "../lib/ui";
+import { font, palette, radius } from "../lib/ui";
+import ThemeToggle from "./ThemeToggle";
 
 const NAV = [
   { to: "/", label: "Backlog", end: true },
@@ -16,20 +17,32 @@ export default function Layout() {
       style={{
         display: "flex",
         minHeight: "100vh",
-        fontFamily: "system-ui, sans-serif",
+        fontFamily: font.sans,
         color: palette.text,
       }}
     >
       <nav
         aria-label="Primary"
         style={{
+          display: "flex",
+          flexDirection: "column",
           width: 200,
           borderRight: `1px solid ${palette.border}`,
           padding: "1rem",
           flexShrink: 0,
         }}
       >
-        <div style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "1.25rem" }}>kantaq</div>
+        <div
+          style={{
+            fontWeight: 700,
+            fontSize: "1.1rem",
+            letterSpacing: "-0.01em",
+            marginBottom: "1.25rem",
+          }}
+        >
+          {/* The locked accent, used once on the wordmark mark (Color-Consistency). */}
+          <span style={{ color: palette.accent }}>k</span>antaq
+        </div>
         <ul
           style={{
             listStyle: "none",
@@ -48,7 +61,7 @@ export default function Layout() {
                 style={({ isActive }) => ({
                   display: "block",
                   padding: "0.4rem 0.6rem",
-                  borderRadius: 6,
+                  borderRadius: radius.sm,
                   textDecoration: "none",
                   // One gray family from a single source (lib/ui palette): the
                   // active item carries the only emphasis, inactive items recede.
@@ -62,6 +75,10 @@ export default function Layout() {
             </li>
           ))}
         </ul>
+        {/* Pinned to the foot of the sidebar. */}
+        <div style={{ marginTop: "auto", paddingTop: "1rem" }}>
+          <ThemeToggle />
+        </div>
       </nav>
       <main style={{ flex: 1, padding: "2rem", maxWidth: "60rem" }}>
         <Outlet />

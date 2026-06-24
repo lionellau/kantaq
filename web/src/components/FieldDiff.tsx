@@ -62,7 +62,7 @@ export default function FieldDiff({
           style={{
             color: ui.palette.muted,
             textDecoration: unchanged ? "none" : "line-through",
-            fontFamily: "monospace",
+            fontFamily: ui.font.mono,
           }}
         >
           {beforeText}
@@ -70,7 +70,7 @@ export default function FieldDiff({
         <span aria-hidden style={{ color: ui.palette.muted }}>
           →
         </span>
-        <span style={{ color: ui.palette.text, fontFamily: "monospace", fontWeight: 600 }}>
+        <span style={{ color: ui.palette.text, fontFamily: ui.font.mono, fontWeight: 600 }}>
           {afterText}
         </span>
       </div>

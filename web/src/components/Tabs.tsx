@@ -69,8 +69,8 @@ export default function Tabs({
                   style={{
                     marginLeft: 6,
                     padding: "0.05rem 0.4rem",
-                    borderRadius: "999px",
-                    fontSize: "0.75rem",
+                    borderRadius: ui.radius.pill,
+                    fontSize: ui.text.xs,
                     background: ui.palette.surface,
                     border: `1px solid ${ui.palette.border}`,
                     color: ui.palette.muted,
