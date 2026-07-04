@@ -265,8 +265,65 @@ identity checks come before the first byte of local state changes.
   (their scope ceiling + grant pairing is a different artifact).
 - **Notifications/UI** — a Settings → Members "export enrollment" button can
   wrap this CLI later; CLI-first per the maintainer's ask.
+- **Cross-member pull of a peer's device event** — DEBT-45 (§9): a pre-existing
+  spine gap the live smoke surfaced. The second member's `sync once` *pull*
+  fails a FK because member rows never sync as events. Out of scope here (it is
+  a protocol/authority change), owned by a follow-up PR; enroll's own surface
+  (provision, import/adopt/device/env, single-runtime round-trip, revoke) is
+  green.
 
-## 9. Open questions for the maintainer (the design-OK checklist)
+## 9. Live smoke result + a gap it surfaced (DEBT-45)
+
+The documented self-host smoke ran against the real
+`docker/self-hosted-backend` stack (a rebuilt sync-server on `:8889` + its
+Postgres, empty DB). **What enroll owns is green:**
+
+- owner `enroll export` (in-container) provisioned two members through
+  `seed_member` and sealed two bundles (0600, token never printed — passcode
+  only);
+- founder `enroll import` on a fresh host runtime: joined + adopted the seeded
+  Owner, registered its device as a verification root, wrote `.env` (0600);
+- founder created a project + ticket and `kantaq sync once` **committed 3
+  events** to the live backend (`cursor 3`);
+- joiner `enroll import` on a second fresh runtime joined as a Member and its
+  own `sync once` **pushed** its device event (the backend log then held
+  `devices: 2`).
+
+**The gap:** the joiner's `sync once` **pull** failed — `FOREIGN KEY
+constraint failed` inserting the *founder's* `devices` row, whose `member_id`
+has no matching `members` row in the joiner's replica. The backend event log
+explains it exactly: `devices: 2, projects: 1, tickets: 1, members: 0`. Member
+rows are created by `seed_member` / `adopt_owner` / `bootstrap_owner` /
+`invite` as **direct rows, never as synced events**, but the trust-root
+`devices` collection *does* sync (teammates need each other's device keys to
+verify signed events, E24-T7) — so a peer that pulls another member's device
+event has nothing to anchor its FK to.
+
+**This is pre-existing, not enroll's doing.** The device event is emitted by
+`ensure_device_identity` — the same call the ordinary `kantaq dev` boot path
+makes (`cli.py:_bootstrap_identity`) — so the identical failure reproduces on
+the manual `seed` + `kantaq sync login` + `kantaq dev` + `kantaq sync once`
+path the moment a *second* real member pulls. The existing E25 compose smoke
+and `test_join_identity` never hit it because they drive a **single** runtime
+(or stamped actor state) and never pull a *peer's* device event — the same
+blind spot DEBT-42 called out ("the compose smoke HID the gap by stamping
+`actor_id`; test through a real runtime"). Enroll, by making real two-member
+self-host onboarding a two-command affair, is what finally exercised it.
+
+Recorded as **DEBT-45** (a concrete instance of the DEBT-15 "cross-member
+device/grant distribution is v0.2" debt): a member must travel over sync
+*before* the device that references it. The fix is a spine change — emit
+`members` as authoritative events from the provisioning path, or order the
+trust-root ingest to backfill the member — and it touches the
+identity/authority model (who is authoritative for a member row across
+backends), so it belongs to its **own** protocol-reviewed PR, not this
+credential PR. Enroll is correct to reuse the existing spine verbatim; the
+spine's cross-member sync is the thing to fix next. **Split, and said so**
+(per the work rules): design + self-host credential path is this PR; the
+member-event distribution fix is the follow-up that makes the second member's
+*pull* green.
+
+## 10. Open questions for the maintainer (the design-OK checklist)
 
 1. PyNaCl promoted to a runtime dep of the umbrella package only — OK, or
    prefer the pyca composition (§3) and keep PyNaCl dev-only?
@@ -276,3 +333,10 @@ identity checks come before the first byte of local state changes.
 4. TTL default 30 d; `.kqe` extension; `kantaq-enroll/v1` format string — any
    objections?
 5. Supabase deferral as DEBT-43 with the §6 design — agreed?
+6. **DEBT-45 (§9): the cross-member member-event distribution fix as a separate
+   protocol PR** — agree it's out of scope here, or do you want enroll held
+   until the second member's *pull* is green too? (My recommendation: land
+   enroll now — it is correct and independently valuable for provisioning +
+   revocation + single-runtime round-trip — and fix DEBT-45 next, since it is a
+   pre-existing spine gap that blocks *all* multi-member self-host sync, not
+   just enroll.)
