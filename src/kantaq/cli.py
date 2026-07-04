@@ -1121,6 +1121,211 @@ def cmd_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_enroll(args: argparse.Namespace) -> int:
+    """Encrypted one-shot team onboarding (docs/design/enroll.md).
+
+    ``export`` provisions a joiner on the self-hosted backend (member + token,
+    the same path ``seed`` runs) and seals the credential into a
+    passcode-protected ``.kqe`` bundle. ``import`` opens one on the joiner's
+    machine and leaves the runtime fully joined — no ``.env`` editing, no
+    token paste, no email, no SQL. ``revoke`` kills an enrollment (tokens +
+    grants + devices, the existing cascade). The bundle and the passcode
+    travel over different channels by design.
+    """
+    if args.enroll_command == "export":
+        return _enroll_export(args)
+    if args.enroll_command == "import":
+        return _enroll_import(args)
+    return _enroll_revoke(args)
+
+
+def _email_slug(email: str) -> str:
+    import re
+
+    local = email.partition("@")[0].lower() or "member"
+    return re.sub(r"[^a-z0-9._-]+", "-", local)
+
+
+def _enroll_export(args: argparse.Namespace) -> int:
+    from kantaq.enroll import (
+        BACKEND_MODE_POSTGRES,
+        EnrollError,
+        EnrollPayload,
+        engine_for,
+        generate_passcode,
+        parse_ttl,
+        provision_enrollment,
+        seal,
+    )
+    from kantaq_core.identity import IdentityError
+
+    if args.backend != "self-host":
+        print(
+            "kantaq enroll export: the supabase backend is designed but deferred "
+            "(docs/design/enroll.md §6, DEBT-43); --backend self-host is the "
+            "supported mode",
+            file=sys.stderr,
+        )
+        return 2
+    if not args.hub_url.startswith(("http://", "https://")):
+        print("kantaq enroll export: --hub-url must be an http(s) URL", file=sys.stderr)
+        return 1
+    if not args.database_url:
+        print(
+            "kantaq enroll export: KANTAQ_DATABASE_URL (or --database-url) is required — "
+            "export runs on the backend host, exactly like `seed` "
+            "(docs/design/enroll.md §1)",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        ttl_seconds = parse_ttl(args.ttl)
+        provisioned = provision_enrollment(
+            engine_for(args.database_url),
+            email=args.email,
+            workspace=args.workspace,
+            role=args.role,
+        )
+    except (EnrollError, IdentityError) as exc:
+        print(f"kantaq enroll export: {exc}", file=sys.stderr)
+        return 1
+    issued_at = int(time.time())
+    payload = EnrollPayload(
+        backend_mode=BACKEND_MODE_POSTGRES,
+        hub_url=args.hub_url.rstrip("/"),
+        hub_token=provisioned.token_plaintext,
+        member_id=provisioned.member_id,
+        member_email=args.email,
+        workspace_id=provisioned.workspace_id,
+        workspace_name=provisioned.workspace_name,
+        issued_at=issued_at,
+        expires_at=issued_at + ttl_seconds,
+    )
+    passcode = generate_passcode()
+    out = Path(args.out) if args.out else Path(f"enroll-{_email_slug(args.email)}.kqe")
+    out.write_bytes(seal(payload, passcode))
+    out.chmod(0o600)
+    rotated = " (existing member — the previous token is revoked)" if provisioned.rotated else ""
+    print(f"enrolled {args.email} as member {provisioned.member_id}{rotated}")
+    print(f"bundle:   {out}")
+    print(f"passcode: {passcode}")
+    print(f"expires:  {args.ttl} from now · revoke: kantaq enroll revoke --email {args.email}")
+    print()
+    print("send the bundle and the passcode over DIFFERENT channels (file via")
+    print("email/drive, passcode via a call or DM); the joiner runs:")
+    print(f"  kantaq enroll import {out.name}")
+    return 0
+
+
+def _enroll_import(args: argparse.Namespace) -> int:
+    import getpass
+
+    import httpx
+
+    from kantaq.enroll import (
+        IMPORT_MAX_PASSCODE_ATTEMPTS,
+        BundleDecryptError,
+        EnrollError,
+        EnrollPayload,
+        import_enrollment,
+        unseal,
+    )
+    from kantaq_backend_postgres import SyncBackendError
+    from kantaq_core.identity import IdentityError
+    from kantaq_runtime.config import get_settings
+
+    path = Path(args.bundle)
+    if not path.is_file():
+        print(f"kantaq enroll import: no such file: {path}", file=sys.stderr)
+        return 1
+    data = path.read_bytes()  # unseal enforces the size cap
+    interactive = sys.stdin.isatty()
+    attempts = IMPORT_MAX_PASSCODE_ATTEMPTS if interactive else 1
+    payload: EnrollPayload | None = None
+    for attempt in range(1, attempts + 1):
+        if interactive:
+            passcode = getpass.getpass("passcode (from the owner, separate channel): ")
+        else:
+            passcode = sys.stdin.readline().strip()
+        try:
+            payload = unseal(data, passcode)
+            break
+        except BundleDecryptError as exc:
+            remaining = attempts - attempt
+            if not remaining:
+                print(f"kantaq enroll import: {exc}", file=sys.stderr)
+                return 1
+            print(f"{exc} — {remaining} attempt(s) left", file=sys.stderr)
+        except EnrollError as exc:  # structural — retrying cannot help
+            print(f"kantaq enroll import: {exc}", file=sys.stderr)
+            return 1
+    assert payload is not None  # the loop returned on exhaustion
+    settings = get_settings()
+    try:
+        result = import_enrollment(
+            payload,
+            local_db_path=settings.local_db_path,
+            keychain_dir=Path(settings.local_db_path).parent / "keychain",
+            env_path=Path(".env"),
+        )
+    except SyncBackendError as exc:
+        print(
+            f"kantaq enroll import: the backend refused the credential: {exc} — "
+            "nothing was changed (was this enrollment revoked or re-exported?)",
+            file=sys.stderr,
+        )
+        return 1
+    except httpx.HTTPError as exc:
+        print(
+            f"kantaq enroll import: cannot reach the backend: {exc} — nothing was changed",
+            file=sys.stderr,
+        )
+        return 1
+    except (EnrollError, IdentityError) as exc:
+        print(f"kantaq enroll import: {exc}", file=sys.stderr)
+        return 1
+    state = "already joined" if result.already_joined else "joined"
+    backup = f" (previous .env saved to {result.env_backup})" if result.env_backup else ""
+    print(
+        f"{state} {result.workspace_name!r} as {result.member_email} (member {result.member_id})",
+        file=sys.stderr,
+    )
+    print(
+        f".env updated: HUB_MODE=postgres + HUB_URL + HUB_TOKEN{backup}; device key "
+        "ensured and registered as a verification root",
+        file=sys.stderr,
+    )
+    print("next: kantaq sync once — then delete the .kqe file", file=sys.stderr)
+    return 0
+
+
+def _enroll_revoke(args: argparse.Namespace) -> int:
+    from kantaq.enroll import EnrollError, engine_for, revoke_enrollment
+    from kantaq_core.identity import IdentityError
+
+    if not args.database_url:
+        print(
+            "kantaq enroll revoke: KANTAQ_DATABASE_URL (or --database-url) is required — "
+            "revoke runs on the backend host, exactly like `seed`",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        member_id, already = revoke_enrollment(engine_for(args.database_url), email=args.email)
+    except (EnrollError, IdentityError) as exc:  # LastOwnerError is an IdentityError
+        print(f"kantaq enroll revoke: {exc}", file=sys.stderr)
+        return 1
+    if already:
+        print(f"member {member_id} ({args.email}) was already revoked", file=sys.stderr)
+        return 0
+    print(
+        f"revoked member {member_id} ({args.email}): every token, grant, and device is "
+        "dead; the server refuses the old credential within 5 s (NFR-E06-2)",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="kantaq", description="kantaq dev CLI")
     parser.add_argument("--version", action="version", version=f"kantaq {__version__}")
@@ -1210,6 +1415,64 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sync_sub.add_parser("once", help="run one push + pull cycle")
     sync_sub.add_parser("status", help="local sync state (no network)")
+
+    import os
+
+    enroll = sub.add_parser(
+        "enroll", help="encrypted one-shot team onboarding (docs/design/enroll.md)"
+    )
+    enroll.set_defaults(func=cmd_enroll)
+    enroll_sub = enroll.add_subparsers(dest="enroll_command", required=True)
+    enroll_export = enroll_sub.add_parser(
+        "export", help="provision a joiner + seal their credential bundle (backend host)"
+    )
+    enroll_export.add_argument("--email", required=True, help="the joiner's email")
+    enroll_export.add_argument(
+        "--workspace",
+        required=True,
+        help="workspace name or id (guards against provisioning into the wrong backend)",
+    )
+    enroll_export.add_argument(
+        "--hub-url",
+        required=True,
+        help="the sync-server URL the joiner will reach (http[s]://host:8889)",
+    )
+    enroll_export.add_argument(
+        "--ttl", default="30d", help="bundle validity: 30d, 12h, 45m, or seconds (default 30d)"
+    )
+    enroll_export.add_argument(
+        "--role",
+        default="Member",
+        choices=["Member", "Viewer", "Owner"],
+        help="the joiner's team role (default Member)",
+    )
+    enroll_export.add_argument(
+        "--backend",
+        default="self-host",
+        choices=["self-host", "supabase"],
+        help="self-host is supported; supabase is designed but deferred (DEBT-43)",
+    )
+    enroll_export.add_argument(
+        "--database-url",
+        default=os.environ.get("KANTAQ_DATABASE_URL"),
+        help="backend Postgres URL (defaults to KANTAQ_DATABASE_URL, like seed)",
+    )
+    enroll_export.add_argument(
+        "--out", default=None, help="output path (default: enroll-<joiner>.kqe)"
+    )
+    enroll_import = enroll_sub.add_parser(
+        "import", help="join a team backend from a sealed bundle (prompts for the passcode)"
+    )
+    enroll_import.add_argument("bundle", help="path to the .kqe bundle")
+    enroll_revoke = enroll_sub.add_parser(
+        "revoke", help="revoke an enrolled member: tokens + grants + devices, < 5 s"
+    )
+    enroll_revoke.add_argument("--email", required=True, help="the member's email")
+    enroll_revoke.add_argument(
+        "--database-url",
+        default=os.environ.get("KANTAQ_DATABASE_URL"),
+        help="backend Postgres URL (defaults to KANTAQ_DATABASE_URL, like seed)",
+    )
 
     return parser
 
