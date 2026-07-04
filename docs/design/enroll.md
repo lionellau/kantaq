@@ -331,6 +331,12 @@ spine's cross-member sync is the thing to fix next. **Split, and said so**
 member-event distribution fix is the follow-up that makes the second member's
 *pull* green.
 
+> **Closed** by the member-event distribution PR
+> ([docs/design/member-events.md](member-events.md)): the runtime announces
+> its own member row at boot (before the device event), the trust-root ingest
+> placeholders a legacy stream's missing member, and the live two-member
+> compose smoke that failed above now round-trips green in both directions.
+
 ## 10. Open questions for the maintainer (the design-OK checklist)
 
 1. PyNaCl promoted to a runtime dep of the umbrella package only — OK, or

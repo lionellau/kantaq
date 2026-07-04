@@ -18,7 +18,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlmodel import Session, SQLModel
+from sqlmodel import Session, SQLModel, select
 
 from kantaq_core.tracker.events import DomainEvent, fold_entity
 from kantaq_db import (
@@ -201,12 +201,50 @@ def ingest_trust_root(session: Session, collection: str, entity_id: str) -> None
     CapabilityGrantRow tables the verifier reads; keeping it a separate function
     is the seam the conflict engine needs and where a future roots-cache refresh
     would hook in.
+
+    Both trust roots carry an FK into ``members`` (``devices.member_id``,
+    ``capability_grants.subject``). A legacy stream holds device/grant events
+    whose member's announce arrives later or never (pre-DEBT-45 runtimes), so
+    the ingest satisfies the FK itself with a placeholder member the real
+    announce later folds over (docs/design/member-events.md §2b) — a missing
+    peer row must never wedge the pull.
     """
-    _fold_into(session, TRUST_ROOT_MODELS[collection], collection, entity_id)
+    state = _folded_state(session, collection, entity_id)
+    if state is not None:
+        ref_field = "member_id" if collection == "devices" else "subject"
+        _ensure_member_for_fk(session, state.get(ref_field))
+    _upsert_folded(session, TRUST_ROOT_MODELS[collection], collection, entity_id, state)
 
 
-def _fold_into(session: Session, model: type[SQLModel], collection: str, entity_id: str) -> None:
-    """Materialise one entity row as the fold of its (non-rejected) events."""
+def _ensure_member_for_fk(session: Session, member_id: Any) -> None:
+    """A placeholder ``members`` row for a trust root's FK (DEBT-45 §2b).
+
+    Display-honest minimums — ``email=""`` says "identity known, profile not
+    yet distributed"; the member's own announce event folds true fields over
+    it. Skips when the reference is absent/known, or when the replica has no
+    workspace yet (nothing enrolled — let the FK speak).
+    """
+    if not isinstance(member_id, str) or not member_id:
+        return
+    if session.get(Member, member_id) is not None:
+        return
+    workspace = session.exec(select(Workspace)).first()
+    if workspace is None:
+        return
+    session.add(
+        Member(
+            id=member_id,
+            workspace_id=workspace.id,
+            email="",
+            role="Member",
+            status="active",
+        )
+    )
+    session.flush()
+
+
+def _folded_state(session: Session, collection: str, entity_id: str) -> dict[str, Any] | None:
+    """One entity's current state as the fold of its (non-rejected) events."""
     domain_events = [
         DomainEvent(
             collection=row.collection,
@@ -218,7 +256,23 @@ def _fold_into(session: Session, model: type[SQLModel], collection: str, entity_
         )
         for row in entity_rows(session, collection, entity_id)
     ]
-    state = fold_entity(entity_id, domain_events)
+    return fold_entity(entity_id, domain_events)
+
+
+def _fold_into(session: Session, model: type[SQLModel], collection: str, entity_id: str) -> None:
+    """Materialise one entity row as the fold of its (non-rejected) events."""
+    _upsert_folded(
+        session, model, collection, entity_id, _folded_state(session, collection, entity_id)
+    )
+
+
+def _upsert_folded(
+    session: Session,
+    model: type[SQLModel],
+    collection: str,
+    entity_id: str,
+    state: dict[str, Any] | None,
+) -> None:
     existing = session.get(model, entity_id)
 
     if state is None:
