@@ -600,7 +600,12 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
     mine = [
         member
         for member in lookup_active_members(url, anon_key, current_token())
-        if member.email.lower() == email.lower()
+        # An Agent row on the backend carries its OWNER's sign-in email — that
+        # is what authorises the owner's session to push the agent's
+        # propose-first events through commit_events (is_self_in_workspace
+        # matches on email). An agent is never the acting member: skip it here,
+        # or a member who manifests their coding agent could no longer sync.
+        if member.email.lower() == email.lower() and member.role != "Agent"
     ]
     if not mine:
         print(
@@ -609,11 +614,22 @@ def _sync_once(url: str, anon_key: str, auth: SupabaseAuth, keychain: Keychain) 
             file=sys.stderr,
         )
         return 1
-    if len(mine) > 1:
-        workspaces = ", ".join(sorted(member.workspace_id for member in mine))
+    workspace_ids = sorted({member.workspace_id for member in mine})
+    if len(workspace_ids) > 1:
         print(
-            f"{email} is active in more than one workspace ({workspaces}); "
+            f"{email} is active in more than one workspace ({', '.join(workspace_ids)}); "
             "multi-workspace sync arrives after v0.0.5",
+            file=sys.stderr,
+        )
+        return 1
+    if len(mine) > 1:
+        # Same email twice in ONE workspace is a manifest mistake, not the
+        # multi-workspace limit — picking either row silently would attribute
+        # events to an arbitrary actor id.
+        print(
+            f"{email} has {len(mine)} active member rows in workspace "
+            f"{workspace_ids[0]}; fix the manifest so exactly one remains "
+            "(docs/setup-supabase.md, team manifest)",
             file=sys.stderr,
         )
         return 1
@@ -939,12 +955,28 @@ def _sync_status(settings: Settings) -> int:
     from kantaq_db import EventLog, SyncCursor
     from kantaq_db.session import get_engine
     from kantaq_runtime.auth import keychain_for
+    from kantaq_sync_engine.log import (
+        SYNC_STATE_PENDING,
+        SYNC_STATE_REBASE_REQUIRED,
+        SYNC_STATE_REJECTED,
+    )
 
     keychain = keychain_for(settings)
     email = keychain.get(SUPABASE_EMAIL_KEY)
     with Session(get_engine(_db_url())) as session:
+        # Count what the flush loop will actually push (sync_state 'pending',
+        # MOD-26 §B1) — the old `committed_rev IS NULL` query also counted
+        # terminal rejected/rebase_required rows as "awaiting push" forever.
         pending = session.exec(
-            select(func.count()).select_from(EventLog).where(col(EventLog.committed_rev).is_(None))
+            select(func.count())
+            .select_from(EventLog)
+            .where(col(EventLog.sync_state) == SYNC_STATE_PENDING)
+        ).one()
+        parked = session.exec(
+            select(func.count())
+            .select_from(EventLog)
+            .where(col(EventLog.committed_rev).is_(None))
+            .where(col(EventLog.sync_state).in_((SYNC_STATE_REJECTED, SYNC_STATE_REBASE_REQUIRED)))
         ).one()
         cursors = session.exec(select(SyncCursor)).all()
     print(f"hub_mode = {settings.hub_mode.value}")
@@ -954,6 +986,8 @@ def _sync_status(settings: Settings) -> int:
     else:
         print(f"session  = {email or '(not signed in)'}")
     print(f"pending  = {pending} event(s) awaiting push")
+    if parked:
+        print(f"parked   = {parked} event(s) in a terminal state (rejected/rebase_required)")
     for cursor in cursors:
         print(f"cursor   = {cursor.collection}: {cursor.acked_rev} (actor {cursor.actor_id})")
     return 0
