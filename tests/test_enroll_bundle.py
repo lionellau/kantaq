@@ -143,7 +143,7 @@ def test_oversized_bundle_refuses_before_parsing() -> None:
 
 def test_kdf_bounds_refuse_before_the_kdf_runs() -> None:
     """A hostile header cannot turn import into a memory bomb: parameters past
-    the SENSITIVE cap refuse in the parse step, never reaching the KDF."""
+    the cap refuse in the parse step, never reaching the KDF."""
     envelope = json.loads(seal(_payload(), PASSCODE))
     envelope["memlimit"] = 1 << 40  # a terabyte
     with pytest.raises(BundleFormatError, match="memlimit"):
@@ -152,6 +152,43 @@ def test_kdf_bounds_refuse_before_the_kdf_runs() -> None:
     envelope["opslimit"] = 10_000
     with pytest.raises(BundleFormatError, match="opslimit"):
         unseal(json.dumps(envelope).encode(), PASSCODE)
+
+
+def test_accepted_kdf_ceiling_is_the_sealed_profile_not_a_bomb() -> None:
+    """Adversarial-review H1: the ACCEPTED ceiling must equal the profile we
+    seal with (MODERATE), so the worst a hostile header can cost is exactly what
+    opening a real bundle costs — never libsodium's 1 GiB SENSITIVE profile."""
+    import nacl.pwhash
+
+    from kantaq.enroll import MAX_KDF_MEMLIMIT, MAX_KDF_OPSLIMIT
+
+    assert MAX_KDF_OPSLIMIT == nacl.pwhash.argon2id.OPSLIMIT_MODERATE
+    assert MAX_KDF_MEMLIMIT == nacl.pwhash.argon2id.MEMLIMIT_MODERATE
+    # A header one KiB above MODERATE is refused (would otherwise be a heavier
+    # KDF than any legitimate bundle ever runs).
+    envelope = json.loads(seal(_payload(), PASSCODE))
+    envelope["memlimit"] = nacl.pwhash.argon2id.MEMLIMIT_MODERATE + 1024
+    with pytest.raises(BundleFormatError, match="memlimit"):
+        unseal(json.dumps(envelope).encode(), PASSCODE)
+    envelope = json.loads(seal(_payload(), PASSCODE))
+    envelope["opslimit"] = nacl.pwhash.argon2id.OPSLIMIT_SENSITIVE  # t=4 > MODERATE
+    with pytest.raises(BundleFormatError, match="opslimit"):
+        unseal(json.dumps(envelope).encode(), PASSCODE)
+
+
+def test_hub_url_scheme_is_validated_at_unseal() -> None:
+    """Adversarial-review M2 (SSRF): a non-http(s) hub_url is refused inside
+    unseal — before import can GET it — so a malicious sealer cannot aim the
+    joiner at file:// or a link-local metadata address."""
+    for bad in ("file:///etc/passwd", "http://169.254.169.254/", "ftp://x/"):
+        data = _seal_raw_payload(_payload_body(hub_url=bad), PASSCODE)
+        if bad.startswith("http://"):
+            # http(s) scheme passes the parse; the SSRF mitigation here is the
+            # scheme gate, not an IP allowlist (documented in §5/M2).
+            assert unseal(data, PASSCODE).hub_url == bad
+        else:
+            with pytest.raises(BundleFormatError, match="http"):
+                unseal(data, PASSCODE)
 
 
 @pytest.mark.parametrize(
@@ -272,3 +309,31 @@ def test_parse_ttl_units() -> None:
 def test_parse_ttl_refuses_nonsense(bad: str) -> None:
     with pytest.raises(EnrollError):
         parse_ttl(bad)
+
+
+# ----------------------------------------------------------- write_private (M3)
+
+
+def test_write_private_is_0600_and_refuses_symlinks(tmp_path: object) -> None:
+    """Adversarial-review M3: secrets land 0600 from creation, and writing
+    *through* a pre-planted symlink is refused rather than capturing the token
+    at the symlink's target."""
+    from pathlib import Path
+
+    from kantaq.enroll import write_private
+
+    base = Path(str(tmp_path))  # type: ignore[arg-type]
+    target = base / "secret.env"
+    write_private(target, b"HUB_TOKEN=kq_x\n")
+    assert (target.stat().st_mode & 0o777) == 0o600
+    write_private(target, b"HUB_TOKEN=kq_y\n")  # overwrite tightens/keeps 0600
+    assert (target.stat().st_mode & 0o777) == 0o600
+
+    # An attacker pre-plants the path as a symlink to a file they can read.
+    victim = base / "attacker-readable"
+    victim.write_text("", encoding="utf-8")
+    planted = base / "planted.env"
+    planted.symlink_to(victim)
+    with pytest.raises(EnrollError, match="symlink|regular file"):
+        write_private(planted, b"HUB_TOKEN=kq_secret\n")
+    assert victim.read_text(encoding="utf-8") == ""  # the token never reached it

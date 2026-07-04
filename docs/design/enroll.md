@@ -117,8 +117,12 @@ Consequences, by construction:
   applied to the envelope.
 - **Bounded inputs** (the codec's adversarial-hardening rule, applied here):
   the file is capped at 64 KiB, and the header's KDF parameters are capped at
-  libsodium's SENSITIVE profile — a hostile header cannot turn `import` into a
-  memory/CPU bomb, because the bound check runs *before* the KDF does.
+  **exactly the MODERATE profile we seal with** (t=3, 256 MiB), checked *before*
+  the KDF runs. The cap is MODERATE, not SENSITIVE, on purpose (adversarial
+  review H1): accepting a heavier header bought nothing — `seal` only ever
+  emits MODERATE — and would let a hostile file run a ~1 GiB / ~20 s Argon2id
+  the joiner never asked for. Capped at MODERATE, the worst an attacker's header
+  can cost is exactly what opening a legitimate bundle costs.
 - **One spelling per statement, byte-level.** The exhaustive bit-flip test
   found two benign malleabilities on its first run and the format closes both:
   `memlimit` must be a multiple of 1024 (libsodium rounds to 1 KiB granularity,
@@ -249,8 +253,12 @@ enroll side effect — and a token minted for one would be dead on arrival, sinc
 (`LastOwnerError`, unchanged).
 
 Import's write sequence is: decrypt → validate → **preflight `/v1/me`** →
-adopt identity → keychain token → device identity → `.env` — network and
-identity checks come before the first byte of local state changes.
+adopt identity → keychain token → device identity → `.env` — the network and
+identity checks come before **any credential, identity, or config is written**,
+so a forged/expired/mismatched bundle touches no disk. (The schema-ensure that
+follows the checks may create an empty replica file — not secret state — and
+every later step is idempotent, so a mid-way refusal like `adopt_owner`'s
+re-home guard is fixed by re-running the import.)
 
 ## 8. Out of scope (recorded, not hidden)
 

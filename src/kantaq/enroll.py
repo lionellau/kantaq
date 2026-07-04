@@ -57,10 +57,19 @@ KEY_BYTES = nacl.secret.SecretBox.KEY_SIZE  # 32
 # Bounded inputs (the canonical codec's adversarial-hardening rule, applied to
 # this envelope): the file is tiny by construction, and a hostile header must
 # not be able to turn import into a memory/CPU bomb — the caps are checked
-# BEFORE the KDF runs. SENSITIVE is libsodium's heaviest published profile.
+# BEFORE the KDF runs.
+#
+# The accepted ceiling is EXACTLY the profile we seal with (MODERATE: t=3,
+# 256 MiB), NOT SENSITIVE (t=4, 1 GiB). Accepting up to SENSITIVE bought nothing
+# — ``seal`` only ever emits MODERATE or the test MIN — and let a hostile file
+# make ``import`` run a heavier Argon2id than any real bundle ever would (~1 GiB
+# / ~20 s × the attempt loop; adversarial-review H1). Capping at MODERATE means
+# the worst an attacker's header can cost is exactly what opening a legitimate
+# bundle costs. To retune the sealing cost later, raise ``_kdf_profile`` AND
+# these caps together (a deliberate, tested one-liner — never a silent bomb).
 MAX_BUNDLE_BYTES = 64 * 1024
-MAX_KDF_OPSLIMIT = nacl.pwhash.argon2id.OPSLIMIT_SENSITIVE
-MAX_KDF_MEMLIMIT = nacl.pwhash.argon2id.MEMLIMIT_SENSITIVE
+MAX_KDF_OPSLIMIT = nacl.pwhash.argon2id.OPSLIMIT_MODERATE
+MAX_KDF_MEMLIMIT = nacl.pwhash.argon2id.MEMLIMIT_MODERATE
 
 # Test-only KDF profile, selected by the SAME switch as token hashing
 # (DEBT-18, set only by the root conftest.py): the suite must not be dominated
@@ -268,6 +277,14 @@ def _parse_payload(plaintext: bytes) -> EnrollPayload:
     for key in _PAYLOAD_INT_FIELDS:
         if not isinstance(body[key], int) or isinstance(body[key], bool):
             raise BundleFormatError(f"payload field {key} must be an integer")
+    # SSRF hardening (adversarial-review M2): ``import`` GETs ``hub_url/v1/me``
+    # before any identity check can matter, so a malicious sealer could aim the
+    # joiner at a ``file://`` or link-local metadata URL. Enforce the http(s)
+    # scheme HERE, at unseal — the CLI's export-side check does not protect the
+    # importer. (The export CLI validates its own ``--hub-url`` too, defence in
+    # depth.)
+    if not body["hub_url"].startswith(("http://", "https://")):
+        raise BundleFormatError("hub_url must be an http(s) URL")
     if body["expires_at"] <= body["issued_at"]:
         raise BundleFormatError("payload validity is inverted (expires_at <= issued_at)")
     if body["backend_mode"] != BACKEND_MODE_POSTGRES:
@@ -463,8 +480,20 @@ def write_private(path: Path, data: bytes) -> None:
     ``write_bytes`` + ``chmod`` would leave a umask-permissions window between
     creation and the chmod; opening with the mode closes it. An existing file
     is re-chmodded so a previously looser file tightens rather than persists.
+
+    ``O_NOFOLLOW`` refuses to write a secret *through* a symlink (adversarial-
+    review M3): an attacker who can pre-plant ``.env`` (or the backup path) as a
+    symlink to a file they can read must not capture the token. A symlinked
+    target raises a clear :class:`EnrollError` rather than silently writing
+    through it.
     """
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags, 0o600)
+    except OSError as exc:
+        raise EnrollError(
+            f"refusing to write {path}: not a regular file (a symlink?) — {exc.strerror}"
+        ) from exc
     with os.fdopen(fd, "wb") as handle:
         handle.write(data)
     path.chmod(0o600)
@@ -486,9 +515,15 @@ def _write_env(env_path: Path, *, hub_url: str, hub_token: str) -> tuple[Path, P
     lines: list[str] = []
     if env_path.exists():
         original = env_path.read_text(encoding="utf-8")
-        backup = env_path.with_name(
-            f"{env_path.name}.bak-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
-        )
+        # Collision-safe backup name: the timestamp is second-granular, so two
+        # imports in the same second would otherwise clobber the first backup
+        # (adversarial-review M3). Append a counter until the name is free.
+        stamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+        backup = env_path.with_name(f"{env_path.name}.bak-{stamp}")
+        counter = 1
+        while backup.exists():
+            counter += 1
+            backup = env_path.with_name(f"{env_path.name}.bak-{stamp}-{counter}")
         write_private(backup, original.encode("utf-8"))
         for line in original.splitlines():
             key = line.split("=", 1)[0].strip()
@@ -516,9 +551,12 @@ def import_enrollment(
     schema (a fresh replica migrates via the normal ``kantaq db migrate`` path;
     a non-empty replica on a stale schema refuses rather than silently
     upgrading) → adopt identity → park the runtime token → ensure the device
-    keypair + verification root → write ``.env``. Network and identity checks
-    all run before the first byte of local state changes; every step after
-    them is idempotent, so a partial failure is fixed by re-running the import.
+    keypair + verification root → write ``.env``. The network + identity checks
+    run before **any credential, identity, or config is written** — a
+    forged/expired/mismatched bundle touches no disk. The schema-ensure that
+    follows them may create an empty replica file (SQLite opens it on connect);
+    that is not secret state, and every step after the checks is idempotent, so
+    a partial failure (e.g. an ``adopt_owner`` refusal) is fixed by re-running.
     """
     from sqlalchemy import inspect as sa_inspect
     from sqlmodel import Session
