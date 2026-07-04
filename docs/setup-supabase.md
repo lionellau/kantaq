@@ -137,8 +137,13 @@ This backend manifest stays a **maintainer step in v0.0.5**. The shipped
 **Settings → Members** UI (E21) invites, lists, revokes, and rotates each
 member's *local runtime token* — it does not reach into your Supabase project,
 so seeding the backend `members` rows and the Auth users above is still done
-here by hand. A wizard that drives both sides is a later release; the manifest
-is the documented v0.0.5 path.
+here by hand. The wizard that drives both sides now exists for the
+**self-hosted backend**: [`kantaq enroll`](design/enroll.md) packages
+provisioning + credential + join into one encrypted bundle
+([setup-self-hosted.md §2](setup-self-hosted.md)). Extending it to Supabase is
+designed but deferred (DEBT-43 — the magic-link session-expiry problem is
+spelled out in [the design doc §6](design/enroll.md#6-backends)); until then
+this manifest is the documented Supabase path.
 
 ## 8. Syncing (E24-T4)
 

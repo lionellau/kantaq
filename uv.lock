@@ -655,6 +655,7 @@ dependencies = [
     { name = "kantaq-mcp" },
     { name = "kantaq-protocol" },
     { name = "kantaq-sync-engine" },
+    { name = "pynacl" },
 ]
 
 [package.dev-dependencies]
@@ -682,6 +683,7 @@ requires-dist = [
     { name = "kantaq-mcp", editable = "packages/mcp" },
     { name = "kantaq-protocol", editable = "packages/protocol" },
     { name = "kantaq-sync-engine", editable = "packages/sync_engine" },
+    { name = "pynacl", specifier = ">=1.5" },
 ]
 
 [package.metadata.requires-dev]

@@ -15,6 +15,10 @@ dependencies = [
     "kantaq-local-runtime",
     "kantaq-backend-supabase",
     "kantaq-backend-postgres",
+    # The enroll bundle lockbox (argon2id passcode KDF + SecretBox; docs/design/
+    # enroll.md §3). Umbrella-only on purpose: protocol/core keep their
+    # pyca-cryptography-only production surface.
+    "pynacl>=1.5",
 ]
 
 [project.scripts]

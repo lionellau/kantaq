@@ -57,21 +57,51 @@ Caddy obtains and renews a Let's Encrypt certificate automatically and adds HSTS
 The full TLS and secret-hygiene posture is in the
 [operator reference](../docker/self-hosted-backend/README.md#tls--secret-hygiene-hardening-e25-t4).
 
-## 2. Mint a token and join from your runtime
+## 2. Enroll yourself and join from your runtime
 
 The backend authenticates every write with a normal kantaq **member token** (no
-JWT, no RLS — the validator core authorizes each write). Mint a founding member
-**inside the running container** (it already holds the database connection):
+JWT, no RLS — the validator core authorizes each write). The recommended path
+is **`kantaq enroll`** — one encrypted bundle + one passcode, no `.env`
+editing, no token paste ([docs/design/enroll.md](design/enroll.md)):
+
+```bash
+# on the backend host (the container already holds the database connection):
+docker compose exec sync-server \
+  uv run kantaq enroll export --email you@team.dev --workspace "Acme" \
+    --hub-url http://your-host:8889 --out /tmp/enroll-you.kqe
+docker compose cp sync-server:/tmp/enroll-you.kqe .
+```
+
+`export` provisions the member, seals their token into `enroll-you.kqe`, and
+prints a one-time **passcode**. Move the file to the machine that will run
+kantaq, then:
+
+```bash
+kantaq enroll import enroll-you.kqe    # prompts for the passcode
+kantaq sync status                     # prints the hub + negotiated versions
+kantaq sync once                       # one push + pull through your server
+```
+
+`import` decrypts the bundle, adopts the seeded member as this runtime's
+identity, registers your device key as a verification root, and writes the
+`HUB_*` lines into `.env` itself. Run it on a **fresh** runtime (it refuses to
+re-home one that already has an identity — use a fresh `LOCAL_DB_PATH`).
+Delete the `.kqe` after import; it is gitignored either way. When you send a
+bundle to someone else, the file and the passcode travel over **different
+channels** — a leaked file alone reveals nothing.
+
+<details>
+<summary><b>The manual path</b> (what <code>enroll</code> automates — still supported)</summary>
+
+Mint a founding member inside the running container:
 
 ```bash
 docker compose exec sync-server \
   uv run python -m kantaq_backend_postgres.seed --email you@team.dev --workspace "Acme"
 ```
 
-It prints a `member:` id and a `kq_…` **token** — copy the token.
-
-Now point a **fresh** runtime at the backend. Set these in the **runtime's**
-`.env` — the one at the kantaq repo root, *not* the
+It prints a `member:` id and a `kq_…` **token** — copy the token. Set these in
+the **runtime's** `.env` — the one at the kantaq repo root, *not* the
 `docker/self-hosted-backend/.env` you edited in Step 1:
 
 ```
@@ -93,6 +123,8 @@ kantaq sync once       # one push + pull through your self-hosted server
 > `login` establishes your local identity **as** that member. If a runtime
 > already has its own identity, join from a fresh `LOCAL_DB_PATH` instead (the
 > command will say so).
+
+</details>
 
 ## 3. Connect an agent over stdio
 
@@ -129,20 +161,24 @@ nothing more.
 ## 4. Invite your teammates
 
 There is **no shared app instance**. Each teammate runs their own kantaq runtime
-and points it at the same `HUB_URL` with their own member token. To add one:
+and points it at the same `HUB_URL` with their own member token. To add one,
+**export an enrollment bundle** on the backend host:
 
-- **From the UI:** Settings → **Members** → **Invite**. Pick a role (*Agent* for
-  an AI, *Member* / *Viewer* for people); they get a one-time invite token.
-- **From the CLI** on the backend host:
-  `python -m kantaq_backend_postgres.seed --email teammate@team.dev` mints a
-  member token directly.
+```bash
+docker compose exec sync-server \
+  uv run kantaq enroll export --email teammate@team.dev --workspace "Acme" \
+    --hub-url http://your-host:8889 --out /tmp/enroll-teammate.kqe
+docker compose cp sync-server:/tmp/enroll-teammate.kqe .
+```
 
-Each member then sets the same `HUB_MODE` / `HUB_URL` from Step 2 with their own
-`HUB_TOKEN`, and runs `kantaq sync once`. Revoke or rotate access anytime from
-Settings → Members (or rotate your own token with `kantaq token rotate`) —
-revocation takes effect within the kill-switch budget, and rotating a token also
-revokes that member's capability grants, so a leaked token can't be re-paired
-with a live grant.
+Send the teammate the `.kqe` file and the passcode over **different channels**;
+they run `kantaq enroll import enroll-teammate.kqe` and then `kantaq sync once`
+— fully set up, no `.env` editing, no token paste, no email, no SQL. Re-running
+`export` for the same email **rotates** their credential (the old bundle dies);
+`kantaq enroll revoke --email teammate@team.dev` kills their token, grants, and
+device roots within the 5 s budget. (The pre-enroll path — `seed` + hand-edited
+`.env` + `kantaq sync login` — is in Step 2's manual fold-out, and Settings →
+**Members** still invites, lists, revokes, and rotates local runtime tokens.)
 
 ## Notifications — opt-in, rolling out in v0.3
 

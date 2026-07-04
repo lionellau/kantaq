@@ -50,3 +50,6 @@ web/e2e/.e2e-shots/
 web/playwright-report/
 web/test-results/
 .gstack/
+
+# enroll credential bundles (docs/design/enroll.md) — never commit one
+*.kqe
