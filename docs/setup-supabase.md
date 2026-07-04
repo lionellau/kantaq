@@ -115,6 +115,18 @@ insert into members (id, created_at, updated_at, actor_seq, visibility,
   hosting_mode, retention_policy, workspace_id, email, role, status)
 values ('<member-ulid>', now(), now(), 0, 'team', 'plain', 'standard',
         '<workspace-ulid>', 'person@team.dev', 'Member', 'active');
+
+-- One row per CODING AGENT a member runs (Settings → My Agent / Members,
+-- role Agent). Reuse the agent's LOCAL member id, but put the OWNER's
+-- sign-in email on the row: that email match is what authorises the owner's
+-- session to push the agent's propose-first events (comments, proposals)
+-- through the commit RPC — without it the agent's events poison every push
+-- with policy_denied. The acting-member resolver skips Agent rows, so this
+-- never collides with the owner's own row.
+insert into members (id, created_at, updated_at, actor_seq, visibility,
+  hosting_mode, retention_policy, workspace_id, email, role, status)
+values ('<agent-member-ulid>', now(), now(), 0, 'team', 'plain', 'standard',
+        '<workspace-ulid>', 'person@team.dev', 'Agent', 'active');
 ```
 
 Each teammate also needs a Supabase Auth user for the magic link: dashboard →

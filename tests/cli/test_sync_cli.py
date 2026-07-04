@@ -55,9 +55,11 @@ class StubAuth:
         return self.session
 
 
-def _member(member_id: str, workspace_id: str, email: str = "dev@team.dev") -> SyncMember:
+def _member(
+    member_id: str, workspace_id: str, email: str = "dev@team.dev", role: str = "Member"
+) -> SyncMember:
     return SyncMember(
-        id=member_id, workspace_id=workspace_id, email=email, role="Member", status="active"
+        id=member_id, workspace_id=workspace_id, email=email, role=role, status="active"
     )
 
 
@@ -146,6 +148,66 @@ def test_once_refuses_multi_workspace_membership(
     assert "more than one workspace" in capsys.readouterr().err
 
 
+def test_once_skips_agent_rows_when_resolving_the_acting_member(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An Agent row carries its owner's email (that is what lets the owner push
+    the agent's events) — it must never be picked as the acting member. With
+    ONLY the agent row present, resolution fails closed as 'no member row'."""
+    monkeypatch.setattr(
+        "kantaq_backend_supabase.lookup_active_members",
+        lambda *a, **k: [_member("mbr_agent", "ws_1", role="Agent")],
+    )
+    rc = _sync_once(URL, "anon", StubAuth(), _keychain_with_session())  # type: ignore[arg-type]
+    assert rc == 1
+    assert "ask the maintainer" in capsys.readouterr().err
+
+
+class _ResolvedPastGuards(Exception):
+    """Sentinel: raised from the first post-resolution seam so the guard tests
+    can pin 'resolution succeeded' without touching a database or the network."""
+
+
+def test_once_tolerates_an_agent_row_beside_the_owner_in_one_workspace(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Owner row + their agent's row in the SAME workspace is the manifested-
+    agent baseline — it must not trip the multi-workspace or duplicate-row
+    refusals. The acting member resolves to the human row."""
+    monkeypatch.setattr(
+        "kantaq_backend_supabase.lookup_active_members",
+        lambda *a, **k: [
+            _member("mbr_1", "ws_1"),
+            _member("mbr_agent", "ws_1", role="Agent"),
+        ],
+    )
+
+    def _stop(inner: object, **kwargs: object) -> object:
+        assert kwargs["actor_id"] == "mbr_1"  # the human row, never the agent's
+        raise _ResolvedPastGuards
+
+    monkeypatch.setattr("kantaq.cli._verifying_backend", _stop)
+    with pytest.raises(_ResolvedPastGuards):
+        _sync_once(URL, "anon", StubAuth(), _keychain_with_session())  # type: ignore[arg-type]
+    err = capsys.readouterr().err
+    assert "more than one workspace" not in err
+    assert "active member rows in workspace" not in err
+
+
+def test_once_refuses_duplicate_member_rows_in_one_workspace(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Two ACTIVE human rows with one email in one workspace is a manifest
+    mistake: picking either silently would mis-attribute every pushed event."""
+    monkeypatch.setattr(
+        "kantaq_backend_supabase.lookup_active_members",
+        lambda *a, **k: [_member("mbr_1", "ws_1"), _member("mbr_dup", "ws_1")],
+    )
+    rc = _sync_once(URL, "anon", StubAuth(), _keychain_with_session())  # type: ignore[arg-type]
+    assert rc == 1
+    assert "active member rows in workspace" in capsys.readouterr().err
+
+
 # ------------------------------------------------------------------ status
 
 
@@ -168,6 +230,57 @@ def test_status_reports_locally_without_network(
     assert "hub_mode = supabase" in out
     assert "(not signed in)" in out
     assert "pending  = 0 event(s)" in out
+
+
+def test_status_counts_flushable_pending_and_parks_terminal_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``pending`` counts what the flush loop will actually push (sync_state
+    'pending'); a terminal rejected/rebase_required row is reported as parked,
+    not 'awaiting push' forever (it never re-enters the outbox)."""
+    from datetime import datetime
+
+    from sqlmodel import Session as DbSession
+
+    from kantaq_db import EventLog
+
+    db_path = tmp_path / "data" / "local.sqlite"
+    db_path.parent.mkdir(parents=True)
+    engine = create_engine(f"sqlite:///{db_path}")
+    SQLModel.metadata.create_all(engine)
+
+    def _event(event_id: str, seq: int, state: str, committed_rev: int | None) -> EventLog:
+        return EventLog(
+            event_id=event_id.ljust(26, "0"),
+            collection="tickets",
+            entity_id="tkt_status_fixture".ljust(26, "0"),
+            actor_id="mbr_status_fixture".ljust(26, "0"),
+            actor_seq=seq,
+            op="patch",
+            payload={},
+            created_at=datetime(2026, 1, 1),
+            sync_state=state,
+            committed_rev=committed_rev,
+        )
+
+    with DbSession(engine) as db:
+        db.add(_event("evt_pending", 1, "pending", None))
+        db.add(_event("evt_parked", 2, "rejected", None))
+        db.add(_event("evt_done", 3, "committed", 7))
+        db.commit()
+
+    monkeypatch.chdir(tmp_path)  # away from any developer .env
+    monkeypatch.setenv("HUB_MODE", "supabase")
+    monkeypatch.setenv("LOCAL_DB_PATH", str(db_path))
+    monkeypatch.setenv("KANTAQ_DB_URL", f"sqlite:///{db_path}")
+
+    assert main(["sync", "status"]) == 0
+
+    out = capsys.readouterr().out
+    assert "pending  = 1 event(s) awaiting push" in out
+    assert "parked   = 1 event(s) in a terminal state" in out
 
 
 # -------------------------------------------------- postgres join (DEBT-42)
