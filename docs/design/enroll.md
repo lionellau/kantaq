@@ -119,6 +119,13 @@ Consequences, by construction:
   the file is capped at 64 KiB, and the header's KDF parameters are capped at
   libsodium's SENSITIVE profile — a hostile header cannot turn `import` into a
   memory/CPU bomb, because the bound check runs *before* the KDF does.
+- **One spelling per statement, byte-level.** The exhaustive bit-flip test
+  found two benign malleabilities on its first run and the format closes both:
+  `memlimit` must be a multiple of 1024 (libsodium rounds to 1 KiB granularity,
+  so `8192` and `9000` would otherwise derive the same key), and the ciphertext
+  must be *canonical* base64 (Python's decoder ignores the final group's
+  trailing bits, so a flipped bit there would decode identically). With those,
+  the claim is exact: **no flipped bit anywhere in the file still opens.**
 - **Timestamps are integer unix seconds**, like grant validity — no datetime
   formatting ambiguity.
 

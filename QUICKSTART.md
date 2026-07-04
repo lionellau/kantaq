@@ -204,6 +204,12 @@ member's **local runtime token**; their backend identity (the row that Row Level
 Security checks during sync) is seeded once by the maintainer in the Supabase
 manifest — see [docs/setup-supabase.md](docs/setup-supabase.md).
 
+**Self-hosting?** Team onboarding is one command each way: the owner runs
+`kantaq enroll export` (an encrypted `.kqe` bundle + a one-time passcode), the
+joiner runs `kantaq enroll import` — no `.env` editing, no token paste, no
+email, no SQL. See [docs/setup-self-hosted.md](docs/setup-self-hosted.md) and
+the design doc at [docs/design/enroll.md](docs/design/enroll.md).
+
 ## Troubleshooting
 
 | Symptom | Fix |

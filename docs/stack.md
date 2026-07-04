@@ -341,6 +341,12 @@ Golden-rule re-run 2026-06 for the v0.2 offline-first + conflict layer (original
 | Outbound notification dispatch (E20-T8 / MOD-12) | **httpx** (already a dependency) + a ~40-line retry/dead-letter | The content-free discipline is the MOD-25 telemetry seam; the config is the existing `LocalSetting` KV; the POST uses the already-vendored `httpx`; the bounded-retry shape mirrors the sync engine's `Backoff`. The only genuinely new bit — a webhook retry/dead-letter helper — is ~40 lines of stdlib over a local table; no OSS (e.g. tenacity ~6k★) clears the cost/benefit bar for that little, and a queue/worker framework (celery/dramatiq) is far over-scoped for a post-response BackgroundTask. **No new dep.** |
 | Dual-transport discovery (E09-T5 / MOD-08/13) | **reuse** the E09-T4 stdio transport + the official MCP SDK | The snippet generator just emits a second (stdio) config block; both transports already route through one `Gateway.session_for` + `handle_call`. **No new dep.** |
 
+### `kantaq enroll` (v0.3) — the encrypted onboarding bundle
+
+| Need | Chosen | Notes |
+|---|---|---|
+| Passcode-sealed credential lockbox (`.kqe`, [docs/design/enroll.md](design/enroll.md)) | **PyNaCl** (libsodium): `pwhash.argon2id.kdf` + `SecretBox` (XSalsa20-Poly1305) | Golden-rule run 2026-07. **No new library enters the tree**: `pynacl>=1.5` (Apache-2.0) was already pinned as the D-11 second-Ed25519 cross-check; this promotes it from the dev group to a runtime dep of the **umbrella package only** — `packages/protocol` / `packages/core` keep their pyca-`cryptography`-only production surface, and the protocol's signing stack is untouched. Candidates: (1) **PyNaCl** — libsodium's exact intended password-lockbox pairing (memory-hard KDF → authenticated secretbox), misuse-resistant, pyca-maintained (the same org as `cryptography`) — **chosen**; (2) **pyca `cryptography`** `Argon2id` + `AESGCM` — already a runtime dep, but the KDF→AEAD glue (salt/nonce/params discipline) would be hand-assembled where libsodium ships it as one unit; the format is deliberately library-neutral so the maintainer can swap to this without a format break (design doc §3, an open review question); (3) **Fernet** — AES-CBC+HMAC with no password-KDF pairing, wrong shape; (4) **age/rage** — a CLI/file format, not a library dependency. The bundle signs/verifies nothing (transport confidentiality for a credential), so it deliberately lives **outside** `packages/protocol`. |
+
 ## Consequences
 
 - Two toolchains in CI (Python + web). Keep total CI **under 10 minutes**
