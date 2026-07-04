@@ -140,7 +140,7 @@ def test_cli_export_provisions_and_seals_end_to_end(
             "--workspace",
             "Acme",
             "--hub-url",
-            "http://hub.internal:8889",
+            "https://hub.internal:8889",
             "--ttl",
             "7d",
             "--database-url",
@@ -155,7 +155,7 @@ def test_cli_export_provisions_and_seals_end_to_end(
     assert match is not None
     payload = unseal(out.read_bytes(), match.group(1))
     assert payload.member_email == JOINER
-    assert payload.hub_url == "http://hub.internal:8889"
+    assert payload.hub_url == "https://hub.internal:8889"
     assert payload.hub_token.startswith("kq_")
     assert payload.hub_token not in printed  # the token is sealed, never shown
     assert (out.stat().st_mode & 0o777) == 0o600
@@ -413,6 +413,63 @@ def test_cli_import_tampered_bundle_fails_closed(
     rc = cli_main(["enroll", "import", str(bundle)])
     assert rc == 1
     assert list(workdir.iterdir()) == []
+
+
+def test_cli_export_passcode_file_keeps_it_off_the_terminal(
+    pg_engine: Engine, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Follow-up #8: --passcode-file writes the passcode to a 0600 file and does
+    NOT print it to stdout (avoids scrollback / CI logs)."""
+    pf = tmp_path / "pass.txt"
+    rc = cli_main(
+        [
+            "enroll",
+            "export",
+            "--email",
+            JOINER,
+            "--workspace",
+            "Acme",
+            "--hub-url",
+            "https://hub.internal:8889",
+            "--database-url",
+            _pg_url(pg_engine),
+            "--out",
+            str(tmp_path / "j.kqe"),
+            "--passcode-file",
+            str(pf),
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    passcode = pf.read_text(encoding="utf-8").strip()
+    assert passcode and passcode not in out  # the code is in the file, not on screen
+    assert (pf.stat().st_mode & 0o777) == 0o600
+
+
+def test_cli_export_refuses_plaintext_remote_hub(
+    pg_engine: Engine, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Follow-up #4: exporting a bundle that points at a plaintext-http remote is
+    refused, so no token-leaking bundle is ever minted."""
+    rc = cli_main(
+        [
+            "enroll",
+            "export",
+            "--email",
+            JOINER,
+            "--workspace",
+            "Acme",
+            "--hub-url",
+            "http://hub.acme.example:8889",
+            "--database-url",
+            _pg_url(pg_engine),
+            "--out",
+            str(tmp_path / "j.kqe"),
+        ]
+    )
+    assert rc == 1
+    assert "https is required" in capsys.readouterr().err
+    assert not (tmp_path / "j.kqe").exists()
 
 
 def test_cli_export_refuses_the_deferred_supabase_backend(

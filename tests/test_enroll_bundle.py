@@ -311,6 +311,138 @@ def test_parse_ttl_refuses_nonsense(bad: str) -> None:
         parse_ttl(bad)
 
 
+def test_default_ttls_are_short() -> None:
+    """Follow-up #2/#7: a .kqe self-expires fast by default; Owner even faster."""
+    from kantaq.enroll import DEFAULT_OWNER_TTL, DEFAULT_TTL, parse_ttl
+
+    assert parse_ttl(DEFAULT_TTL) == 48 * 3600
+    assert parse_ttl(DEFAULT_OWNER_TTL) == 24 * 3600
+    assert parse_ttl(DEFAULT_OWNER_TTL) < parse_ttl(DEFAULT_TTL)
+
+
+# ------------------------------------------------ https-for-remote (#4)
+
+
+def test_require_secure_hub_url_allows_https_and_loopback_http() -> None:
+    from kantaq.enroll import require_secure_hub_url
+
+    for ok in (
+        "https://hub.acme.example",
+        "https://hub.acme.example:8889",
+        "http://127.0.0.1:8889",
+        "http://localhost:3939",
+        "http://[::1]:8889",
+    ):
+        require_secure_hub_url(ok)  # must not raise
+
+
+def test_require_secure_hub_url_refuses_plaintext_remote() -> None:
+    """The token rides the Authorization header, so http to a remote host would
+    leak a live credential on the wire — refuse it."""
+    from kantaq.enroll import require_secure_hub_url
+
+    for bad in (
+        "http://hub.acme.example:8889",
+        "http://10.0.0.5",
+        "http://169.254.169.254",
+        "ftp://hub",
+    ):
+        with pytest.raises(EnrollError, match="https is required|insecure"):
+            require_secure_hub_url(bad)
+
+
+# --------------------------------------------- .env cwd guard (#6) + delete (#3)
+
+
+def test_env_guard_adds_env_to_gitignore_in_a_repo(tmp_path: object) -> None:
+    """Follow-up #6: importing into a git repo self-protects — `.env` gets
+    gitignored so the token can't be committed."""
+    from pathlib import Path
+
+    from kantaq.cli import _guard_env_location
+
+    base = Path(str(tmp_path))  # type: ignore[arg-type]
+    (base / ".git").mkdir()
+    (base / ".env").write_text("HUB_TOKEN=kq_x\n", encoding="utf-8")
+    _guard_env_location(base / ".env")
+    gitignore = (base / ".gitignore").read_text(encoding="utf-8")
+    assert ".env" in gitignore
+
+    # Idempotent: already-ignored → no duplicate append.
+    _guard_env_location(base / ".env")
+    assert (base / ".gitignore").read_text(encoding="utf-8").count("\n.env\n") <= 1
+
+
+def test_env_guard_is_noop_outside_a_repo(tmp_path: object) -> None:
+    from pathlib import Path
+
+    from kantaq.cli import _guard_env_location
+
+    base = Path(str(tmp_path))  # type: ignore[arg-type]
+    (base / ".env").write_text("HUB_TOKEN=kq_x\n", encoding="utf-8")
+    _guard_env_location(base / ".env")  # must not raise, must not create a .gitignore
+    assert not (base / ".gitignore").exists()
+
+
+def _fake_import_result(env_path: object) -> object:
+    from kantaq.enroll import ImportResult
+
+    return ImportResult(
+        member_id="mbr_x".ljust(26, "0"),
+        member_email="joiner@acme.dev",
+        workspace_name="Acme",
+        already_joined=False,
+        env_path=env_path,  # type: ignore[arg-type]
+        env_backup=None,
+    )
+
+
+def test_cli_import_deletes_the_bundle_on_success(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Follow-up #3: a successful import deletes the .kqe so a live credential
+    can't linger. import_enrollment is faked (no network)."""
+    import io
+    from pathlib import Path
+
+    from kantaq.cli import main as cli_main
+
+    base = Path(str(tmp_path))  # type: ignore[arg-type]
+    bundle = base / "joiner.kqe"
+    bundle.write_bytes(seal(_payload(), PASSCODE))
+    monkeypatch.chdir(base)
+    monkeypatch.setattr(
+        "kantaq.enroll.import_enrollment",
+        lambda payload, **kw: _fake_import_result(base / ".env"),
+    )
+    monkeypatch.setattr("sys.stdin", io.StringIO(f"{PASSCODE}\n"))
+    rc = cli_main(["enroll", "import", str(bundle)])
+    assert rc == 0
+    assert not bundle.exists()  # the bundle is gone
+
+
+def test_cli_import_keep_retains_the_bundle(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import io
+    from pathlib import Path
+
+    from kantaq.cli import main as cli_main
+
+    base = Path(str(tmp_path))  # type: ignore[arg-type]
+    bundle = base / "joiner.kqe"
+    bundle.write_bytes(seal(_payload(), PASSCODE))
+    monkeypatch.chdir(base)
+    monkeypatch.setattr(
+        "kantaq.enroll.import_enrollment",
+        lambda payload, **kw: _fake_import_result(base / ".env"),
+    )
+    monkeypatch.setattr("sys.stdin", io.StringIO(f"{PASSCODE}\n"))
+    rc = cli_main(["enroll", "import", "--keep", str(bundle)])
+    assert rc == 0
+    assert bundle.exists()  # --keep retained it
+
+
 # ----------------------------------------------------------- write_private (M3)
 
 
