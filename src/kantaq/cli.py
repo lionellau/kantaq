@@ -1156,6 +1156,7 @@ def _enroll_export(args: argparse.Namespace) -> int:
         parse_ttl,
         provision_enrollment,
         seal,
+        write_private,
     )
     from kantaq_core.identity import IdentityError
 
@@ -1203,8 +1204,7 @@ def _enroll_export(args: argparse.Namespace) -> int:
     )
     passcode = generate_passcode()
     out = Path(args.out) if args.out else Path(f"enroll-{_email_slug(args.email)}.kqe")
-    out.write_bytes(seal(payload, passcode))
-    out.chmod(0o600)
+    write_private(out, seal(payload, passcode))
     rotated = " (existing member — the previous token is revoked)" if provisioned.rotated else ""
     print(f"enrolled {args.email} as member {provisioned.member_id}{rotated}")
     print(f"bundle:   {out}")

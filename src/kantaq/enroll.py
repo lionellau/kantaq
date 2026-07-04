@@ -457,12 +457,25 @@ class ImportResult:
     env_backup: Path | None
 
 
+def write_private(path: Path, data: bytes) -> None:
+    """Write a secret-bearing file with 0600 from its very first byte.
+
+    ``write_bytes`` + ``chmod`` would leave a umask-permissions window between
+    creation and the chmod; opening with the mode closes it. An existing file
+    is re-chmodded so a previously looser file tightens rather than persists.
+    """
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(data)
+    path.chmod(0o600)
+
+
 def _write_env(env_path: Path, *, hub_url: str, hub_token: str) -> tuple[Path, Path | None]:
     """Merge ``HUB_MODE``/``HUB_URL``/``HUB_TOKEN`` into ``.env`` (0600).
 
     Existing unrelated lines are preserved; an existing file is backed up
     beside itself first. The token's only unsealed resting place is this file
-    plus the keychain — both are 0600.
+    plus the keychain — both are 0600 from creation.
     """
     updates = {
         "HUB_MODE": BACKEND_MODE_POSTGRES,
@@ -476,16 +489,14 @@ def _write_env(env_path: Path, *, hub_url: str, hub_token: str) -> tuple[Path, P
         backup = env_path.with_name(
             f"{env_path.name}.bak-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
         )
-        backup.write_bytes(original.encode("utf-8"))
-        backup.chmod(0o600)
+        write_private(backup, original.encode("utf-8"))
         for line in original.splitlines():
             key = line.split("=", 1)[0].strip()
             if key in updates:
                 continue  # replaced below
             lines.append(line)
     lines.extend(f"{key}={value}" for key, value in updates.items())
-    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    env_path.chmod(0o600)
+    write_private(env_path, ("\n".join(lines) + "\n").encode("utf-8"))
     return env_path, backup
 
 
