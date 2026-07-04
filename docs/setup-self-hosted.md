@@ -68,13 +68,17 @@ editing, no token paste ([docs/design/enroll.md](design/enroll.md)):
 # on the backend host (the container already holds the database connection):
 docker compose exec sync-server \
   uv run kantaq enroll export --email you@team.dev --workspace "Acme" \
-    --hub-url http://your-host:8889 --out /tmp/enroll-you.kqe
+    --hub-url https://your-domain --out /tmp/enroll-you.kqe
 docker compose cp sync-server:/tmp/enroll-you.kqe .
 ```
 
 `export` provisions the member, seals their token into `enroll-you.kqe`, and
-prints a one-time **passcode**. Move the file to the machine that will run
-kantaq, then:
+prints a one-time **passcode** (default validity **48 h**; use `--passcode-file`
+to keep it off the terminal). The `--hub-url` must be **`https`** for any host a
+teammate reaches over the network (the bearer token rides the wire) — plain
+`http` is allowed only for `localhost`/`127.0.0.1` when the joiner is on the
+same box. Turn on TLS with the [Caddy profile](#1-bring-up-the-backend). Move
+the file to the machine that will run kantaq, then:
 
 ```bash
 kantaq enroll import enroll-you.kqe    # prompts for the passcode
@@ -85,10 +89,11 @@ kantaq sync once                       # one push + pull through your server
 `import` decrypts the bundle, adopts the seeded member as this runtime's
 identity, registers your device key as a verification root, and writes the
 `HUB_*` lines into `.env` itself. Run it on a **fresh** runtime (it refuses to
-re-home one that already has an identity — use a fresh `LOCAL_DB_PATH`).
-Delete the `.kqe` after import; it is gitignored either way. When you send a
-bundle to someone else, the file and the passcode travel over **different
-channels** — a leaked file alone reveals nothing.
+re-home one that already has an identity — use a fresh `LOCAL_DB_PATH`). On
+success it **deletes the `.kqe`** (pass `--keep` to retain it) and, if you run
+it inside a git repo, adds `.env` to `.gitignore` so your token can't be
+committed. When you send a bundle to someone else, the file and the passcode
+travel over **different channels** — a leaked file alone reveals nothing.
 
 <details>
 <summary><b>The manual path</b> (what <code>enroll</code> automates — still supported)</summary>
@@ -167,7 +172,7 @@ and points it at the same `HUB_URL` with their own member token. To add one,
 ```bash
 docker compose exec sync-server \
   uv run kantaq enroll export --email teammate@team.dev --workspace "Acme" \
-    --hub-url http://your-host:8889 --out /tmp/enroll-teammate.kqe
+    --hub-url https://your-domain --out /tmp/enroll-teammate.kqe
 docker compose cp sync-server:/tmp/enroll-teammate.kqe .
 ```
 

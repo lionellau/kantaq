@@ -1149,12 +1149,15 @@ def _email_slug(email: str) -> str:
 def _enroll_export(args: argparse.Namespace) -> int:
     from kantaq.enroll import (
         BACKEND_MODE_POSTGRES,
+        DEFAULT_OWNER_TTL,
+        DEFAULT_TTL,
         EnrollError,
         EnrollPayload,
         engine_for,
         generate_passcode,
         parse_ttl,
         provision_enrollment,
+        require_secure_hub_url,
         seal,
         write_private,
     )
@@ -1168,8 +1171,11 @@ def _enroll_export(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    if not args.hub_url.startswith(("http://", "https://")):
-        print("kantaq enroll export: --hub-url must be an http(s) URL", file=sys.stderr)
+    # #4: refuse to MINT a bundle that would leak its token over plaintext http.
+    try:
+        require_secure_hub_url(args.hub_url)
+    except EnrollError as exc:
+        print(f"kantaq enroll export: {exc}", file=sys.stderr)
         return 1
     if not args.database_url:
         print(
@@ -1179,8 +1185,11 @@ def _enroll_export(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+    # #2/#7: short-lived by default — 24h for an Owner (bigger blast radius),
+    # 48h for everyone else. A longer window is an explicit --ttl.
+    ttl = args.ttl or (DEFAULT_OWNER_TTL if args.role == "Owner" else DEFAULT_TTL)
     try:
-        ttl_seconds = parse_ttl(args.ttl)
+        ttl_seconds = parse_ttl(ttl)
         provisioned = provision_enrollment(
             engine_for(args.database_url),
             email=args.email,
@@ -1208,8 +1217,14 @@ def _enroll_export(args: argparse.Namespace) -> int:
     rotated = " (existing member — the previous token is revoked)" if provisioned.rotated else ""
     print(f"enrolled {args.email} as member {provisioned.member_id}{rotated}")
     print(f"bundle:   {out}")
-    print(f"passcode: {passcode}")
-    print(f"expires:  {args.ttl} from now · revoke: kantaq enroll revoke --email {args.email}")
+    # #8: keep the passcode off the terminal (scrollback / CI logs) when asked.
+    if args.passcode_file:
+        pf = Path(args.passcode_file)
+        write_private(pf, (passcode + "\n").encode("utf-8"))
+        print(f"passcode: written to {pf} (0600) — deliver it out-of-band, then delete")
+    else:
+        print(f"passcode: {passcode}")
+    print(f"expires:  {ttl} from now · revoke: kantaq enroll revoke --email {args.email}")
     print()
     print("send the bundle and the passcode over DIFFERENT channels (file via")
     print("email/drive, passcode via a call or DM); the joiner runs:")
@@ -1295,8 +1310,67 @@ def _enroll_import(args: argparse.Namespace) -> int:
         "ensured and registered as a verification root",
         file=sys.stderr,
     )
-    print("next: kantaq sync once — then delete the .kqe file", file=sys.stderr)
+    # #6: the token now lives in ./.env — warn (and self-protect) if the cwd is a
+    # git repo or a known cloud-sync folder, so it can't be committed or synced.
+    _guard_env_location(result.env_path)
+    # #3: the bundle has done its job and still decrypts to a live credential —
+    # delete it by default so a leftover .kqe can't be reused or leaked (--keep
+    # opts out).
+    if getattr(args, "keep", False):
+        print("kept the bundle (--keep); delete it yourself once done", file=sys.stderr)
+    else:
+        try:
+            path.unlink()
+            print(f"deleted the bundle {path.name} (use --keep to retain it)", file=sys.stderr)
+        except OSError as exc:
+            print(f"could not delete {path}: {exc} — remove it by hand", file=sys.stderr)
+    print("next: kantaq sync once", file=sys.stderr)
     return 0
+
+
+def _guard_env_location(env_path: Path) -> None:
+    """Warn (and auto-gitignore) when a token-bearing .env lands in a risky dir.
+
+    Security-review follow-up #6: ``import`` writes ``.env`` into the cwd. If
+    that cwd is a git repo or a cloud-sync folder, the bearer token can be
+    committed or synced to the cloud. We can't relocate ``.env`` (the runtime
+    reads it from cwd), so we self-protect: append ``.env`` to a nearby
+    ``.gitignore`` if a repo is detected and it isn't already ignored, and warn
+    loudly regardless. Best-effort; never fails the import.
+    """
+    try:
+        cwd = env_path.resolve().parent
+        in_git = any((p / ".git").exists() for p in (cwd, *cwd.parents))
+        sync_markers = ("Dropbox", "Google Drive", "OneDrive", "iCloud", "Library/CloudStorage")
+        in_sync = any(marker in str(cwd) for marker in sync_markers)
+        if in_git:
+            gitignore = cwd / ".gitignore"
+            ignored = gitignore.exists() and any(
+                line.strip() in (".env", ".env*", "*.env")
+                for line in gitignore.read_text(encoding="utf-8").splitlines()
+            )
+            if not ignored:
+                with gitignore.open("a", encoding="utf-8") as fh:
+                    fh.write("\n# kantaq enroll: never commit the token-bearing env\n.env\n")
+                print(
+                    "⚠️  this is a git repo — added `.env` to .gitignore so your token "
+                    "isn't committed. Double-check before `git add`.",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    "⚠️  this is a git repo — `.env` (with your token) is gitignored; "
+                    "keep it that way.",
+                    file=sys.stderr,
+                )
+        if in_sync:
+            print(
+                "⚠️  this folder looks cloud-synced — your token in `.env` may upload to "
+                "the cloud. Consider running kantaq from a local-only directory.",
+                file=sys.stderr,
+            )
+    except OSError:
+        pass  # best-effort guard; never break the import
 
 
 def _enroll_revoke(args: argparse.Namespace) -> int:
@@ -1438,7 +1512,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="the sync-server URL the joiner will reach (http[s]://host:8889)",
     )
     enroll_export.add_argument(
-        "--ttl", default="30d", help="bundle validity: 30d, 12h, 45m, or seconds (default 30d)"
+        "--ttl",
+        default=None,
+        help="bundle validity: 30d, 12h, 45m, or seconds (default 48h; 24h for --role Owner)",
     )
     enroll_export.add_argument(
         "--role",
@@ -1460,10 +1536,20 @@ def build_parser() -> argparse.ArgumentParser:
     enroll_export.add_argument(
         "--out", default=None, help="output path (default: enroll-<joiner>.kqe)"
     )
+    enroll_export.add_argument(
+        "--passcode-file",
+        default=None,
+        help="write the passcode to this file (0600) instead of the terminal (avoids scrollback)",
+    )
     enroll_import = enroll_sub.add_parser(
         "import", help="join a team backend from a sealed bundle (prompts for the passcode)"
     )
     enroll_import.add_argument("bundle", help="path to the .kqe bundle")
+    enroll_import.add_argument(
+        "--keep",
+        action="store_true",
+        help="keep the .kqe after a successful import (default: delete it)",
+    )
     enroll_revoke = enroll_sub.add_parser(
         "revoke", help="revoke an enrolled member: tokens + grants + devices, < 5 s"
     )

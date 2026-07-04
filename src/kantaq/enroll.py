@@ -49,7 +49,13 @@ KDF_NAME = "argon2id"
 # can never collide with any other passcode use.
 PASSCODE_DOMAIN = b"kantaq:enroll-passcode:v1\x00"
 
-DEFAULT_TTL_SECONDS = 30 * 24 * 3600  # 30 days
+# Default bundle TTLs (security-review follow-up #2/#7): a .kqe is an offline-
+# attackable artifact sitting in an inbox, so it should be short-lived by
+# default. 48 h for a normal member; 24 h for an Owner, whose blast radius is
+# bigger. A longer window is a deliberate, explicit ``--ttl``.
+DEFAULT_TTL_SECONDS = 48 * 3600  # 48 hours
+DEFAULT_TTL = "48h"
+DEFAULT_OWNER_TTL = "24h"
 SALT_BYTES = nacl.pwhash.argon2id.SALTBYTES  # 16
 NONCE_BYTES = nacl.secret.SecretBox.NONCE_SIZE  # 24
 KEY_BYTES = nacl.secret.SecretBox.KEY_SIZE  # 32
@@ -110,6 +116,33 @@ class BundleDecryptError(EnrollError):
 
 class BundleExpiredError(EnrollError):
     """The bundle's TTL has elapsed; the owner must export a fresh one."""
+
+
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
+
+
+def require_secure_hub_url(url: str) -> None:
+    """Refuse a plaintext-``http`` hub URL to a NON-loopback host.
+
+    Security-review follow-up #4: the bearer token rides the ``Authorization``
+    header on every request, so a bundle pointing at ``http://a-remote-host``
+    would leak a live, long-lived token to any on-path attacker on the first
+    ``/v1/me`` and every sync after. ``https`` is required for anything off the
+    local machine; ``http`` is allowed only for loopback (a dev/self-host box
+    talking to itself). Raises :class:`EnrollError` otherwise.
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme == "https":
+        return
+    if parsed.scheme == "http" and (parsed.hostname or "") in _LOOPBACK_HOSTS:
+        return
+    raise EnrollError(
+        f"insecure hub URL {url!r}: https is required for any non-loopback host "
+        "(a plaintext-http token would leak on the wire). Put the backend behind "
+        "TLS (see docker/self-hosted-backend, the Caddy profile) and use https://."
+    )
 
 
 @dataclass(frozen=True)
@@ -567,6 +600,11 @@ def import_enrollment(
     from kantaq_runtime.auth import RUNTIME_TOKEN_KEY, ensure_device_identity
 
     ensure_not_expired(payload, now=now)
+    # #4: on a real wire (no injected client), refuse a plaintext-http remote —
+    # the token would leak. With an injected client (tests / in-process) there is
+    # no wire, so the caller owns transport.
+    if client is None:
+        require_secure_hub_url(payload.hub_url)
 
     backend = SyncServerBackend(payload.hub_url, payload.hub_token, client=client)
     me = backend.whoami()  # SyncBackendError here → nothing written

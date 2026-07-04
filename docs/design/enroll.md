@@ -26,7 +26,7 @@ events sign under a grant issued by their own device.
 
 | Command | Runs where | Does |
 |---|---|---|
-| `kantaq enroll export --email <joiner> --workspace <name> --hub-url <url> [--ttl 30d] [--role Member] [--backend self-host]` | the backend host (same place `seed` runs today; needs `KANTAQ_DATABASE_URL` or `--database-url`) | provisions the member + token, seals them into `enroll-<joiner>.kqe`, prints a generated passcode |
+| `kantaq enroll export --email <joiner> --workspace <name> --hub-url <url> [--ttl 48h] [--role Member] [--backend self-host] [--passcode-file <f>]` | the backend host (same place `seed` runs today; needs `KANTAQ_DATABASE_URL` or `--database-url`) | provisions the member + token, seals them into `enroll-<joiner>.kqe`, prints a generated passcode. Remote `hub_url` must be `https` (§11 #4). |
 | `kantaq enroll import <file.kqe>` | the joiner's machine | prompts for the passcode, decrypts, verifies the credential against the server (`GET /v1/me`), adopts the identity, ensures the device keypair + verification root, writes `.env` — ready for `kantaq sync once` |
 | `kantaq enroll revoke --email <joiner>` | the backend host | revokes the member: every token, every live grant, every device root, audited — propagation < 5 s (NFR-E06-2) |
 
@@ -210,7 +210,7 @@ the docs say to delete the file after import.
 | passcode leaks without file | passcode is not a credential; salt is per-bundle | (structural — nothing to attack) |
 | tampered file (any byte: header or ciphertext) | authenticated decryption fails closed, import applies nothing | exhaustive bit-flip over the envelope must raise; filesystem state asserted unchanged |
 | wrong passcode, online guessing | fail closed, bounded interactive attempts (3), non-zero exit; no oracle beyond pass/fail | deliberately-failing fixture: 3 wrong passcodes → exit 1, nothing written |
-| replay of an old bundle | `expires_at` (default TTL 30 d) checked before any state change; re-export rotates, so a superseded bundle's token is already revoked server-side even inside its TTL | expired-bundle import refuses; post-rotate old-bundle import decrypts but its token fails `/v1/me` → aborts before adoption |
+| replay of an old bundle | `expires_at` (default TTL **48 h**, **24 h** for Owner) checked before any state change; re-export rotates, so a superseded bundle's token is already revoked server-side even inside its TTL; a successful import also **deletes** the `.kqe` (§11 #3) | expired-bundle import refuses; post-rotate old-bundle import decrypts but its token fails `/v1/me` → aborts before adoption |
 | bundle for workspace A used against workspace B | the token *is* workspace A's member; the server binds actor == token's member (DEBT-42 wall); import cross-checks `whoami` against the payload's `member_id`/`workspace_id` and aborts on mismatch | existing caller-binding tests + new import-mismatch test |
 | joiner's runtime already has an identity | `adopt_owner` refuses to re-home (unchanged) | existing + new CLI-level assertion |
 | revoked joiner keeps syncing | `revoke_member` cascade; server-side `TokenVerifier` TTL 3 s | timed test: revoke → old token 401s within the 5 s budget |
@@ -338,8 +338,8 @@ member-event distribution fix is the follow-up that makes the second member's
 2. `export` on the backend host in v1 (same operational posture as `seed`),
    with the remote-admin endpoint as DEBT-44 — agreed?
 3. Default enrolled role `Member` (not `Owner`; `--role` overrides) — agreed?
-4. TTL default 30 d; `.kqe` extension; `kantaq-enroll/v1` format string — any
-   objections?
+4. TTL default **48 h** (24 h for Owner); `.kqe` extension; `kantaq-enroll/v1`
+   format string — any objections?
 5. Supabase deferral as DEBT-43 with the §6 design — agreed?
 6. **DEBT-45 (§9): the cross-member member-event distribution fix as a separate
    protocol PR** — agree it's out of scope here, or do you want enroll held
@@ -348,3 +348,38 @@ member-event distribution fix is the follow-up that makes the second member's
    revocation + single-runtime round-trip — and fix DEBT-45 next, since it is a
    pre-existing spine gap that blocks *all* multi-member self-host sync, not
    just enroll.)
+
+## 11. Second security-review pass — hardening (done) + deferred
+
+A second adversarial pass beyond the initial gate raised nine items. **Six are
+fixed in this PR, each with a regression test:**
+
+| # | Item | Fix |
+|---|---|---|
+| 2 | 30-day TTL was too long for an offline artifact | default **48 h**; `parse_ttl`, `DEFAULT_TTL` |
+| 3 | leftover `.kqe` still decrypts a live credential | `enroll import` **deletes** the bundle on success (`--keep` opts out) |
+| 4 | a plaintext-`http` remote `hub_url` leaks the token on the wire | `require_secure_hub_url`: **https required off-loopback**, enforced at export *and* real-wire import |
+| 6 | `.env` written to cwd could be committed / cloud-synced | `_guard_env_location`: auto-appends `.env` to `.gitignore` in a repo + warns on cloud-sync folders |
+| 7 | an Owner bundle has a bigger blast radius | Owner default TTL **24 h**; role-aware in `enroll export` |
+| 8 | passcode printed to the terminal (scrollback / CI logs) | `--passcode-file` writes it 0600 instead |
+
+**Three are deliberately deferred (not mechanical fixes — they are design
+decisions, and doing them naively would be worse):**
+
+- **#1 true one-time (server nonce, burn-on-import)** — needs a new server-side
+  table + a `consume` endpoint + client wiring on the sync-server. A coherent
+  backend increment that ripples the schema (the new-collection checklist), so
+  it gets its **own** reviewed PR rather than riding a credential PR. Recorded
+  as **DEBT-46**. (Today's replay defenses: TTL + rotate-on-re-export +
+  revoke + auto-delete.)
+- **#5 owner-signed / sealed-box bundle** — the bundle has confidentiality
+  (AEAD) but not *origin authentication*: a **self**-signed bundle proves
+  nothing (the attacker signs with their own key), so real origin-auth needs
+  the joiner to hold the **owner's verify key out-of-band** — a key-distribution
+  design decision (TOFU? bundled trust root? the §3 sealed-box variant). Needs
+  a maintainer design-OK + its own security review; **DEBT-47**.
+- **#9 at-rest token encryption (OS keychain)** — kantaq deliberately chose the
+  0600 `FileKeychain` over the OS keychain (a recorded golden-rule re-pass that
+  "came back the same", D-06: "anyone with shell access already owns the local
+  profile"). Reversing that is a project-wide decision, not enroll's — kept as
+  an **accepted risk**, not silently changed.
