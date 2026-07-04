@@ -67,6 +67,7 @@ from kantaq_sync_engine.log import (
     pending_rows,
     row_to_event,
 )
+from kantaq_sync_engine.members import ensure_member_event
 from kantaq_sync_engine.merge import (
     ENTITY_FIELD,
     FieldDecision,
@@ -145,6 +146,7 @@ __all__ = [
     "compose_snapshot",
     "conflict_record_id",
     "detect_merge",
+    "ensure_member_event",
     "entity_base_rev",
     "entity_rows",
     "event_by_id",

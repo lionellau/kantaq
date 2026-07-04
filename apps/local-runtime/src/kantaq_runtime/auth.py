@@ -71,19 +71,21 @@ def ensure_device_identity(engine: Engine, keychain: Keychain) -> str:
 
     from kantaq_core.identity import ensure_device
     from kantaq_db.models import Member
-    from kantaq_sync_engine import EventLogSink
+    from kantaq_sync_engine import EventLogSink, ensure_member_event
 
     with Session(engine) as session:
         owner = session.exec(
             select(Member).where(Member.status == "active").order_by(col(Member.id))
         ).first()
         owner_id = owner.id if owner is not None else None
-        device = ensure_device(
-            session,
-            keychain,
-            member_id=owner_id,
-            sink=EventLogSink(session, owner_id) if owner_id is not None else None,
-        )
+        sink = EventLogSink(session, owner_id) if owner_id is not None else None
+        if owner is not None and sink is not None:
+            # DEBT-45 (docs/design/member-events.md §2a): announce the member
+            # this runtime IS before the device event that references it, so a
+            # peer's pull folds the member row first and the devices.member_id
+            # FK holds. Idempotent like the device registration beside it.
+            ensure_member_event(session, owner, sink)
+        device = ensure_device(session, keychain, member_id=owner_id, sink=sink)
         session.commit()
         return device.id
 

@@ -164,8 +164,14 @@ def verify_event(event: Event, context: VerifyContext) -> EventVerification:
         # Fine per-verb scoping (D-03): the grant must carry a verb that
         # authorises this collection. The full-role self-grants pass; a narrow
         # grant (e.g. an agent scoped to proposals) cannot ride a ticket write.
+        # One carve-out (DEBT-45, docs/design/member-events.md §2c): a member
+        # announcing their OWN row (entity_id == actor_id) is device-style
+        # self-registration — the subject binding above already proves author
+        # == subject, and a plain Member holds neither members.invite nor
+        # members.revoke. Anyone ELSE's row still needs the verb.
+        self_announce = event.collection == "members" and event.entity_id == event.actor_id
         acceptable = _COLLECTION_WRITE_VERBS.get(event.collection)
-        if acceptable is not None and acceptable.isdisjoint(grant.verbs):
+        if acceptable is not None and not self_announce and acceptable.isdisjoint(grant.verbs):
             return EventVerification(
                 False, POLICY_DENIED, f"grant does not authorise writes to {event.collection!r}"
             )

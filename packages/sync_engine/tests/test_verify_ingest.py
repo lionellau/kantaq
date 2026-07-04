@@ -314,3 +314,39 @@ def test_commit_events_sends_the_negotiated_require_signature_not_the_default() 
     )
     post_backend.commit_events([_event(kp.private_key, sign_it=True)])
     assert post.seen is True
+
+
+# ------------------------------------------- DEBT-45: members self-announce
+
+
+def test_member_self_announce_needs_no_member_verbs() -> None:
+    """A member announcing their OWN row (entity_id == actor_id) passes on any
+    valid grant — a plain Member holds neither members.invite nor .revoke, and
+    the subject binding above the verb check already proves author == subject
+    (docs/design/member-events.md §2c)."""
+    kp = generate_keypair()
+    grant = _grant(kp.private_key)  # verbs=("tickets.write",): no members.*
+    event = _event(kp.private_key, collection="members", entity_id=MEMBER)
+    verdict = verify_event(event, _context(kp.public_key, grant))
+    assert verdict.ok, verdict.reason
+
+
+def test_member_event_about_someone_else_still_needs_the_verb() -> None:
+    """The carve-out is pinned to self: the same grant touching ANOTHER
+    member's row is policy_denied — invite/revoke authority stays required."""
+    kp = generate_keypair()
+    grant = _grant(kp.private_key)
+    other = "mbr_bob".ljust(26, "0")
+    event = _event(kp.private_key, collection="members", entity_id=other)
+    verdict = verify_event(event, _context(kp.public_key, grant))
+    assert not verdict.ok
+    assert verdict.code == POLICY_DENIED
+
+
+def test_member_event_about_someone_else_passes_with_the_invite_verb() -> None:
+    """Positive control for the verb path the carve-out skips."""
+    kp = generate_keypair()
+    grant = _grant(kp.private_key, verbs=("members.invite",))
+    other = "mbr_bob".ljust(26, "0")
+    event = _event(kp.private_key, collection="members", entity_id=other)
+    assert verify_event(event, _context(kp.public_key, grant)).ok
