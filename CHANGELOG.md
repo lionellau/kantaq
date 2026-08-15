@@ -4,6 +4,148 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); kantaq follows the
 release line (v0.0.5 → v0.3) described in the project docs.
 
+## [0.3.0] — 2026-08-15
+
+### Added — Sprint 9: v0.3 release (E14, E15, E20, E25, E09, E29)
+
+The second and final v0.3 sprint: tickets group under target-dated **milestones**,
+agents self-schedule **follow-ups** as proposals and read a project's **blocking
+path**, an opt-in **content-free notification** closes the async loop so a remote
+teammate stops refreshing the Inbox, the self-hosted backend gains object storage
+and auto-HTTPS, and the generated MCP config offers **both transports**. Schema
+reaches **v18**. The package version is bumped to `0.3.0`; this block was
+consolidated from `sprint-9-deliverable.md` at release time rather than
+accumulated in `[Unreleased]`, so it also covers the post-sprint work below. The
+live Supabase delta for the two new collection sets **is applied**
+(`milestones`, `ticket_milestones`, and `follow_ups` verified on the
+`ck_sync_events_collection` allowlist), and the **`0.3.0` git tag itself waits on
+the maintainer's clean-checkout `docker compose up` walkthrough** (DEBT-41(a)) so
+the tag reflects a setup path a stranger has actually run.
+
+- **Milestones** (E14-T2/T3, MOD-20/MOD-02/MOD-09/MOD-12, PR #95): a `milestones`
+  collection + a `ticket_milestones` junction (migration `0016`, schema **v16**)
+  with junction integrity (UNIQUE, same-project, dedup); `MilestoneService` CRUD
+  through the signed sink, `/v1/milestones` REST (Viewer reads, Member+ writes),
+  the read-only `milestone_get` MCP tool through the eight checks, and a
+  **batched** backlog badge — one `ticket_milestones` SELECT per page, no N+1 at
+  the 269-ticket dataset. Flat milestones (nestable deferred); reuses
+  `tickets.read`/`tickets.write` rather than minting a grant verb.
+- **Follow-ups, propose-first** (E15-T1, MOD-29/MOD-09, PR #98): a `follow_ups`
+  collection (migration `0017`, schema **v17**) across the full surface, with
+  `follow_up_create/update/complete` writing an **`agent_proposal`** that lands in
+  the Inbox — an agent never commits one — and `approve_proposal` branching on
+  `diff.kind` through the one apply path. `status` moves only through `complete`,
+  never a raw patch.
+- **Dependency graph** (E15-T2, MOD-29/MOD-09, PR #101): `dependency_graph_get` +
+  `dependency_path_find` fold the `blocks` family out of `ticket_relationships`
+  (reusing the v0.1 `_relation_arc`); a 31-node critical path resolves on the
+  269-ticket relation set. Acyclic by construction, and a cycle reachable from the
+  source returns a structured `cycle_detected` naming the offending nodes rather
+  than a looped or partial path (fail closed).
+- **Async notifications — content-free, opt-in** (E20-T8/T9 [SEC], MOD-12/MOD-25,
+  PRs #100 + #102): an outbound dispatch fires on proposal approve **and** reject
+  (and on a conflict mint) to a workspace-configured webhook (the floor) or Slack.
+  The payload has **no body field at all** — `{action, ids, actor, deep_link}` is
+  the only builder — with bounded retries into a `notification_deadletter` table
+  (migration `0018`, schema **v18**; local infrastructure, never synced). Opt-in,
+  **default off**, host-only config in `local_settings`, so a sink URL or secret
+  never enters the sync stream; `notifications.read/write` sit **off the agent
+  ceiling**, so the feature never widens permission. Ships with Settings →
+  Notifications and a human-only "Request a decision" nudge on a pending proposal.
+  Closes DEBT-36; records D-35.
+- **Self-hosted hardening** (E25-T3/T4 [SEC], MOD-28/MOD-23/MOD-05, PR #96): a
+  `BlobStore` port with a filesystem default and an **S3-compatible** option behind
+  an optional `[s3]` extra (the base install is unchanged), export/import widened
+  to the port, and a restore-from-backup-into-S3 smoke whose re-export is
+  byte-identical; Caddy auto-HTTPS with HSTS/nosniff, secret-hygiene regressions
+  (an auth failure never echoes the presented token), and the cross-adapter
+  behavior-parity re-run. Closes DEBT-40; advances DEBT-39 — the audit-range
+  endpoint and self-hosted compaction stay deferred.
+- **Dual-transport discovery** (E09-T5, MOD-08/MOD-13, PR #99): the snippet
+  generator emits an HTTP **and** a stdio config per client; the stdio configs
+  launch `kantaq mcp stdio` and need no URL, so they are still offered when the
+  HTTP gateway is down. A contract test drives both real resolvers and pins an
+  identical session derivation and identical `handle_call` decisions — a denial
+  over stdio is byte-for-byte the HTTP decision (D-34).
+- **Self-host documentation** (E29-T5, MOD-16/MOD-24, PR #97):
+  `docs/setup-self-hosted.md` runs clone → `docker compose up` →
+  `HUB_MODE=postgres` → connect a stdio agent → invite teammates → backup/restore,
+  with the deep operator detail linked rather than duplicated; the compatibility
+  matrix refreshes to v0.3 (Tier-2 stdio **scripted 6/6**, not certified; Tier-3
+  moves to Sprint 10+). The new docs gate caught a real fresh-clone bug:
+  `.env.self-hosted.example` was gitignored and never committed, so E25's
+  documented `cp` step was broken on a clean checkout.
+
+### Added — `kantaq enroll`: encrypted one-shot team onboarding (post-sprint)
+
+A teammate joins with **one file and one passcode** — no token paste, no email, no
+SQL (`docs/design/enroll.md`). Not in the Sprint 9 backlog; built after it.
+
+- **The `.kqe` lockbox** (PR #108): an argon2id passcode KDF over a NaCl SecretBox,
+  with the KDF parameters riding the header and everything semantic sealed inside
+  the ciphertext. Three verbs — `kantaq enroll export / import / revoke` — where
+  provisioning reuses `seed_member` + `rotate_token`, join reuses the `whoami` +
+  `adopt_owner` path and `ensure_device_identity`, and revoke reuses the
+  `revoke_member` cascade. PyNaCl is promoted dev→runtime for the umbrella package
+  only. Secret-bearing files are `0600` from the first byte. The **Supabase path is
+  designed but deferred** (`docs/design/enroll.md` §6), and remote owner
+  provisioning is deferred with it.
+- **Two adversarial security passes** (PRs #108 + #109). The first capped the
+  **accepted** KDF ceiling at the MODERATE profile we seal with, so a hostile
+  `.kqe` cannot make a joiner run a ~1 GiB Argon2id it never asked for; validated
+  that `hub_url` is http(s) **inside unseal**, before import fetches it (no
+  `file://`, no metadata address); and made `write_private` use `O_NOFOLLOW`,
+  refusing to write a token through a pre-planted symlink. The second required
+  **https-only** hub URLs off loopback, cut the bundle TTL from 30 days to **48h**
+  (Owner bundles 24h), made `enroll import` **delete the `.kqe` on success**
+  (`--keep` opts out), added an `.env` guard that auto-gitignores inside a repo and
+  warns on cloud-synced directories, and gave `--passcode-file` a `0600` write
+  instead of printing the passcode. Deferred with written rationale: a server-side
+  one-time nonce, an owner-signed bundle, and OS-keychain at-rest (accepted risk,
+  D-06).
+
+### v0.3-close (before the tag — what the self-host walkthrough found)
+
+The DEBT-41(a) clean-checkout walkthrough was run against a real sync-server and
+surfaced four defects every hermetic gate had missed. All four are fixed and
+live-proven.
+
+- **A self-hosted runtime couldn't push** (DEBT-42, PR #104) [SEC]: `seed` minted a
+  member with a server-generated id while the runtime authored events as its own
+  first-boot Owner, so caller-binding (`actor == the token's member`) rejected every
+  push. A fresh machine hit it too; the E25 compose smoke only passed because the
+  test stamped `actor_id`. `kantaq sync login` now resolves the token's member via a
+  token-gated, self-scoped `GET /v1/me` and creates the local Owner **as** that
+  member — idempotent, and it refuses to re-home a runtime that already carries a
+  different identity. `sync once` guards up front instead of failing per-event.
+- **`kantaq dev` wouldn't boot in postgres mode** (DEBT-43, PR #105):
+  `verify_connection` had no `postgres` branch, so a self-hosting user couldn't run
+  the runtime or web UI at all. Live-proven end to end: `db migrate` →
+  `sync login` → `dev --check` → `sync once` = **1 committed**.
+- **Agent-authored events could never sync** (PR #107): the acting-member resolver
+  counted every same-email row, so a manifested Agent member tripped the "more than
+  one workspace" refusal — and, atomic-reject, poisoned the owner's own events with
+  `policy_denied`. The resolver now skips `role=Agent` rows and refuses only on more
+  than one *distinct workspace*; sync status counts pending by what flush actually
+  drains, and surfaces terminal rejected/rebase-required rows as **parked** instead
+  of "awaiting push" forever.
+- **A second member's first pull wedged** (DEBT-45, PR #110): member rows were
+  created directly by seed/adopt and never entered the event log, but
+  `devices.member_id` and `capability_grants.subject` FK into `members` — so the
+  moment a peer pulled another's device event, the trust-root fold died on
+  referential integrity. Members now **distribute as events**: a boot self-announce
+  emits the runtime's own member row before its device event, a trust-root ingest
+  guard folds a legacy stream through a placeholder that the real announce later
+  heals in place, and a verify carve-out keeps a self-announce verifiable
+  post-cutover. Proven with a live two-member compose smoke converging both ways.
+
+### Changed
+
+- **The web UI is tokenized, with dark mode** (PR #106, MOD-11/MOD-12): every
+  color, font, radius, and shadow routes through one token source — no component
+  hardcodes a design value — and a persisted light/dark theme defaults to the OS
+  preference, applied before first paint so there is no flash. Addresses DEBT-38.
+
 ## [0.2.0] — 2026-06-18
 
 ### Added — Sprint 7: v0.2 release (E05, E06, E07, E17, E20, E23, E26, E27, E29)

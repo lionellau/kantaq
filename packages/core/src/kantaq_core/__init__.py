@@ -17,7 +17,7 @@ from kantaq_core.audit import (
     write,
 )
 
-__version__: str = "0.2.0"
+__version__: str = "0.3.0"
 
 __all__ = [
     "AGENT_READ_ACTION",

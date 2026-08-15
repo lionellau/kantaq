@@ -644,7 +644,7 @@ wheels = [
 
 [[package]]
 name = "kantaq"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "kantaq-backend-postgres" },
@@ -736,7 +736,7 @@ requires-dist = [
 
 [[package]]
 name = "kantaq-backend-supabase"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "adapters/backend-supabase" }
 dependencies = [
     { name = "httpx" },
@@ -757,7 +757,7 @@ requires-dist = [
 
 [[package]]
 name = "kantaq-core"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/core" }
 dependencies = [
     { name = "cryptography" },
@@ -783,7 +783,7 @@ provides-extras = ["s3"]
 
 [[package]]
 name = "kantaq-db"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/db" }
 dependencies = [
     { name = "alembic" },
@@ -798,7 +798,7 @@ requires-dist = [
 
 [[package]]
 name = "kantaq-local-runtime"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "apps/local-runtime" }
 dependencies = [
     { name = "fastapi" },
@@ -827,7 +827,7 @@ requires-dist = [
 
 [[package]]
 name = "kantaq-mcp"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/mcp" }
 dependencies = [
     { name = "kantaq-core" },
@@ -852,7 +852,7 @@ requires-dist = [
 
 [[package]]
 name = "kantaq-protocol"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/protocol" }
 dependencies = [
     { name = "cryptography" },
@@ -863,7 +863,7 @@ requires-dist = [{ name = "cryptography", specifier = ">=45" }]
 
 [[package]]
 name = "kantaq-sync-engine"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/sync_engine" }
 dependencies = [
     { name = "kantaq-core" },
@@ -882,7 +882,7 @@ requires-dist = [
 
 [[package]]
 name = "kantaq-test-harness"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/test_harness" }
 dependencies = [
     { name = "anyio" },
