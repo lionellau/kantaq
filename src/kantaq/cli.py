@@ -819,11 +819,11 @@ def _postgres_sync_once(settings: Settings) -> int:
     identity), the events verify against the local trust store on the way out and
     the way in, and the durable outbox drains with the same offline-aware engine.
     """
-    from sqlmodel import Session, col, select
+    from sqlmodel import Session, select
 
     from kantaq_backend_postgres import SyncServerBackend
-    from kantaq_core.identity import local_device
-    from kantaq_db import Member, Workspace
+    from kantaq_core.identity import local_device, local_member
+    from kantaq_db import Workspace
     from kantaq_db.schema_version import EXPECTED_SCHEMA_VERSION
     from kantaq_db.session import get_engine
     from kantaq_runtime.auth import keychain_for
@@ -831,13 +831,23 @@ def _postgres_sync_once(settings: Settings) -> int:
 
     assert settings.hub_url and settings.hub_token  # checked by the caller
     db = get_engine(_db_url())
+    keychain = keychain_for(settings)
     with Session(db) as session:
         workspace = session.exec(select(Workspace)).first()
-        me = session.exec(
-            select(Member).where(Member.status == "active").order_by(col(Member.id))
-        ).first()
-    if workspace is None or me is None:
-        print("no workspace/member yet — boot the runtime first", file=sys.stderr)
+        # This runtime's own member (DEBT-48): peers' member rows live in every
+        # replica, so the identity comes from the device row, not row order.
+        me = local_member(session, keychain)
+    if workspace is None:
+        print("no workspace yet — boot the runtime first", file=sys.stderr)
+        return 1
+    if me is None:
+        print(
+            "kantaq sync once: cannot tell which member this runtime is — no device "
+            "row for this keychain, and the replica holds more than one member. Join "
+            "from a fresh runtime (`kantaq enroll import`, or `kantaq sync login` with "
+            "a new LOCAL_DB_PATH).",
+            file=sys.stderr,
+        )
         return 1
 
     hub = SyncServerBackend(settings.hub_url, settings.hub_token, workspace_id=workspace.id)
@@ -872,6 +882,9 @@ def _postgres_sync_once(settings: Settings) -> int:
         actor_id=me.id,
         workspace_id=workspace.id,
         on_conflict_minted=lambda cid, eid: minted_conflicts.append((cid, eid)),
+        # This server binds actor == the token's member (DEBT-42), so events an
+        # Agent member authored here stay local instead of jamming the push.
+        caller_bound_actor=True,
     )
     flushed = engine.flush_outbox(proposal_stale_policy=settings.agent_proposal_stale_policy.value)
     pulled = engine.apply_inbox()
@@ -881,7 +894,6 @@ def _postgres_sync_once(settings: Settings) -> int:
     # compaction never prunes below what a live replica still needs (E07-T4).
     try:
         with Session(db) as dsession:
-            keychain = keychain_for(settings)
             device = local_device(dsession, keychain)
         replica_id = device.id if device is not None else me.id
         hub.update_ack_watermark(member_id=me.id, replica_id=replica_id, acked_rev=pulled.cursor)
@@ -896,6 +908,13 @@ def _postgres_sync_once(settings: Settings) -> int:
         f"pull: {pulled.applied} applied, {pulled.own_reconciled} own reconciled · "
         f"cursor {pulled.cursor}"
     )
+    if flushed.withheld:
+        # Say it plainly rather than hiding a silent skip in a count (DEBT-49).
+        print(
+            f"note: {flushed.withheld} event(s) stay local — this backend attributes "
+            "every write to the token's member, so an Agent member's proposals do not "
+            "sync; approve one and the resulting ticket write syncs as yours."
+        )
     return 0
 
 
@@ -952,6 +971,7 @@ def _verifying_backend(
 def _sync_status(settings: Settings) -> int:
     from sqlmodel import Session, col, func, select
 
+    from kantaq_core.identity import local_member
     from kantaq_db import EventLog, SyncCursor
     from kantaq_db.session import get_engine
     from kantaq_runtime.auth import keychain_for
@@ -963,6 +983,7 @@ def _sync_status(settings: Settings) -> int:
 
     keychain = keychain_for(settings)
     email = keychain.get(SUPABASE_EMAIL_KEY)
+    local_only = 0
     with Session(get_engine(_db_url())) as session:
         # Count what the flush loop will actually push (sync_state 'pending',
         # MOD-26 §B1) — the old `committed_rev IS NULL` query also counted
@@ -972,6 +993,20 @@ def _sync_status(settings: Settings) -> int:
             .select_from(EventLog)
             .where(col(EventLog.sync_state) == SYNC_STATE_PENDING)
         ).one()
+        if settings.hub_mode.value == "postgres":
+            # DEBT-49: this backend binds actor == the token's member, so events
+            # another local member (an Agent) authored are never pushed. Counting
+            # them as "awaiting push" would be the same forever-pending lie the
+            # parked split already fixed for terminal rows.
+            me = local_member(session, keychain)
+            if me is not None:
+                local_only = session.exec(
+                    select(func.count())
+                    .select_from(EventLog)
+                    .where(col(EventLog.sync_state) == SYNC_STATE_PENDING)
+                    .where(col(EventLog.actor_id) != me.id)
+                ).one()
+                pending -= local_only
         parked = session.exec(
             select(func.count())
             .select_from(EventLog)
@@ -986,6 +1021,12 @@ def _sync_status(settings: Settings) -> int:
     else:
         print(f"session  = {email or '(not signed in)'}")
     print(f"pending  = {pending} event(s) awaiting push")
+    if local_only:
+        print(
+            f"local    = {local_only} event(s) authored by another local member "
+            "(an Agent) — this backend attributes writes to the token's member, "
+            "so they stay here; approving turns them into your own write"
+        )
     if parked:
         print(f"parked   = {parked} event(s) in a terminal state (rejected/rebase_required)")
     for cursor in cursors:
@@ -1057,11 +1098,13 @@ def cmd_import(args: argparse.Namespace) -> int:
     """
     import json
 
-    from sqlmodel import Session, col, select
+    from sqlmodel import Session, select
 
+    from kantaq_core.identity import local_member
     from kantaq_core.tracker import TrackerService
-    from kantaq_db.models import Member, Workspace
+    from kantaq_db.models import Workspace
     from kantaq_db.session import get_engine, sqlite_url
+    from kantaq_runtime.auth import keychain_for
     from kantaq_runtime.config import get_settings
     from kantaq_runtime.linear_import import LinearImportError, import_linear
     from kantaq_sync_engine import EventLogSink
@@ -1078,9 +1121,9 @@ def cmd_import(args: argparse.Namespace) -> int:
     db = get_engine(sqlite_url(settings.local_db_path))
     with Session(db) as session:
         workspace = session.exec(select(Workspace)).first()
-        owner = session.exec(
-            select(Member).where(Member.status == "active").order_by(col(Member.id))
-        ).first()
+        # Attribute the import to the member this runtime IS (DEBT-48), never to
+        # whichever teammate's row happens to sort first in this replica.
+        owner = local_member(session, keychain_for(settings))
         if workspace is None or owner is None:
             print("no workspace/owner yet — boot the runtime first", file=sys.stderr)
             return 1

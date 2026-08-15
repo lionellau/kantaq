@@ -67,16 +67,15 @@ def ensure_device_identity(engine: Engine, keychain: Keychain) -> str:
     when Sprint 4 wires the verified sync path (E24-T5). Returns the device
     row id; the private key never leaves the keychain.
     """
-    from sqlmodel import Session, col, select
+    from sqlmodel import Session
 
-    from kantaq_core.identity import ensure_device
-    from kantaq_db.models import Member
+    from kantaq_core.identity import ensure_device, local_member
     from kantaq_sync_engine import EventLogSink, ensure_member_event
 
     with Session(engine) as session:
-        owner = session.exec(
-            select(Member).where(Member.status == "active").order_by(col(Member.id))
-        ).first()
+        # The member this runtime IS — not the replica's lowest member id, which
+        # flips to a teammate as soon as their row syncs in (DEBT-45 §2a).
+        owner = local_member(session, keychain)
         owner_id = owner.id if owner is not None else None
         sink = EventLogSink(session, owner_id) if owner_id is not None else None
         if owner is not None and sink is not None:

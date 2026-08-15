@@ -19,12 +19,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, select
 
-from kantaq_backend_postgres import SyncBackendError, SyncServerBackend, create_app
+from kantaq_backend_postgres import SyncServerBackend, create_app
 from kantaq_core.identity import IdentityService
 from kantaq_core.identity.tokens import mint_token
 from kantaq_db.models import Member, Token
 from kantaq_db.session import get_engine, sqlite_url
 from kantaq_protocol import Event
+from kantaq_sync_engine.verify import POLICY_DENIED, EventRejected
 
 from .conftest import WORKSPACE_ID
 
@@ -119,11 +120,36 @@ def test_a_runtime_that_has_not_joined_is_rejected(
 ) -> None:
     """The caller-binding wall still holds (SEC): an event authored by some OTHER
     member — a runtime that never adopted the seeded identity — is denied, so the
-    fix unifies identities without weakening the impersonation guard."""
+    fix unifies identities without weakening the impersonation guard.
+
+    DEBT-49: the refusal arrives as the engine's per-event ``EventRejected``,
+    naming the one offending event, so the outbox can move that row to a terminal
+    state and drain the rest instead of re-pushing the batch forever.
+    """
     backend = SyncServerBackend(SERVER_URL, seeded_token, client=app_client)
     stranger = "mbr_stranger".ljust(26, "0")
-    with pytest.raises(SyncBackendError, match="actor is not the authenticated member"):
-        backend.commit_events(
-            [_ticket_event(stranger, n=2, title="impersonation attempt")],
-            require_signature=False,
-        )
+    event = _ticket_event(stranger, n=2, title="impersonation attempt")
+    with pytest.raises(EventRejected) as caught:
+        backend.commit_events([event], require_signature=False)
+    assert caught.value.event.event_id == event.event_id
+    assert caught.value.code == POLICY_DENIED
+    assert "actor is not the authenticated member" in str(caught.value)
+
+
+def test_one_refused_event_does_not_take_the_batch_down(
+    app_client: TestClient, seeded_token: str
+) -> None:
+    """DEBT-49 in miniature: the refusal names ONE event out of a batch, which is
+    what lets the engine quarantine that row and re-drain the others. Before, the
+    client only knew "422" and the whole push retried forever."""
+    backend = SyncServerBackend(SERVER_URL, seeded_token, client=app_client)
+    poison = _ticket_event("mbr_stranger".ljust(26, "0"), n=3, title="not mine")
+    mine = _ticket_event(SEEDED_MEMBER, n=4, title="mine")
+    with pytest.raises(EventRejected) as caught:
+        backend.commit_events([mine, poison], require_signature=False)
+    assert caught.value.event.event_id == poison.event_id  # not the innocent one
+
+    # Nothing committed (pass 1 validates the whole batch), so re-pushing the
+    # remainder without the poison event succeeds.
+    out = backend.commit_events([mine], require_signature=False)
+    assert out[0].status == "committed"

@@ -111,7 +111,8 @@ class FlushResult:
     minted: int  # conflict_records minted from per-field conflicts (E05-T2)
     rebased: int  # stale agent proposals bounced to rebase_required (E05-T3)
     attempts: int  # connectivity attempts made
-    drained: bool  # the outbox is empty afterwards (no pending rows remain)
+    drained: bool  # the outbox is empty afterwards (no pushable pending rows remain)
+    withheld: int = 0  # locally-authored events this backend cannot accept (DEBT-49)
 
 
 @dataclass(frozen=True)
@@ -137,10 +138,22 @@ class SyncEngine:
         workspace_id: str | None = None,
         signer: EventSigner | None = None,
         on_conflict_minted: Callable[[str, str], None] | None = None,
+        caller_bound_actor: bool = False,
     ) -> None:
         self._db = db_engine
         self._backend = backend
         self._actor_id = actor_id
+        # DEBT-49: the self-hosted sync-server binds every write to the token's
+        # member (actor == the authenticated member, DEBT-42), so an event this
+        # runtime authored as somebody else — an Agent member's propose-first
+        # write, minted locally through the MCP gateway — can never be accepted.
+        # Submitting it anyway used to jam the whole outbox: the batch was
+        # refused, nothing drained, and the human's own approved writes never
+        # reached the team. Such events are withheld from the push and stay
+        # local (visible in this replica's Inbox); the backends that CAN
+        # attribute them (Supabase resolves the acting member by verified email)
+        # leave this off and push everything.
+        self._caller_bound_actor = caller_bound_actor
         # workspace_id + signer are needed only to MINT conflict_records (E05-T2):
         # the record carries the workspace it scopes, and post-cutover the minted
         # event is signed under the actor's conflict_records.write grant. A bare
@@ -306,6 +319,13 @@ class SyncEngine:
         and its optimistic effect reverted, so it leaves the outbox instead of
         being re-pushed forever (no zombie retry, no stuck ``pending_count``).
 
+        With ``caller_bound_actor`` (the self-hosted sync-server) an event this
+        runtime authored as another local member — an Agent's propose-first
+        write — is **withheld** rather than submitted: the backend could only
+        refuse it, and one refusal used to take the whole batch down with it.
+        Withheld events stay pending and stay folded; ``drained`` reports the
+        pushable outbox, and ``withheld`` counts what stayed behind.
+
         ``proposal_stale_policy`` (MOD-26 §B3 / E05-T3) decides whether a stale
         agent-proposal ticket write is bounced to ``rebase_required`` — the
         runtime passes the workspace setting; ``auto_rebase`` (default) bounces
@@ -325,7 +345,8 @@ class SyncEngine:
                     submitted, committed, rejected, stale, minted, rebased = self._drain(
                         session, proposal_stale_policy
                     )
-                    drained = not event_log.pending_rows(session)
+                    withheld = len(self._withheld_rows(session))
+                    drained = not self._pushable_rows(session)
                     session.commit()
                 return FlushResult(
                     submitted,
@@ -337,12 +358,14 @@ class SyncEngine:
                     rebased,
                     attempts,
                     drained,
+                    withheld,
                 )
             except BackendUnavailable:
                 if attempts >= backoff.max_attempts:
                     with Session(self._db) as session:
-                        drained = not event_log.pending_rows(session)
-                    return FlushResult(0, 0, 0, 0, 0, 0, 0, attempts, drained)
+                        drained = not self._pushable_rows(session)
+                        withheld = len(self._withheld_rows(session))
+                    return FlushResult(0, 0, 0, 0, 0, 0, 0, attempts, drained, withheld)
                 sleep(backoff.delay(attempts))
 
     def _reconcile_dropped_acks(self, session: Session) -> int:
@@ -398,7 +421,7 @@ class SyncEngine:
         """
         submitted = committed = rejected = stale = minted = rebased = 0
         while True:
-            pending = event_log.pending_rows(session)
+            pending = self._pushable_rows(session)
             if not pending:
                 break
             ordinary = [r for r in pending if r.origin_proposal_id is None]
@@ -432,6 +455,24 @@ class SyncEngine:
                 rebased += self._commit_proposal_write(session, row, proposal_stale_policy)
             break
         return submitted, committed, rejected, stale, minted, rebased
+
+    def _pushable_rows(self, session: Session) -> list[EventLog]:
+        """The outbox rows this backend can actually accept (DEBT-49)."""
+        rows = event_log.pending_rows(session)
+        if not self._caller_bound_actor:
+            return rows
+        return [row for row in rows if row.actor_id == self._actor_id]
+
+    def _withheld_rows(self, session: Session) -> list[EventLog]:
+        """Pending rows held back because this backend binds actor to the token.
+
+        They are NOT rejected: the local write stands (the agent's proposal still
+        sits in this replica's Inbox), it simply has no attributable identity on
+        the far side, so re-pushing it could only fail.
+        """
+        if not self._caller_bound_actor:
+            return []
+        return [row for row in event_log.pending_rows(session) if row.actor_id != self._actor_id]
 
     def _commit_proposal_write(self, session: Session, row: EventLog, policy: str) -> int:
         """Commit one approved-proposal ticket write as a CAS (MOD-26 §B3).
