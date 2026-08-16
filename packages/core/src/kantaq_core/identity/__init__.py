@@ -14,6 +14,7 @@ from kantaq_core.identity.devices import (
     device_private_key,
     ensure_device,
     local_device,
+    local_member,
     revoke_device,
     verification_roots,
 )
@@ -84,6 +85,7 @@ __all__ = [
     "ensure_device",
     "ensure_member_grant",
     "local_device",
+    "local_member",
     "local_grant_index",
     "max_grant_ttl_seconds",
     "revoke_device",

@@ -30,30 +30,53 @@ from kantaq_sync_engine.events import (
     SessionInit,
     fold_events,
 )
+from kantaq_sync_engine.verify import POLICY_DENIED, EventRejected, EventVerification
 
 _TIMEOUT = 10.0
 PAGE_SIZE = 500
 
 
 class SyncBackendError(Exception):
-    """A sync-server call failed; carries the server's message and status."""
+    """A sync-server call failed; carries the server's message and status.
 
-    def __init__(self, message: str, status_code: int) -> None:
+    ``code`` and ``event_id`` are the structured fields of a per-event refusal
+    (the server's 422 detail), when it named them; both are None otherwise.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        status_code: int,
+        *,
+        code: str | None = None,
+        event_id: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.code = code
+        self.event_id = event_id
 
 
-def _detail(response: httpx.Response) -> str:
+def _error(response: httpx.Response) -> SyncBackendError:
+    """Map a failed response to the error, keeping the structured detail."""
     try:
         body = response.json()
     except ValueError:
-        return f"HTTP {response.status_code}"
+        return SyncBackendError(f"HTTP {response.status_code}", response.status_code)
     detail = body.get("detail") if isinstance(body, dict) else None
     if isinstance(detail, dict):
-        return str(detail.get("reason") or detail.get("code") or detail)
+        code = detail.get("code")
+        event_id = detail.get("event_id")
+        message = str(detail.get("reason") or code or detail)
+        return SyncBackendError(
+            message,
+            response.status_code,
+            code=str(code) if code is not None else None,
+            event_id=str(event_id) if event_id is not None else None,
+        )
     if isinstance(detail, str):
-        return detail
-    return f"HTTP {response.status_code}"
+        return SyncBackendError(detail, response.status_code)
+    return SyncBackendError(f"HTTP {response.status_code}", response.status_code)
 
 
 class SyncServerBackend:
@@ -119,8 +142,26 @@ class SyncServerBackend:
             if cas and exc.status_code == 409 and "rebase_required" in str(exc).lower():
                 offending = next((e for e in batch if e.op == "patch"), batch[0])
                 raise RebaseRequired(offending) from exc
+            rejected = self._rejected_event(exc, batch)
+            if rejected is not None:
+                # The server refused ONE event on validation (pass 1 commits
+                # nothing). Re-raise it as the engine's per-event rejection so
+                # that row goes terminal and the rest of the outbox drains —
+                # otherwise a never-acceptable event wedges every later push
+                # (DEBT-49: an agent-authored event can never clear the
+                # caller-binding wall, and used to jam the owner's outbox).
+                raise EventRejected(
+                    EventVerification(False, exc.code or POLICY_DENIED, str(exc)), rejected
+                ) from exc
             raise
         return [to_commit_result(row) for row in rows]
+
+    @staticmethod
+    def _rejected_event(exc: SyncBackendError, batch: list[Event]) -> Event | None:
+        """The one event a 422 refusal named, if it is in this batch."""
+        if exc.status_code != 422 or exc.event_id is None:
+            return None
+        return next((e for e in batch if e.event_id == exc.event_id), None)
 
     def push(self, events: Iterable[Event]) -> list[CommittedEvent]:
         """Raw transport (pre-cutover / convergence): commit unsigned, no grant.
@@ -183,13 +224,13 @@ class SyncServerBackend:
     def _post(self, path: str, json: Any) -> Any:
         response = self._client.post(f"{self._base}{path}", headers=self._headers(), json=json)
         if response.status_code >= 400:
-            raise SyncBackendError(_detail(response), response.status_code)
+            raise _error(response)
         return response.json()
 
     def _get(self, path: str, params: dict[str, str]) -> Any:
         response = self._client.get(f"{self._base}{path}", headers=self._headers(), params=params)
         if response.status_code >= 400:
-            raise SyncBackendError(_detail(response), response.status_code)
+            raise _error(response)
         return response.json()
 
     def _event_to_wire(self, event: Event) -> dict[str, Any]:

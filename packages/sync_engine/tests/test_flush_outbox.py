@@ -139,3 +139,68 @@ def test_unverifiable_event_leaves_the_outbox_and_reverts() -> None:
             select(EventLog).where(EventLog.sync_state == SYNC_STATE_REJECTED)
         ).all()
         assert len(terminal) == 1
+
+
+def _agent_writes_a_ticket(alice: Replica, agent_id: str) -> str:
+    """An Agent member on Alice's machine authors through the same local log —
+    what the MCP gateway does when it stores a propose-first write."""
+    from kantaq_core.tracker import TrackerService
+    from kantaq_sync_engine import EventLogSink
+
+    with alice.session() as session:
+        service = TrackerService(
+            session,
+            actor_id=agent_id,
+            source="mcp",
+            sink=EventLogSink(session, agent_id),
+            now=alice.clock.now,
+        )
+        project = service.create_project(workspace_id=WORKSPACE_ID, name="Agent's")
+        session.commit()
+        return project.id
+
+
+def test_a_caller_bound_backend_withholds_another_actors_events() -> None:
+    """DEBT-49: the self-hosted server binds actor == the token's member, so an
+    Agent member's local write can never be accepted. It must not be submitted —
+    one refusal used to take the whole batch down and wedge the human's own
+    writes out of the team forever."""
+    backend = FakeBackend()
+    alice = memory_replica("alice", backend)
+    _ticket(alice)  # two events authored by alice
+    agent_id = "mbr_agent00000000000000000"[:26]
+    _agent_writes_a_ticket(alice, agent_id)  # one event authored by the agent
+
+    engine = SyncEngine(
+        alice.db,
+        backend,
+        actor_id=alice.actor_id,
+        workspace_id=WORKSPACE_ID,
+        caller_bound_actor=True,
+    )
+    result = engine.flush_outbox()
+
+    assert result.committed == 2  # alice's own writes reached the team
+    assert result.withheld == 1
+    assert result.drained  # nothing pushable is left behind
+    assert {entry.event.actor_id for entry in backend.pull()} == {alice.actor_id}
+    with alice.session() as session:
+        # Withheld, NOT rejected: the local write stands and stays pending, so
+        # the agent's work is still there for the human to approve.
+        held = [r for r in pending_rows(session) if r.actor_id == agent_id]
+        assert len(held) == 1
+        assert held[0].sync_state == "pending"
+
+
+def test_without_caller_binding_every_actor_still_pushes() -> None:
+    """The Supabase backend resolves the acting member by verified email, so it
+    accepts an Agent member's events — the withholding is opt-in, not the rule."""
+    backend = FakeBackend()
+    alice = memory_replica("alice", backend)
+    _ticket(alice)
+    _agent_writes_a_ticket(alice, "mbr_agent00000000000000000"[:26])
+
+    result = alice.sync.flush_outbox()
+
+    assert result.committed == 3
+    assert result.withheld == 0

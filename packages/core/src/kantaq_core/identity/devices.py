@@ -27,7 +27,7 @@ from kantaq_core import audit
 from kantaq_core.identity.keychain import Keychain
 from kantaq_core.identity.service import IdentityError
 from kantaq_core.tracker.events import DomainEvent, EventSink
-from kantaq_db.models import Device
+from kantaq_db.models import Device, Member
 from kantaq_protocol import generate_keypair, public_key_of
 
 # The keychain entry holding this runtime's Ed25519 private seed (hex).
@@ -125,6 +125,32 @@ def local_device(session: Session, keychain: Keychain) -> Device | None:
         return None
     public_key = public_key_of(seed)
     return session.exec(select(Device).where(Device.public_key == public_key)).first()
+
+
+def local_member(session: Session, keychain: Keychain) -> Member | None:
+    """The member this runtime **is** — never "the first member row" (DEBT-48).
+
+    Team mode syncs peers' ``members`` rows into every replica (the self-announce
+    of docs/design/member-events.md §2a), so "lowest active member id" stops
+    meaning *me* the moment a teammate's row lands: every replica then resolves
+    to whoever holds the smallest ULID. The runtime's own **device** row carries
+    the answer instead — it is written at bootstrap/enroll, before any peer row
+    can arrive, and the keychain seed proves which device is this one. A runtime
+    with no device row yet (first boot, pre-registration) has exactly one member:
+    itself. Anything else is genuinely ambiguous and returns None so the caller
+    can say so rather than act as someone else.
+    """
+    device = local_device(session, keychain)
+    if device is not None and device.member_id is not None:
+        member = session.get(Member, device.member_id)
+        if member is not None and member.status == "active":
+            return member
+    rows = list(
+        session.exec(
+            select(Member).where(Member.status == "active").order_by(col(Member.id)).limit(2)
+        ).all()
+    )
+    return rows[0] if len(rows) == 1 else None
 
 
 def verification_roots(session: Session) -> dict[str, str]:

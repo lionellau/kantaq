@@ -163,6 +163,17 @@ loopback gateway; the connection details for every client are in
 member** (Step 4) so its token is scoped to read tickets and propose changes —
 nothing more.
 
+**Where the agent loop stops at the workspace edge.** This server authorizes every
+write as the token's member (`actor == the authenticated member`), so an event your
+runtime authored *as your Agent member* has no identity it can attribute on the far
+side. Those events stay on your machine — `kantaq sync once` says so each cycle —
+and the proposal waits in **your** Inbox, not your teammates'. Approve it and the
+resulting ticket write syncs normally, as **your** change: teammates see the
+outcome, with the proposer and approver both on the local audit trail. (On the
+Supabase path the maintainer seeds the Agent row with the owner's sign-in email,
+which is what lets pending proposals cross over there — see
+[setup-supabase.md §7](setup-supabase.md).)
+
 ## 4. Invite your teammates
 
 There is **no shared app instance**. Each teammate runs their own kantaq runtime

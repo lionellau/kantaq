@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); kantaq follows the
 release line (v0.0.5 → v0.3) described in the project docs.
 
+## [Unreleased]
+
+### Fixed — team mode on the self-hosted backend (DEBT-48, DEBT-49)
+
+Two blockers that only surface with **two or more members** on `HUB_MODE=postgres`,
+found walking the QUICKSTART team path end to end:
+
+- **A runtime could start acting as a teammate** (DEBT-48). The runtime's own
+  member was resolved as "the lowest active member id in the replica" — but v0.3
+  syncs every peer's `members` row into every replica, so from the first pull
+  onward that resolved to whoever holds the smallest ULID. The joiner's
+  `kantaq sync once` then failed (`this runtime is member A, but HUB_TOKEN
+  authenticates as B`) with no way back: the suggested `kantaq sync login` also
+  refuses a replica that already holds two member rows. Identity now comes from
+  the runtime's **device row** (written at bootstrap/enroll, before any peer row
+  can arrive) via `kantaq_core.identity.local_member`, which also fixes the boot
+  self-announce and `kantaq import linear` attributing writes to a teammate.
+- **One refused event wedged the whole outbox** (DEBT-49). The sync-server binds
+  `actor == the authenticated member`, so an Agent member's propose-first event —
+  authored locally through the MCP gateway — was refused, and the client turned
+  that 422 into a batch-level error: nothing drained, and the human's own approved
+  writes never reached the team again. Now the server names the offending event,
+  the client raises the engine's per-event `EventRejected` (the existing
+  quarantine path), and the self-hosted sync withholds locally-authored
+  foreign-actor events instead of submitting them — reported per cycle rather
+  than silently skipped. The agent's proposal stays local and approvable; the
+  ticket write the approval produces syncs as the human's own.
+
+Known limit: pending agent proposals still do not reach a teammate's Inbox on the
+self-hosted backend (the Supabase path gets this by seeding the Agent row with the
+owner's sign-in email; the self-hosted server has no equivalent link yet).
+
 ## [0.3.0] — 2026-08-15
 
 ### Added — Sprint 9: v0.3 release (E14, E15, E20, E25, E09, E29)

@@ -238,7 +238,14 @@ def create_app(
         try:
             return backend.commit_events_raw(events, verify=verify, cas=body.cas)
         except EventRejected as exc:
-            raise HTTPException(422, {"code": exc.code, "reason": exc.reason}) from exc
+            # Name the offending event: a rejection is never-acceptable by
+            # contract (pass 1 of the commit is pure validation), so the client
+            # can move that one row to a terminal state and drain the rest
+            # instead of retrying the whole batch forever (DEBT-49).
+            raise HTTPException(
+                422,
+                {"code": exc.code, "reason": exc.reason, "event_id": exc.event.event_id},
+            ) from exc
         except RebaseRequired as exc:
             raise HTTPException(
                 409, {"code": "rebase_required", "event_id": exc.event.event_id}

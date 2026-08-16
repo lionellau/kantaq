@@ -28,6 +28,7 @@ from kantaq_core.identity import (
     ensure_device,
     ensure_member_grant,
     local_grant_index,
+    local_member,
     max_grant_ttl_seconds,
     revoke_device,
     revoke_grants_for_device,
@@ -154,6 +155,64 @@ def test_device_registration_emits_a_sync_event(
         rows = [r for r in session.exec(select(EventLog)).all() if r.collection == "devices"]
         assert [r.entity_id for r in rows] == [device.id]
         assert rows[0].payload["public_key"] == device.public_key
+
+
+def test_local_member_is_this_runtime_not_the_lowest_member_id(
+    engine: Engine, keychain: FakeKeychain, clock: FakeClock, owner_id: str
+) -> None:
+    """DEBT-48: a teammate's row syncs into every replica, so "first member" is
+    not "me". The device row — written before any peer row can arrive — is."""
+    with Session(engine) as session:
+        ensure_device(session, keychain, member_id=owner_id, now=_now(clock)())
+        # A peer's row lands by sync with a SMALLER id than ours: the old
+        # `order_by(Member.id).first()` resolution would hand back the peer.
+        peer_id = "0" * 26  # sorts below every real ULID
+        assert peer_id < owner_id
+        session.add(
+            Member(
+                id=peer_id,
+                workspace_id=session.get(Member, owner_id).workspace_id,  # type: ignore[union-attr]
+                email="peer@team.dev",
+                role=Role.owner.value,
+                status="active",
+            )
+        )
+        session.commit()
+
+        me = local_member(session, keychain)
+
+        assert me is not None
+        assert me.id == owner_id
+
+
+def test_local_member_on_a_fresh_runtime_has_no_device_yet(
+    engine: Engine, keychain: FakeKeychain, owner_id: str
+) -> None:
+    """First boot registers the device *through* this resolution, so the
+    pre-device case must still answer — one member row is unambiguous."""
+    with Session(engine) as session:
+        me = local_member(session, keychain)
+        assert me is not None and me.id == owner_id
+
+
+def test_local_member_refuses_to_guess_when_it_cannot_tell(
+    engine: Engine, keychain: FakeKeychain, owner_id: str
+) -> None:
+    """No device row *and* more than one member: acting as either would be a
+    coin flip, so the caller is told rather than silently mis-attributed."""
+    with Session(engine) as session:
+        session.add(
+            Member(
+                id="0" * 26,
+                workspace_id=session.get(Member, owner_id).workspace_id,  # type: ignore[union-attr]
+                email="peer@team.dev",
+                role=Role.owner.value,
+                status="active",
+            )
+        )
+        session.commit()
+
+        assert local_member(session, keychain) is None
 
 
 # ------------------------------------------------------- issue + verify
